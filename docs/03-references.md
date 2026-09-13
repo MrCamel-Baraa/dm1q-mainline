@@ -31,7 +31,11 @@
   be read manually in a browser)
 - postmarketOS wiki category listing devices: Category:Android lists a
   "Samsung Galaxy S23" page (content unread — see open questions doc)
-- pmaports repo: `gitlab.com/postmarketOS/pmaports`
+- **pmaports repo (current, correct): `gitlab.postmarketos.org/postmarketOS/pmaports`**
+  — migrated here from gitlab.com on 2024-10-06. The old
+  `gitlab.com/postmarketOS/pmaports` is now archived/read-only; use it only
+  for pre-Oct-2024 history if needed, not as the live reference.
+  Status page confirming the migration: `status.postmarketos.org`
 - pmbootstrap docs: `docs.postmarketos.org/pmbootstrap/usage.html`
 - Deviceinfo reference: `docs.postmarketos.org/pmaports/main/deviceinfo-reference.html`
 - "Porting to a new device" guide (older mirror, but methodology still valid):
@@ -60,3 +64,17 @@
   kalama SM8550, but a higher factory-tested clock/voltage bin
 - LineageOS device pages (for hardware spec cross-referencing):
   `wiki.lineageos.org/devices/dm1q/`
+
+## WCN chip confirmation (Wi-Fi/Bluetooth)
+
+- iFixit "Galaxy S23 Ultra Chip ID" teardown — directly identifies the
+  Qualcomm WCN7851-101 FastConnect 7800 part on the S23 Ultra board.
+  `ifixit.com/Guide/Galaxy+S23+Ultra+Chip+ID/158052`
+- XDA Forums thread, "Which Snapdragon 8 Gen2 Modem Configuration..." —
+  states, citing Qualcomm's own device finder page, that the S23 Ultra uses
+  FastConnect 7800 while the S23 and S23+ use FastConnect 6900.
+  `xdaforums.com/t/which-snapdragon-8-gen2-modem-configuration-fast-connect-7800-wi-fi-7-or-6900-wi-fi-6e.4555581/`
+- Samsung Community threads (multiple, DE and EU boards) independently
+  confirm the S23 series ships Wi-Fi 6E only in software/firmware despite the
+  Ultra's chip having native Wi-Fi 7 capability — consistent with the
+  FastConnect 7800/WCN7850 identification above.

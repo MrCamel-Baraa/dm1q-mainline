@@ -14,10 +14,14 @@ until they're answered.
       for the record).
 - [ ] Confirm dm1q pmaports package: kernel type, maintainer, last activity.
       (`pmbootstrap init`, see docs/00-overview.md)
-- [ ] Identify the WCN Wi-Fi/BT chip actually used in dm1q's crDroid kernel
-      tree (grep for `wcn6855`, `wcn7850`, or `qcom,wcn*` compatible strings).
-      This determines ath11k vs ath12k and whether the Tab S9 Ultra's
-      PCIe/WiFi node structure is directly reusable.
+- [ ] Confirm the WCN Wi-Fi/BT chip in dm1q's crDroid kernel tree is WCN6855
+      (`ath11k`), as strongly indicated by teardown/community sourcing (see
+      docs/02-open-questions-and-risks.md, item 1 — resolved but not yet
+      confirmed against dm1q's own kernel source). Grep for `wcn6855` /
+      `qcom,wcn6855`. **Working assumption: the Tab S9 Ultra's ath12k/WCN7850
+      PCIe/WiFi node structure does NOT directly apply to dm1q** — build the
+      WCN6855/ath11k node from scratch or from another ath11k-based mainline
+      device instead.
 - [ ] Identify the exact PMIC part(s) paired with dm1q (PM8550 vs PM8550B vs
       PM8550VE, etc.) from the crDroid kernel tree / downstream DT.
 - [ ] Note the panel driver/compatible string and touch controller vendor
@@ -45,7 +49,10 @@ baseline. This split is the actual workplan:
 - Adreno 740 GPU node + Turnip/Mesa userspace config
 - UFS controller node (protocol-level — storage *layout* still device-specific)
 - USB controller (DWC3) core setup
-- PCIe controller node structure — **contingent on WCN chip match, see Step 0**
+- PCIe controller *core* structure (bus/link setup transfers; the WiFi
+  endpoint device node itself does not — dm1q is WCN6855/ath11k while the
+  Tab S9 Ultra reference is WCN7850/ath12k, see Step 0 and
+  docs/02-open-questions-and-risks.md item 1)
 
 **Needs full rebuild (board-level, source from crDroid tree):**
 - Display panel driver (S23's AMOLED panel is a different part from the
@@ -78,3 +85,12 @@ _(append dated entries here as work happens)_
 
 - 2026-09-13: Repo created, workplan drafted from initial research. No boot
   attempt yet. Step 0 items outstanding.
+- 2026-09-13 (later same day): Fact-check pass on all docs. Found and
+  corrected two significant errors: (1) dm1q/dm2q actually use WCN6855
+  (ath11k), not an open question resolvable only by guesswork — confirmed via
+  teardown + community sourcing that only the S23 Ultra (dm3q) matches the
+  Tab S9 Ultra reference's WCN7850/ath12k chip; (2) pmaports lives at
+  gitlab.postmarketos.org now, not gitlab.com (migrated Oct 2024) — explains
+  why earlier GitLab searches for dm1q found nothing. See
+  docs/02-open-questions-and-risks.md items 1, 6, 8, 9 for full detail and
+  what still needs re-checking.

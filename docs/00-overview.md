@@ -13,7 +13,16 @@ Last updated: 2026-09-13
 ## postmarketOS status
 
 - dm1q appears as a selectable device in `pmbootstrap init` (confirmed by hand,
-  not by web search — GitLab's search indexing is unreliable for this).
+  not by web search).
+- **Infrastructure correction (2026-09-13):** postmarketOS migrated `pmaports`
+  and its other repos from `gitlab.com` to a self-hosted instance at
+  `gitlab.postmarketos.org` on 2024-10-06. The old `gitlab.com/postmarketOS/*`
+  projects are now archived/read-only with a "moved" banner. This is why
+  earlier searches for dm1q on gitlab.com turned up nothing — wrong host, not
+  just weak indexing. The self-hosted instance also isn't well-crawled by web
+  search, so it still needs to be checked directly/manually, not via search.
+  **Use `gitlab.postmarketos.org/postmarketOS/pmaports` going forward, not the
+  gitlab.com link.**
 - Need to check directly once pmaports is cloned locally:
   ```
   pmbootstrap init   # select dm1q, note which kernel option(s) are offered
@@ -22,7 +31,8 @@ Last updated: 2026-09-13
   Record findings here once done: kernel type (downstream/near-mainline/mainline),
   maintainer, last commit date, what deviceinfo claims works.
 - postmarketOS wiki has a "Samsung Galaxy S23" page in Category:Android, but the
-  page could not be fetched directly (blocked by the wiki's Anubis anti-bot wall).
+  page could not be fetched directly (blocked by the wiki's Anubis anti-bot wall,
+  and Wayback Machine / search snippets didn't surface its content either).
   **Action: open wiki.postmarketos.org/wiki/Samsung_Galaxy_S23 in a browser and
   paste the maintainer/status/feature-matrix content into this file.**
 
@@ -59,11 +69,29 @@ This is the single best available reference for SM8550-specific bring-up
 (clocks, GCC/RPMH, interconnects, PMIC/regulator patterns, UFS init sequence),
 even though the board-specific bits (panel, touch, pinctrl) will differ for dm1q.
 
-**Important open question:** the Tab S9 Ultra uses WCN7850 (Wi-Fi 7 / ath12k).
-The S23 shipped ~4 months earlier in the SM8550 product cycle and more commonly
-paired with WCN6855 (Wi-Fi 6E / ath11k) at that point in Qualcomm's platform
-lineup. **Do not assume ath12k applies to dm1q — verify against the actual
-crDroid kernel tree first.** See docs/02-open-questions-and-risks.md.
+**Resolved (2026-09-13): the WCN chip is confirmed to differ from the Tab S9
+Ultra, and by more than we originally guessed.** Qualcomm shipped *two
+different* Wi-Fi/BT chips across the S23 line depending on model:
+
+- **S23 and S23+ (dm1q, dm2q)** — Qualcomm FastConnect 6900, i.e. WCN6855-class
+  silicon. Wi-Fi 6E only, `ath11k` driver in Linux.
+- **S23 Ultra (dm3q)** — Qualcomm FastConnect 7800, i.e. WCN7850/WCN7851-class
+  silicon — the *same chip family* as the Tab S9 Ultra reference device —
+  though Samsung's firmware limits it to Wi-Fi 6E rather than exposing the
+  chip's native Wi-Fi 7 (802.11be) capability. `ath12k` driver in Linux.
+
+Sources: iFixit's Galaxy S23 Ultra chip-ID teardown identifies the WCN7851
+part directly; multiple independent Samsung Community / XDA Forums threads
+(citing Qualcomm's own device finder page) confirm the base S23/S23+ got
+FastConnect 6900 while only the Ultra got 7800.
+
+**Implication for dm1q specifically: assume `ath11k`/WCN6855, not `ath12k`.**
+The Tab S9 Ultra's PCIe/WiFi node structure does *not* directly apply to dm1q
+— it would be the right reference for dm3q (S23 Ultra) instead. Still confirm
+against the actual crDroid kernel tree before committing code (grep for
+`wcn6855` / `qcom,wcn6855` compatible strings), since this is sourced from
+teardowns/community reporting on retail units, not from dm1q's kernel source
+directly.
 
 ## Camera reality check
 
