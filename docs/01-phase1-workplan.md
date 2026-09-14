@@ -214,3 +214,24 @@ not current layout.**
   is filling dm1q's real values (now in hand) into the gts9u/mainline
   skeleton from Step 2 — i.e., actually starting to write dm1q's own
   devicetree, not just planning it.
+
+- 2026-09-14 (continued): Deeper extraction pass on the real dm1q crDroid
+  devicetree source (`_scratch/crdroid-dm1q-dts`), per user request for
+  full regulator/pinctrl/GPIO tables. Wrote two small extraction scripts
+  (`notes/extract_regulators.py`, `notes/extract_pinctrl.py`) since the
+  source is a dtc-decompiled DTB (numeric phandles, lost labels) rather
+  than hand-written source. Findings written up in the new
+  `docs/05-dm1q-real-hardware-values.md`:
+  - Found a previously-unknown IC: **s2mpb02**, a Samsung LSI sub-PMIC with
+    18 LDOs + 2 bucks + 1 buck-boost, likely dedicated to camera/display
+    rails.
+  - Real GPIO numbers for touch (Goodix reset=GPIO24, irq=GPIO25) and
+    WLAN/BT (QCA6490 enable/reset=GPIO80/81, sw-ctrl=GPIO82,
+    xo-clk=GPIO204) and panel (reset=GPIO125, TE=GPIO86/87 for the two
+    panel paths).
+  - Full 663-entry pinctrl state table in `notes/dm1q-pinctrl-table.txt`.
+  - **Honest limitation, not resolved**: the actual PM8550-family SPMI
+    regulator channel-to-consumer mapping wasn't recoverable via text
+    extraction — those subnodes don't carry descriptive names in this
+    decompiled file. Flagged as a follow-up for when writing those specific
+    consumer nodes, not a blocker.

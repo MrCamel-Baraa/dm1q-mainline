@@ -22,6 +22,8 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
 - `docs/03-references.md` — links to prior art, guides, upstream projects
 - `docs/04-gts9u-vs-mainline-devicetree-diff.md` — categorized diff of the
   Tab S9 Ultra reference devicetree against plain upstream mainline
+- `docs/05-dm1q-real-hardware-values.md` — real regulator/GPIO/pinctrl
+  values extracted directly from dm1q's own downstream devicetree source
 - `dts/` — devicetree work (diffs, drafts, extracted downstream references)
 - `notes/` — scratch notes, kernel config diffs, log dumps
 - `_scratch/` — frozen snapshots of external reference repos (real dm1q
