@@ -35,13 +35,24 @@ here with their answer and source, and are also reflected in 00-overview.md.
 
 ## Medium priority — affects scope/expectations, not immediately blocking
 
-4. **Camera: no known upstream ISP support.**
-   No mainline qcom-camss or libcamera support found for the Spectra 780 ISP
-   or the S23's specific sensors (S5KGN3, IMX564, S5K3K1). Waydroid can't
-   route around this — it only passes through devices the host kernel
-   already exposes. Treat as out of scope unless someone does dedicated
-   camss bring-up (see the Fairphone 6 / milos / TFE665 effort in
-   03-references.md as the template for what that work looks like).
+4. **Camera: RE-UPGRADED 2026-09-13 (second pass) — credible prior art
+   confirmed real, one specific claim still worth checking.**
+   Full history: this item went no-known-support → briefly "credible" →
+   "discredited as likely fabricated" → **corrected back to credible**, all
+   within 2026-09-13. The "discredited" verdict was itself wrong — see
+   03-references.md for the full correction. Verified directly: real V4L2
+   driver patch code against actual mainline `drivers/media/i2c/hi847.c`,
+   real pmOS deviceinfo conventions, a real citation of an actual resolvable
+   commit hash in pmaports history. This is legitimate, technically
+   competent work, not fabrication.
+   **Still open:** the specific claim of *full* camera support (4 cameras,
+   autofocus, flash all working) is unusually strong even for legitimate
+   projects — worth reading `docs/hardware-status.md` from
+   `ubuntu-galaxy-tab-s9-ultra` directly for the evidence behind that claim
+   before assuming it's fully solved. dm1q's own sensors (S5KGN3/IMX564/
+   S5K3K1) differ from the Tab S9 Ultra's (hi847/hi1337) regardless, so even
+   fully-confirmed camera work there is a methodology/pattern reference for
+   dm1q, not drop-in code.
 
 5. **Modem: unpredictable, device-specific.**
    No basis for predicting dm1q's modem prospects from any reference device
@@ -49,9 +60,46 @@ here with their answer and source, and are also reflected in 00-overview.md.
    across other Samsung pmOS ports: modem success/failure doesn't correlate
    cleanly with Wi-Fi/BT/camera success — it's its own separate effort.
 
+## High priority — contradicts a prior "confirmed" claim
+
+1b. **dm1q pmaports package: does not exist in current pmaports — CONFIRMED
+   AND CLOSED 2026-09-13.**
+   Directly confirmed by running `pmbootstrap init` interactively and
+   selecting `samsung-dm1q`: pmbootstrap itself returned "The specified
+   device ('samsung-dm1q') could not be found in existing ports" and offered
+   to launch its new-device-port wizard (postmarketos.org/porting/). This
+   matches the earlier `git ls-tree` search exactly — no fuzzy-match
+   artifact, no branch issue (pmbootstrap's error message covers the "did
+   you mean the edge branch" case explicitly and it still didn't find it).
+   **Conclusion: the original "confirmed by hand" note was simply wrong** —
+   likely a misremembering, or confused with a different device/session.
+   Not worth further investigation. This is a ground-up port; see
+   docs/01-phase1-workplan.md for the updated Step 0/1 sequencing that
+   follows from this.
+   (Prior text, kept for history:)
+   Previously (see old item 6 below) this was treated as settled because the
+   user had directly observed dm1q in `pmbootstrap init`. On 2026-09-13 a
+   sparse partial clone of the live pmaports repo (main branch, HEAD
+   `1c99c07`) was searched directly with `git ls-tree -r` for `dm1q`, `dm2q`,
+   `dm3q`, `kalama`, and `sm8550` across every device tier
+   (main/testing/community/archived/downstream) — **zero matches, all
+   terms**. This is hard evidence against a real dm1q package existing right
+   now. Two things can be true at once: pmaports migrated hosts in 2024 (see
+   00-overview.md), AND the device may simply not be there. Needs a fresh,
+   carefully-observed interactive `pmbootstrap init` session — type `dm1q`
+   into the device search and record verbatim what appears (real match /
+   fuzzy near-match / nothing) — to find out whether the original observation
+   was a typo/fuzzy-match artifact or something else. Until resolved: treat
+   Phase 1 as a from-scratch port with no existing dm1q package to reference,
+   which doesn't change the plan (Tab S9 Ultra was always just an
+   SM8550-family reference) but does mean don't expect to find a
+   maintainer/kernel-type/last-commit-date to record, because there may be no
+   package to have those.
+
 ## Low priority / just for the record
 
-6. **dm1q pmaports package provenance unconfirmed by me.**
+6. *(superseded 2026-09-13 by item 1b above — kept for history)*
+   **dm1q pmaports package provenance unconfirmed by me.**
    Explanation upgraded 2026-09-13: postmarketOS moved `pmaports` from
    `gitlab.com` to a self-hosted `gitlab.postmarketos.org` in Oct 2024, and
    the new host isn't well-crawled by web search either, so a negative search

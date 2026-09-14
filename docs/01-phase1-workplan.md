@@ -12,8 +12,14 @@ until they're answered.
 - [ ] Confirm dm1q's bootloader can actually be OEM-unlocked / already is
       (should be, since it's running crDroid — but note exact method used,
       for the record).
-- [ ] Confirm dm1q pmaports package: kernel type, maintainer, last activity.
-      (`pmbootstrap init`, see docs/00-overview.md)
+- [x] Confirm dm1q pmaports package: kernel type, maintainer, last activity —
+      **answer as of 2026-09-13: no such package exists in current pmaports**
+      (searched live repo directly, zero matches for dm1q/dm2q/dm3q/kalama/
+      sm8550). Contradicts an earlier "confirmed by hand in pmbootstrap init"
+      note — see docs/02-open-questions-and-risks.md item 1b for the open
+      follow-up (re-run `pmbootstrap init` interactively to resolve the
+      discrepancy). Either way, there's no existing package to pull
+      kernel-type/maintainer/activity info from.
 - [ ] Confirm the WCN Wi-Fi/BT chip in dm1q's crDroid kernel tree is WCN6855
       (`ath11k`), as strongly indicated by teardown/community sourcing (see
       docs/02-open-questions-and-risks.md, item 1 — resolved but not yet
@@ -94,3 +100,41 @@ _(append dated entries here as work happens)_
   why earlier GitLab searches for dm1q found nothing. See
   docs/02-open-questions-and-risks.md items 1, 6, 8, 9 for full detail and
   what still needs re-checking.
+
+- 2026-09-13 (later still): Ran the actual pmaports check from Step 0 using
+  Desktop Commander (shell access) instead of `pmbootstrap init`, via a
+  data-light sparse partial clone (`git clone --filter=blob:none --depth=1
+  --no-checkout`) of the live repo into `../_scratch/pmaports` (sibling to
+  this repo, not committed here). Searched the full tree directly with
+  `git ls-tree -r` for dm1q/dm2q/dm3q/kalama/sm8550 — **zero matches
+  anywhere**, including device/main. This contradicts the earlier "confirmed
+  by hand in pmbootstrap init" note. Corrected 00-overview.md and
+  open-questions item 1b accordingly. Still need an interactive
+  `pmbootstrap init` run to fully resolve the discrepancy, but the working
+  assumption going forward is: no existing dm1q package, from-scratch port.
+
+- 2026-09-13 (evening): User pushed back on the "discredited" verdict for
+  the agcarbajo Tab S9 Ultra repos, correctly — that verdict was wrong.
+  Re-investigated properly (cloned both repos in a separate sandbox first,
+  per user's request, before touching this machine): confirmed the repos
+  are real, legitimate, technically competent unmerged personal pmOS/kernel
+  ports, not fabricated. The earlier "false provenance" reasoning had
+  wrongly assumed "pmaports package" meant "merged into official upstream
+  pmaports" when it actually referred to the repos' own local
+  pmaports-formatted staging folder — a normal, unremarkable setup for an
+  unmerged community port. Verified with hard checks: real deviceinfo
+  conventions matching the device's actual spec, a real resolvable commit
+  hash cited from actual pmaports history, and real correct V4L2 kernel
+  patch code against mainline drivers/media/i2c/hi847.c. Full correction
+  and reasoning logged in docs/03-references.md and
+  docs/02-open-questions-and-risks.md item 4.
+  Both repos now cloned (shallow, depth=1, ~9.7MB total) into
+  `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref` (siblings
+  to this repo, not committed here) for actual use as SM8550 reference
+  material going forward. Next real step: use these — particularly
+  `gts9u-pmos-ref/pmaports/device/testing/{device,linux}-samsung-gts9uwifi*`
+  and `gts9u-ubuntu-ref/kernel/dts/sm8550-samsung-gts9uwifi.dts` — as the
+  structural template for building dm1q's own device+kernel pmaports
+  packages, adapting board-specific bits (panel, PMIC regulator names,
+  sensors, pinctrl) using the crDroid downstream tree for real hardware
+  values.

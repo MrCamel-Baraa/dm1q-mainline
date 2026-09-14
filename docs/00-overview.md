@@ -10,10 +10,63 @@ Last updated: 2026-09-13
 - Display: AMOLED, 6.1", 2340x1080, 120Hz variable refresh
 - Current OS on hand: crDroid (bootloader unlocked, fully modifiable)
 
+## Kernel package strategy (added 2026-09-13)
+
+postmarketOS's near-mainline "shared kernel" packages (e.g.
+`linux-postmarketos-qcom-sm8350`) are thin APKBUILD wrappers that pull a
+tarball from a dedicated community fork org, e.g.
+`gitlab.com/sm8350-mainline/linux`. Checked for an SM8550 equivalent:
+**no `sm8550-mainline` org exists** (unlike sm8350-mainline, sm8250-mainline,
+sm6125-mainline, sdm845-mainline, msm8939-mainline, which all exist). So
+there's no ready-made community fork to point a new
+`linux-postmarketos-qcom-sm8550` package at the way sm8350's does.
+
+However: SM8550 SoC-level mainline kernel support looks fairly mature already
+via general web search (not yet verified against actual mainline source) —
+Linaro/Qualcomm upstreaming work on SM8550 (display/DPU/DSI, interconnect,
+clocks) appears to date to ~early 2023, and Linaro's own devboard
+documentation states their SM8550-HDK reference board boots mainline
+(v6.8+) directly. If true, this means SoC-*platform* support (not
+device-specific) is largely already upstream, and what's actually missing is
+Galaxy-S23-specific device bring-up (devicetree, panel, touch, PMIC
+regulator mapping, pinctrl) — consistent with this project's existing scope
+split, just with better evidence behind it now. **Not yet verified: actually
+checking mainline `arch/arm64/boot/dts/qcom/sm8550*.dtsi` directly for what's
+really upstream vs. still Linaro-only patches.** Do that before assuming any
+specific subsystem "just works."
+
+Practical implication for Phase 1 Step 1 (kernel package): since there's no
+`sm8550-mainline` fork to wrap, `linux-postmarketos-qcom-sm8550` will likely
+need to be created pointing at plain upstream mainline (or a recent
+linux-next/Linaro tree) directly, following the sm8350 package as a
+structural template (see its APKBUILD) rather than a content template.
+
 ## postmarketOS status
 
-- dm1q appears as a selectable device in `pmbootstrap init` (confirmed by hand,
-  not by web search).
+- **Correction (2026-09-13, later pass): dm1q not found in current pmaports.**
+  A sparse partial clone of the live `gitlab.postmarketos.org/postmarketOS/pmaports`
+  repo (`main` branch, HEAD `1c99c07`, dated 2026-09-13) was searched directly
+  with `git ls-tree -r` across the *entire* tree — `device/main`,
+  `device/testing`, `device/community`, `device/archived`,
+  `device/downstream` — for `dm1q`, `dm2q`, `dm3q`, `kalama`, and `sm8550`.
+  **Zero matches for any of them.** No SM8550/kalama-family Samsung device
+  exists in pmaports today. This directly contradicts the note below (kept,
+  struck through) claiming dm1q was "confirmed by hand" as selectable in
+  `pmbootstrap init`. That claim was never checked against actual pmaports
+  source before now and should be treated as unconfirmed — possible
+  explanations include a fuzzy/typo match in pmbootstrap's device search, a
+  different/local pmaports checkout, or simple misremembering. **A fresh,
+  carefully-observed `pmbootstrap init` run is needed to settle this** — see
+  docs/02-open-questions-and-risks.md item 1.
+- **Practical implication regardless of how that discrepancy resolves: there
+  is no existing dm1q device package to build from or diff against.** This is
+  a from-scratch port. This doesn't change the overall plan — the Tab S9
+  Ultra was always being used only as an SM8550-family reference, not a
+  literal starting point — but Phase 1 Step 0's "confirm dm1q pmaports
+  package" item now resolves to "package does not exist," not to specific
+  maintainer/kernel-type details.
+- ~~dm1q appears as a selectable device in `pmbootstrap init` (confirmed by
+  hand, not by web search).~~ — superseded by the correction above.
 - **Infrastructure correction (2026-09-13):** postmarketOS migrated `pmaports`
   and its other repos from `gitlab.com` to a self-hosted instance at
   `gitlab.postmarketos.org` on 2024-10-06. The old `gitlab.com/postmarketOS/*`
@@ -23,13 +76,14 @@ Last updated: 2026-09-13
   search, so it still needs to be checked directly/manually, not via search.
   **Use `gitlab.postmarketos.org/postmarketOS/pmaports` going forward, not the
   gitlab.com link.**
-- Need to check directly once pmaports is cloned locally:
-  ```
-  pmbootstrap init   # select dm1q, note which kernel option(s) are offered
-  grep -rn dm1q ~/.local/var/pmbootstrap/cache_git/pmaports/device/
-  ```
-  Record findings here once done: kernel type (downstream/near-mainline/mainline),
-  maintainer, last commit date, what deviceinfo claims works.
+- **Done (2026-09-13):** searched pmaports directly instead of via
+  `pmbootstrap init`'s own clone, using a sparse partial clone
+  (`git clone --filter=blob:none --depth=1 --no-checkout`) to minimize data
+  transfer — result was the "not found" correction above. Still outstanding:
+  actually run interactive `pmbootstrap init`, type `dm1q` into its device
+  search, and record exactly what it shows (a real match, a fuzzy/typo
+  near-match, or nothing) to resolve the contradiction with the earlier
+  "confirmed by hand" note.
 - postmarketOS wiki has a "Samsung Galaxy S23" page in Category:Android, but the
   page could not be fetched directly (blocked by the wiki's Anubis anti-bot wall,
   and Wayback Machine / search snippets didn't surface its content either).
