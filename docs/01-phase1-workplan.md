@@ -36,19 +36,32 @@ until they're answered.
 
 ## Step 1 — Get reference materials in one place
 
-- [ ] Clone the Tab S9 Ultra pmOS repo (see 03-references.md) into a scratch
+- [x] Clone the Tab S9 Ultra pmOS repo (see 03-references.md) into a scratch
       location (not committed here — it's someone else's repo, just a
-      reference to diff against).
-- [ ] Pull a recent mainline kernel tree (or at least `arch/arm64/boot/dts/qcom/`)
-      to get the baseline `sm8550*.dtsi` files.
+      reference to diff against). Done 2026-09-13:
+      `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref`.
+- [x] Pull a recent mainline kernel tree (or at least `arch/arm64/boot/dts/qcom/`)
+      to get the baseline `sm8550*.dtsi` files. Done 2026-09-13: sparse
+      partial clone of `torvalds/linux` into `../_scratch/linux-mainline`,
+      checked out to just `arch/arm64/boot/dts/qcom/` (~25MB total —
+      slower than expected to fetch even with `blob:none`, since git still
+      walks the full tree-object graph for one commit, but data-light on
+      actual bytes transferred).
 - [ ] Extract dm1q's downstream device tree / kernel source from crDroid.
       This is the ground truth for board-specific values (regulators,
-      pinctrl, panel init sequence).
+      pinctrl, panel init sequence). **Not yet done — this is the actual
+      next real blocker**, since everything in Step 2 below still needs
+      real dm1q values to fill in against the gts9u/mainline skeleton.
 
 ## Step 2 — The diff
 
-Diff the Tab S9 Ultra's board `.dts` against the mainline `sm8550.dtsi`
-baseline. This split is the actual workplan:
+**[x] First pass done 2026-09-13** — see
+`docs/04-gts9u-vs-mainline-devicetree-diff.md` for the actual categorized
+label list (105 board-specific labels found, grouped into SoC-blocks-being-
+enabled / PMIC-regulator-definitions / pinctrl-states / tablet-only-ICs).
+That was a regex heuristic diff, not DT-semantics-aware — good enough to
+plan from, not to build blindly on. The general split below still holds and
+is now backed by that real data rather than assumption alone:
 
 **Transfers directly (SoC-level):**
 - Core sm8550 dtsi include — clocks, GCC/RPMH, interconnects, CPU/cluster topology
@@ -138,3 +151,30 @@ _(append dated entries here as work happens)_
   packages, adapting board-specific bits (panel, PMIC regulator names,
   sensors, pinctrl) using the crDroid downstream tree for real hardware
   values.
+
+- 2026-09-13 (night, session close): Pulled real mainline
+  `arch/arm64/boot/dts/qcom/` (sparse clone, `../_scratch/linux-mainline`)
+  and diffed the gts9u board devicetree against the four upstream files it
+  includes (`sm8550.dtsi`, `pm8550.dtsi`, `pm8550vs.dtsi`, `pmk8550.dtsi`).
+  Full categorized result in the new
+  `docs/04-gts9u-vs-mainline-devicetree-diff.md`. Headline: 105 board-specific
+  labels, cleanly grouped into (1) SoC-level buses/blocks just being enabled
+  for this board — same kind of work needed for dm1q with different values,
+  (2) PMIC regulator rail definitions — confirmed as normal upstream
+  practice by spot-checking real sm8550-hdk/sm8550-qrd reference boards, not
+  gts9u-specific oddity, (3) board pinctrl/GPIO states — genuinely
+  per-board, and (4) tablet-only third-party ICs not relevant to dm1q.
+  Useful independent cross-check: gts9u's devicetree confirms it uses
+  WCN7850, matching what this project's docs already had for the *Ultra*
+  variant specifically — consistent with, not contradicting, the earlier
+  WCN6855-for-dm1q/dm2q finding.
+  **Status at end of session: Phase 1 Step 0 is ~60% done (pmaports check
+  done; WCN/PMIC/panel checks against dm1q's own crDroid tree still
+  outstanding). Step 1 (reference materials) is done. Step 2 has a first-pass
+  structural map done, but zero real dm1q-specific values yet — nothing here
+  has touched dm1q's actual kernel source tree. Step 3 (first boot attempt)
+  hasn't started.** The single actual next blocker, unchanged by tonight's
+  work: pull real values out of dm1q's downstream crDroid kernel/DT source
+  (WCN chip confirmation, PMIC part number, panel/touch compatible strings,
+  real pinctrl/GPIO/regulator values) to fill into the gts9u-derived
+  skeleton. Nothing else meaningfully progresses until that happens.
