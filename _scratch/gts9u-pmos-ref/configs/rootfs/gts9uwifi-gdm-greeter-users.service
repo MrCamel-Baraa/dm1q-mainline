@@ -1,0 +1,17 @@
+[Unit]
+Description=Pre-allocate the numbered greeter accounts GDM needs
+Documentation=https://github.com/agcarbajo/postmarketos-galaxy-tab-s9-ultra
+# Only meaningful where GDM is actually installed; XFCE/LightDM images skip it.
+ConditionPathExists=/usr/sbin/gdm
+Before=display-manager.service gdm.service
+After=local-fs.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/gts9uwifi-gdm-greeter-users
+# Never block the boot: without this GDM fails, but so would refusing to start.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

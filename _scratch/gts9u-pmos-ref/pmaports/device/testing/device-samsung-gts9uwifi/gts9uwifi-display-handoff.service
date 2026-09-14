@@ -1,0 +1,13 @@
+[Unit]
+Description=Force simpledrm handoff from the boot VT to LightDM
+After=lightdm.service
+Requires=lightdm.service
+ConditionPathExists=/dev/dri/card0
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/gts9uwifi-display-handoff
+RemainAfterExit=yes
+
+[Install]
+WantedBy=graphical.target

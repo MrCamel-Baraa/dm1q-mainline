@@ -1,0 +1,58 @@
+#!/bin/sh
+set -eu
+
+export DISPLAY=:0
+export XAUTHORITY=/var/run/lightdm/root/:0
+
+# A warm Samsung reboot can leave the DDIC answering 00:00:00 and emitting
+# black even though DRM reports DSI-1 connected.  Wait for LightDM's X server,
+# then force one complete DRM disable/enable cycle.  The second prepare toggles
+# reset, restores the real 80:00:04 ID and replays brightness/display-on.
+for _ in $(seq 1 30); do
+	if [ -r "$XAUTHORITY" ] && xrandr --query >/dev/null 2>&1; then
+		break
+	fi
+	sleep 1
+done
+
+xrandr --query >/dev/null 2>&1
+
+# In the split mainline topology Adreno is the connectorless Source Output and
+# the DPU is the Sink Output. Provider IDs are allocated by Xorg, so discover
+# them instead of relying on the values observed during bring-up.
+providers=$(xrandr --listproviders)
+source_provider=$(printf '%s\n' "$providers" | awk '
+	/Source Output/ {
+		for (i = 1; i <= NF; i++)
+			if ($i == "id:") { print $(i + 1); exit }
+	}')
+sink_provider=$(printf '%s\n' "$providers" | awk '
+	/Sink Output/ {
+		for (i = 1; i <= NF; i++)
+			if ($i == "id:") { print $(i + 1); exit }
+	}')
+
+if [ -z "$source_provider" ] || [ -z "$sink_provider" ]; then
+	echo "gts9uwifi-panel-reinit: reverse PRIME providers not ready" >&2
+	exit 0
+fi
+
+xrandr --setprovideroutputsource "$sink_provider" "$source_provider"
+output=$(xrandr --query | awk '$2 == "connected" { print $1; exit }')
+if [ -z "$output" ]; then
+	echo "gts9uwifi-panel-reinit: no connected DPU output" >&2
+	exit 0
+fi
+
+# A complete disable/enable also recovers the ANA38407 after a warm reboot or
+# an Xorg restart where DRM still reports DPMS On but the physical OLED is dark.
+xrandr --output "$output" --off
+sleep 2
+xrandr --output "$output" --mode 2960x1848 --rate 120 --primary
+
+# The display and GPU are separate DRM devices.  PRIME Synchronization makes
+# both the source and the 120 Hz sink wait for one another on this topology,
+# reducing Present/GLX to about 30 fps.  With synchronization disabled the DPU
+# keeps scanning the imported linear buffer at 120 Hz and GLX reaches ~118 fps.
+xrandr --output "$output" --set "PRIME Synchronization" 0
+xset dpms force on || true

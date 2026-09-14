@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# Slick Greeter and its embedded Onboard run as the lightdm user and therefore
+# do not see phablet's XFCE/dconf settings.  Seed that user's persistent dconf
+# database before the greeter starts.  Never block LightDM if a schema changes.
+runuser -u lightdm -- env HOME=/var/lib/lightdm dbus-run-session sh <<'EOF' || true
+gsettings set org.onboard.window.landscape dock-height 420
+gsettings set org.onboard.window.landscape dock-expand true
+gsettings set org.onboard.window.portrait dock-height 520
+EOF
+
+exit 0

@@ -1,0 +1,13 @@
+[Unit]
+Description=Install Qualcomm sensor FastRPC userspace
+After=local-fs.target
+Before=hexagonrpcd-adsp-sensorspd.service
+ConditionPathExists=/usr/share/gts9uwifi/packages/hexagonrpcd-0.4.0-r4.apk
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/gts9uwifi-install-sensor-packages
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

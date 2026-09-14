@@ -1,0 +1,38 @@
+# Reference: <https://postmarketos.org/deviceinfo>
+# Please use double quotes only. You can source this file in shell scripts.
+
+deviceinfo_format_version="0"
+deviceinfo_name="Samsung Galaxy Tab S9 Ultra Wi-Fi"
+deviceinfo_manufacturer="Samsung"
+deviceinfo_codename="samsung-gts9uwifi"
+deviceinfo_year="2023"
+deviceinfo_arch="aarch64"
+
+# Device related
+deviceinfo_chassis="tablet"
+deviceinfo_external_storage="true"
+deviceinfo_drm="true"
+deviceinfo_screen_width="2960"
+deviceinfo_screen_height="1848"
+deviceinfo_getty="ttyMSM0;115200"
+
+# Mainline DTB.  append_dtb is retained only for the experimental single-boot
+# export; the supported test bundle packages this DTB in vendor_boot instead.
+deviceinfo_dtb="qcom/sm8550-samsung-gts9uwifi"
+deviceinfo_append_dtb="true"
+
+# Samsung Download Mode/Odin is handled manually, outside pmbootstrap.
+deviceinfo_flash_method="none"
+deviceinfo_generate_bootimg="true"
+deviceinfo_header_version="4"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_initfs_compression="gzip:default"
+deviceinfo_create_initfs_extra="true"
+
+# Windows reaches SET_CONFIGURATION with the default CDC-NCM gadget but does
+# not bind a network interface.  RNDIS is kept as an explicit compatibility
+# transport for the bring-up SSH channel.
+deviceinfo_usb_network_function="rndis.usb0"
+
+# Deliberately no rootfs_image_sector_size: a physical microSD uses 512-byte
+# logical sectors, unlike the 4096-byte UFS examples in several Android ports.

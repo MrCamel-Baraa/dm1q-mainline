@@ -59,9 +59,11 @@ this is a tablet)** — not useful as a reference for dm1q's phone-specific
 parts, but confirms the general pattern for how third-party ICs get wired
 into the devicetree: `cs35l45` (Cirrus speaker amp), `sm5714` (Silicon Mitus
 USB-PD/charger — dm1q likely uses a different part), `ps5169` (Parade USB
-redriver), `wcn7850_pmu`/`wlan_en` (**note: gts9u uses WCN7850 — dm1q/dm2q
-use WCN6855 per docs/02-open-questions-and-risks.md; this is a genuinely
-different chip, don't copy the wcn7850 nodes directly**), `battery`,
+redriver), `wcn7850_pmu`/`wlan_en` (**note: gts9u uses WCN7850 — dm1q uses
+QCA6490, confirmed directly from real dm1q devicetree source 2026-09-13,
+correcting an earlier WCN6855 assumption — see
+docs/02-open-questions-and-risks.md item 1; this is a genuinely different
+chip either way, don't copy the wcn7850 nodes directly**), `battery`,
 `hall_cover_n` (tablet-specific, no phone equivalent).
 
 ## Takeaway for Phase 1 Step 2

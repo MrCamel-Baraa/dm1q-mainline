@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Galaxy Tab S9 Ultra HiDPI defaults
+Comment=Apply native-resolution XFCE and Onboard sizing for the SM-X910
+Exec=/usr/libexec/gts9uwifi-xfce-hidpi
+OnlyShowIn=XFCE;
+NoDisplay=true
+X-GNOME-Autostart-enabled=true

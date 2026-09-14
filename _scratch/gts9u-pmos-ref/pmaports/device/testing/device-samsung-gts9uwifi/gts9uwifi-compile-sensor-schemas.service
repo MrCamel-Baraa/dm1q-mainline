@@ -1,0 +1,12 @@
+[Unit]
+Description=Compile SM-X910 GNOME sensor defaults
+ConditionPathExists=/usr/share/glib-2.0/schemas/99_gts9uwifi-sensors.gschema.override
+Before=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/glib-compile-schemas /usr/share/glib-2.0/schemas
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

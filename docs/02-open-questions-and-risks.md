@@ -5,26 +5,46 @@ here with their answer and source, and are also reflected in 00-overview.md.
 
 ## Resolved
 
-1. **WCN Wi-Fi/BT chip generation mismatch — RESOLVED 2026-09-13.**
+1. **WCN Wi-Fi/BT chip — CORRECTED 2026-09-13 (second pass, overturns the
+   teardown-based "resolved" verdict below).**
+   Ground-truth check against dm1q's actual Samsung downstream devicetree
+   source (`crdroidandroid/android_kernel_samsung_sm8550-devicetrees`, real
+   `.dts` files, all 10 available board revisions r01–r13) shows dm1q uses
+   **QCA6490** (`qcom,cnss-qca6490`, `bt_qca6490`), not WCN6855. Zero of the
+   10 revisions reference WCN6855; all 10 reference QCA6490. This is
+   directly from real hardware-description source, not teardown/community
+   inference — treat as settled, higher confidence than the item below it.
+   Good news buried in the correction: QCA6490 is still `ath11k`-family
+   (same mainline driver as WCN6855) and was actually mainlined *earlier*,
+   so driver maturity is likely equal or better than assumed. Practical
+   effect: use QCA6490's specific compatible strings/firmware naming, not
+   WCN6855's, when building the WLAN/BT devicetree nodes and picking
+   firmware blobs. dm2q/dm3q not re-checked against real source — the item
+   below may still hold for dm3q specifically, but shouldn't be trusted for
+   dm1q anymore.
+   *(Original "resolved" text, now superseded, kept for history:)*
    dm1q/dm2q (S23, S23+) use Qualcomm FastConnect 6900 (WCN6855-class,
    Wi-Fi 6E, `ath11k`). dm3q (S23 Ultra) uses FastConnect 7800
    (WCN7850/WCN7851-class — same chip family as the Tab S9 Ultra reference
-   device — Wi-Fi 7 silicon software-limited to 6E, `ath12k`). Confirmed via
-   iFixit's S23 Ultra chip-ID teardown plus multiple Samsung Community/XDA
-   threads citing Qualcomm's device finder page. **For dm1q: use ath11k/
-   WCN6855 as the working assumption, not the Tab S9 Ultra's ath12k setup.**
-   Still worth a final grep of the crDroid tree to be 100% sure before
-   writing DT code, since this is sourced from retail teardowns/community
-   reporting rather than dm1q's kernel source directly.
+   device — Wi-Fi 7 silicon software-limited to 6E, `ath12k`). This was
+   sourced from iFixit teardown + community reporting, not dm1q's own
+   kernel source — exactly the kind of secondary-source claim that turned
+   out to need the direct check above.
 
 ## High priority — blocks Step 1 of the workplan
 
-2. **PMIC part number match.**
-   Regulator *names* only transfer cleanly from the Tab S9 Ultra reference if
-   dm1q uses the literal same PM8550 variant. Samsung SM8550 phones have used
-   PM8550 / PM8550B / PM8550VE across different rails — worth confirming
-   exactly which combination dm1q uses before assuming 1:1 node-name mapping.
-   Status: unresolved.
+2. **PMIC part number match — RESOLVED 2026-09-13.**
+   Confirmed directly from dm1q's real Samsung downstream devicetree source
+   (same repo/method as the WCN correction above): dm1q uses **PM8550
+   (main), PM8550B, PM8550VE, PM8550VS, PM8010, and PM8350C** — a
+   multi-PMIC setup, not a single part. This is ground truth, not inferred.
+   The Tab S9 Ultra reference used PM8550/PM8550VS/PMK8550 — overlapping but
+   not identical (no PM8550B/PM8550VE/PM8010/PM8350C on the tablet, at least
+   not visible in that board's devicetree). Regulator *names* will need
+   verifying node-by-node against dm1q's real rail usage rather than assumed
+   1:1 from the tablet reference. See
+   `_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts` for the
+   real source.
 
 3. **GPU/CPU OPP table retuning.**
    The S23 uses SM8550-AC ("for Galaxy" bin), a higher factory-tested
@@ -32,6 +52,21 @@ here with their answer and source, and are also reflected in 00-overview.md.
    OPP tables verbatim is likely wrong — they'll need to be checked/retuned
    against whatever clock speeds crDroid reports for dm1q.
    Status: unresolved.
+
+3b. **Panel driver and touch controller — RESOLVED 2026-09-13.**
+   From the same real dm1q devicetree source: dm1q is **dual-sourced** for
+   the display panel — primary is Samsung's own `S6E3FAC` panel driver IC
+   (cell part `AMB606AW01`), with `LX83118` (Silicon Works, cell
+   `CM002`) as an alternate/second-source panel. Both will realistically
+   need their own DSI panel driver work — dual-sourcing on flagship phones
+   is normal but means two drivers, not one, if full hardware coverage
+   matters (unclear yet whether crDroid/OneUI treat these as
+   interchangeable at the DT level or select one via board-revision
+   fragments — worth checking which is more common in retail units before
+   prioritizing). Touch controller is **Goodix Berlin**
+   (`goodix-berlin@5d`, I2C address 0x5d) — a real, known touch IC family
+   with some existing mainline Linux interest elsewhere, worth checking for
+   upstream driver status separately.
 
 ## Medium priority — affects scope/expectations, not immediately blocking
 

@@ -1,0 +1,12 @@
+#!/bin/sh
+set -eu
+
+version=xorg-server-999921.1.23-r10
+apk=/usr/share/gts9uwifi/packages/$version.apk
+
+if apk list -I xorg-server 2>/dev/null | grep -q "^$version "; then
+	exit 0
+fi
+
+test -f "$apk"
+apk add --allow-untrusted --force-overwrite "$apk"

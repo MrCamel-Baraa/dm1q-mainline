@@ -1,0 +1,22 @@
+# Build products and captures are reproducible or device-specific evidence.
+artifacts/*
+!artifacts/.gitkeep
+!artifacts/README.md
+work/*
+!work/.gitkeep
+
+# pmbootstrap local state if it is ever pointed at this checkout.
+.pmbootstrap/
+*.img
+*.img.xz
+*.tar
+*.tar.gz
+*.dtb
+*.dtbo
+__pycache__/
+*.pyc
+
+# Samsung open-source drops (huge; downloaded manually from opensource.samsung.com).
+*_Opensource.zip
+Kernel.tar.gz
+Platform.tar.gz

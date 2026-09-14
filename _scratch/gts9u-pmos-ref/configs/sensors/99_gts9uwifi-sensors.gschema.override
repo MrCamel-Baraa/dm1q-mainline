@@ -1,0 +1,8 @@
+[org.gnome.settings-daemon.plugins.power]
+# The hardware profile supplies a real ALS; enable GNOME's adaptive backlight
+# unless the user explicitly overrides this default in their own dconf DB.
+ambient-enabled=true
+
+[org.gnome.settings-daemon.peripherals.touchscreen]
+# Keep the built-in panel managed by Mutter's accelerometer orientation path.
+orientation-lock=false

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Boot the ADSP (audio DSP) remoteproc once the rootfs is mounted.
+#
+# The qcom_q6v5_pas driver has auto_boot=true, so it tries to load
+# qcom/sm8550/adsp.mdt during its early probe (~2 s) -- long before the microSD
+# rootfs that carries the ~34 MB Samsung ADSP firmware is mounted, so that
+# attempt fails with -ENOENT and the remoteproc is left "offline".  Once the
+# rootfs is up the firmware is present, and a manual "start" authenticates and
+# boots it (Samsung's adsp.mdt + adsp_dtb.mdt pass PAS secure-boot).  This
+# service performs that late start.  It is the foundation for the q6/soundwire/
+# codec/sound-card audio stack; on its own it only powers the DSP.
+set -u
+
+fw=/usr/lib/firmware/qcom/sm8550/adsp.mdt
+[ -f "$fw" ] || { echo "gts9uwifi-adsp-boot: $fw missing, skipping" >&2; exit 0; }
+
+rp=
+for d in /sys/class/remoteproc/remoteproc*; do
+	[ -e "$d/name" ] || continue
+	if [ "$(cat "$d/name" 2>/dev/null)" = "adsp" ]; then
+		rp="$d"
+		break
+	fi
+done
+[ -n "$rp" ] || { echo "gts9uwifi-adsp-boot: no adsp remoteproc found" >&2; exit 0; }
+
+state=$(cat "$rp/state" 2>/dev/null)
+if [ "$state" = "running" ]; then
+	echo "gts9uwifi-adsp-boot: adsp already running" >&2
+	exit 0
+fi
+
+echo start > "$rp/state" 2>/dev/null || {
+	echo "gts9uwifi-adsp-boot: failed to start adsp" >&2
+	exit 0
+}
+# Give the PAS handover a moment, then report.
+sleep 1
+echo "gts9uwifi-adsp-boot: adsp state now $(cat "$rp/state" 2>/dev/null)" >&2
+exit 0

@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+[Unit]
+Description=Wake the SM-X910 display after system resume
+
+[Service]
+Type=oneshot
+# Let DRM resume and the Wayland session thaw before touching PowerSaveMode.
+# A following suspend stops this delay, so stale wake requests cannot race it.
+ExecStartPre=/bin/sleep 1
+ExecStart=/usr/libexec/gts9uwifi-display-wake
+TimeoutStartSec=15

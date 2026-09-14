@@ -1,0 +1,206 @@
+maintainer="SM-X910 postmarketOS port <gts9uwifi@example.com>"
+_flavor="samsung-gts9uwifi-mainline"
+pkgname=linux-$_flavor
+pkgver=7.2_rc3
+pkgrel=114
+pkgdesc="Mainline kernel for Samsung Galaxy Tab S9 Ultra Wi-Fi"
+arch="aarch64"
+_carch="arm64"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="
+	!check
+	!strip
+	!tracedeps
+	pmb:cross-native
+"
+makedepends="
+	bash
+	bison
+	clang
+	diffutils
+	elfutils-dev
+	findutils
+	flex
+	kmod
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	pahole
+	perl
+	postmarketos-installkernel
+	python3
+	sed
+	zstd
+"
+
+_kernelver="${pkgver/_/-}"
+_pmaports_commit="b7681d0e857d395edfaa6c8e5cd0d89e4315fd3f"
+
+source="
+	linux-$_kernelver.tar.gz::https://git.kernel.org/torvalds/t/linux-$_kernelver.tar.gz
+	config-mainline.aarch64::https://gitlab.postmarketos.org/postmarketOS/pmaports/-/raw/$_pmaports_commit/device/main/linux-postmarketos-mainline/config-mainline.aarch64
+	add-gts9uwifi-dtb.patch
+	add-samsung-sec-log-console.patch
+	keep-sec-log-previous-index-current.patch
+	match-samsung-sm8550-eusb2-phy-init.patch
+	support-samsung-goodix-16-byte-events.patch
+	configure-nxp-ptn3222-from-dt.patch
+	wcn7850-pwrseq-cold-reset-aop.patch
+	build-wcn-pcie-providers-in.patch
+	unpark-pcie0-pipe-mux.patch
+	expose-separate-gpu-kms-resources.patch
+	ignore-console-null.patch
+	msm-dp-allow-unresolved-usbc-bridge.patch
+	msm-dp-associate-bridge-of-node.patch
+	msm-dp-defer-oob-hpd-until-resume.patch
+	tcpm-adopt-retained-source-ufp-role.patch
+	tcpm-use-retained-sink-data-role.patch
+	config-gts9uwifi.fragment
+	sm8550-samsung-gts9uwifi.dts
+	panel-samsung-ana38407.c
+	sm5440_direct.c
+	sm5714_battery.c
+	sm5714_usbpd.c
+	ps5169.c
+"
+builddir="$srcdir/linux-$_kernelver"
+
+prepare() {
+	default_prepare
+
+	cp "$srcdir/sm8550-samsung-gts9uwifi.dts" \
+		arch/arm64/boot/dts/qcom/
+
+	# ANA38407 (gts9u) DSI panel driver: drop the source in and register it.
+	cp "$srcdir/panel-samsung-ana38407.c" drivers/gpu/drm/panel/
+	if ! grep -q 'DRM_PANEL_SAMSUNG_ANA38407' drivers/gpu/drm/panel/Kconfig; then
+		sed -i '/^endmenu$/i \
+config DRM_PANEL_SAMSUNG_ANA38407\
+\ttristate "Samsung ANA38407 AMSA46AS02 (gts9u) DSI command-mode panel"\
+\tdepends on OF\
+\tdepends on DRM_MIPI_DSI\
+\tdepends on BACKLIGHT_CLASS_DEVICE\
+' drivers/gpu/drm/panel/Kconfig
+	fi
+	grep -q 'panel-samsung-ana38407.o' drivers/gpu/drm/panel/Makefile || \
+		echo 'obj-$(CONFIG_DRM_PANEL_SAMSUNG_ANA38407) += panel-samsung-ana38407.o' \
+			>> drivers/gpu/drm/panel/Makefile
+
+	# Silicon Mitus SM5714 charger / fuel gauge: same treatment as the panel.
+	cp "$srcdir/sm5714_battery.c" drivers/power/supply/
+	if ! grep -q 'BATTERY_SM5714' drivers/power/supply/Kconfig; then
+		sed -i '/^endif # POWER_SUPPLY$/i \
+config BATTERY_SM5714\
+\ttristate "Silicon Mitus SM5714 charger and fuel gauge"\
+\tdepends on I2C\
+\tdepends on IIO\
+' drivers/power/supply/Kconfig
+	fi
+	grep -q 'sm5714_battery.o' drivers/power/supply/Makefile || \
+		echo 'obj-$(CONFIG_BATTERY_SM5714)	+= sm5714_battery.o' \
+			>> drivers/power/supply/Makefile
+
+	# SM5440 2:1 direct charger; USB-PD/PPS policy stays in Linux TCPM.
+	cp "$srcdir/sm5440_direct.c" drivers/power/supply/
+	if ! grep -q 'CHARGER_SM5440_DIRECT' drivers/power/supply/Kconfig; then
+		sed -i '/^endif # POWER_SUPPLY$/i \
+config CHARGER_SM5440_DIRECT\
+\ttristate "Silicon Mitus SM5440 direct charger for Samsung SM-X910"\
+\tdepends on I2C\
+\tdepends on BATTERY_SM5714\
+' drivers/power/supply/Kconfig
+	fi
+	grep -q 'sm5440_direct.o' drivers/power/supply/Makefile || \
+		echo 'obj-$(CONFIG_CHARGER_SM5440_DIRECT)	+= sm5440_direct.o' \
+			>> drivers/power/supply/Makefile
+
+	# SM5714 Type-C/PD transport; policy stays in the upstream TCPM core.
+	cp "$srcdir/sm5714_usbpd.c" drivers/usb/typec/tcpm/
+	if ! grep -q 'TYPEC_SM5714' drivers/usb/typec/tcpm/Kconfig; then
+		sed -i '/^endif # TYPEC_TCPM$/i \
+config TYPEC_SM5714\
+\ttristate "Silicon Mitus SM5714 USB Type-C and PD controller"\
+\tdepends on I2C\
+\tdepends on TYPEC_TCPM\
+\tdepends on BATTERY_SM5714\
+' drivers/usb/typec/tcpm/Kconfig
+	fi
+	grep -q 'sm5714_usbpd.o' drivers/usb/typec/tcpm/Makefile || \
+		echo 'obj-$(CONFIG_TYPEC_SM5714)	+= sm5714_usbpd.o' \
+			>> drivers/usb/typec/tcpm/Makefile
+
+	# Parade PS5169 SuperSpeed/DisplayPort redriver on the X910.
+	cp "$srcdir/ps5169.c" drivers/usb/typec/mux/
+	if ! grep -q 'TYPEC_MUX_PS5169' drivers/usb/typec/mux/Kconfig; then
+		cat >> drivers/usb/typec/mux/Kconfig <<-'EOF'
+
+	config TYPEC_MUX_PS5169
+		tristate "Parade PS5169 Type-C redriver"
+		depends on I2C
+		depends on TYPEC
+		depends on USB_ROLE_SWITCH
+	EOF
+	fi
+	grep -q 'ps5169.o' drivers/usb/typec/mux/Makefile || \
+		echo 'obj-$(CONFIG_TYPEC_MUX_PS5169)	+= ps5169.o' \
+			>> drivers/usb/typec/mux/Makefile
+
+	cp "$srcdir/config-mainline.aarch64" .config
+
+	unset LDFLAGS
+	scripts/kconfig/merge_config.sh -m \
+		.config "$srcdir/config-gts9uwifi.fragment"
+	make ARCH="$_carch" LLVM=1 olddefconfig
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
+}
+
+package() {
+	make modules_install zinstall dtbs_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_PATH="$pkgdir"/boot \
+		INSTALL_MOD_PATH="$pkgdir"/usr \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	rm -f "$pkgdir"/usr/lib/modules/*/build
+	rm -f "$pkgdir"/usr/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/"$_flavor"/kernel.release
+}
+
+sha512sums="
+3a065b9006efbf42aca12defd9206496581964a7e841f77564d2bf2bea40b0908cca75e00eb229ff9a7405b8da28ac7590f9d2e95d7f2d235120bc7220df4355  linux-$_kernelver.tar.gz
+720d681f4a0bb7430c89b3e1c7c061ef722dc636000cdb9b2bc1b4af9108a4ee4473ca8a1fad759c423a3fc7a3f1104031f24881092fdf3d535340e9a7a0e94b  config-mainline.aarch64
+847012db45157767a662012738d3fe1303bd7391198af9e389108d7819b9147745e904e494b918376d8f4e3c750fe15ffcc5fbcfbe13b62f6f0aab4d308bfc46  add-gts9uwifi-dtb.patch
+ef13d786887ee3e84734775bda21ef69c39e49c453323819abd9c5cc5d2e38065a7a6661e816a284870435396ec7c1e172f2edfd1ddd4013c2ce9a6697257556  add-samsung-sec-log-console.patch
+78e3c597631cfd7f3681e0c1247dbefc1e4716c42d931d7af82861c0d70904cc7d63ea1b3810aa92f2c6d659ab184309c8f252df18aeac4177dfe6b0eaaca36c  keep-sec-log-previous-index-current.patch
+d266ced76364e4d8ee37cee3b829e965a1ba0cc96c488db4372d1bb7a957666873e9b68e149920dbe204b81ac0f5e9b8249e2a4f520dfa9ddeaf7064e3954128  match-samsung-sm8550-eusb2-phy-init.patch
+bbda0a3a15bf36c745b3a1e8209d402237ea946dc20dc1f88081b5977a6d33956f0f66e7080ba9e7965b7ab40e4b026e4c5efca45afd4b09b4960027f94bc4d8  support-samsung-goodix-16-byte-events.patch
+ecd0fc56c8c7d08b0a756e8895680589fa17d7aa5799916c1d2cf0594c11dde109be04caaf6441f69fe12f3eacf01d0d901abf749249490a59167f56a836198d  configure-nxp-ptn3222-from-dt.patch
+4d021337148ece0741c1914a968955e230242b2d5a9d1d842332b5d62d84610e03aeb737c14d4b068921e75372d02f9138027c251e99ee0f472e4bcbbf69c0bf  wcn7850-pwrseq-cold-reset-aop.patch
+d8446848a2f56bcac15daa90a57d92d4723591951c9240661c498e09ff5148e555f0d2fbc6d2beacf9c70498f80bc20a5631fc162d6de3e17b2e99dd0e46618f  build-wcn-pcie-providers-in.patch
+64fe07d751e586574b90a15b5243dcdd3ef5694148637f46e6be1edffa7757a38eef3346f5985fe889737932520a554b234e47432693b607f7835d84ee35f8f4  unpark-pcie0-pipe-mux.patch
+2efefcedd3b1e4237e74b59d2f90582387cf540ca1a8276a897c40ae40b7736d37e81254ab9bc8f344d0c2c54be2439415945174a03cb88f58f06fbdc5de2081  expose-separate-gpu-kms-resources.patch
+8a04383ae5f8ccc96cb2de2bb851ccf5752cf0ae2c3413b8590a5a50601921d15211211697f8523e34365731711408aa9b9c9098a835490abe9c70738a0fb171  ignore-console-null.patch
+d14b7b5d43b693e6d8ac9627b529897fe71ecf7f7f804d42a4a74479dd395cef806697c554cbc15e1fa7659b6c52bdbaa16d19e817c17c47ea5cb9e15ad57a47  msm-dp-allow-unresolved-usbc-bridge.patch
+1d10d87f6d8152ae6ed8a2b4c76b3903b5ac9c0abb31cb1ba7ea2a1889c4cfbb4bdd23a3168a651c8ca90486f815e37c241b0bad347b3a3c93eaac087c131843  msm-dp-associate-bridge-of-node.patch
+f2fae8a7a24868fb2af1f47b53a6b13bf74b2d238fff5fefa648cedfbb19fd484a598c0042e4510eccb440e42615d1a9eda387a3a86537252823ec5576b4c722  msm-dp-defer-oob-hpd-until-resume.patch
+e514a1080ba357db609b457cfc5a2b41f2c65334cde90542fb5fb84565af46490d93859638a5f6bcf386801ae0917059fd144056e354302350b74762854e6d7b  tcpm-adopt-retained-source-ufp-role.patch
+8077dfc89b865cf05a43cf89443f5cbe763964b0e9f9330a123776f8f84dd30160373acc704dd7dc1c1a7b9823a768d433214ea394e3ba1c148cb5b06a42329e  tcpm-use-retained-sink-data-role.patch
+f86d29fe543671cd81d48d2b1ded985ef6166aabbbbba7c270484d9d5fe20e3cd5c278b69dd449cba491d57660669cccdb0594c6412923ae12499bc2af45fc32  config-gts9uwifi.fragment
+7470247fc55795b8fc0a393ed085aa93c74eed3d9d383211aa0299ed184faeaa049f4af1a1ef96e22e0e218032f1e6ba9ee383bdb6bf7f01546a43de3d202c6c  sm8550-samsung-gts9uwifi.dts
+c31a52464807d7e66beea30bb247461626acc9cd0da1c9de969c8c73519e4d5bc0ac98f0842bda4ab9d427a7fa5c39c587baf2d5e85df63b18ec8fc273b4847e  panel-samsung-ana38407.c
+5ddb7fd4773eb556865baa45e3a2fbb93644638cc00bc16c0e6ca73aa55d5fa6e103efc75dc21d2265812c5513275dbaf165c870eba830d7d780bdcaa236cf68  sm5440_direct.c
+aa9451a8c7ab2ccdd3f53d5161919037b5a798ba5968df361d5e216350c095930420d86819f3d67b0bbb5b359cfedbdb268bb19fd123a4c8feb444e39d43df3f  sm5714_battery.c
+4e5c8a121019173d281dbd74f86ac1ee5f0bee36333ffb437e8c40bbe31c24aeac52de4b92288aa563ee3c7873d8aa4293cf8590bf5a5ef4218db4e90b8814cc  sm5714_usbpd.c
+73e4cac55e45b4f83ece144e207bc0d232eb6bbb6880f7e8caf5c34c6b264717124cefa0b590152cec2c47555bb741af1c5744034cfc61d483fc5e7029f34f4d  ps5169.c
+"

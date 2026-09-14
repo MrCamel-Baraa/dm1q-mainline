@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+packages=/usr/share/gts9uwifi/packages
+
+apk add --allow-untrusted \
+	"$packages/hexagonrpcd-0.4.0-r4.apk" \
+	"$packages/hexagonrpcd-systemd-0.4.0-r4.apk" \
+	"$packages/hexagonrpcd-udev-0.4.0-r4.apk" \
+	"$packages/iio-sensor-proxy-3.9-r3.apk" \
+	"$packages/iio-sensor-proxy-systemd-3.9-r3.apk" \
+	"$packages/iio-sensor-proxy-udev-3.9-r3.apk" \
+	"$packages/mutter-999950.2-r6.apk" \
+	"$packages/mutter-lang-999950.2-r6.apk" \
+	"$packages/mutter-schemas-999950.2-r6.apk" \
+	"$packages/mutter-udev-999950.2-r6.apk" \
+	"$packages/gnome-control-center-999950.3-r2.apk" \
+	"$packages/gnome-control-center-lang-999950.3-r2.apk"
+
+sensor_root=/usr/share/qcom/sm8550/Samsung/gts9uwifi/sensors
+chgrp -R fastrpc "$sensor_root"
+chmod -R g+rwX "$sensor_root"
+
+systemctl daemon-reload
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=misc --sysname-match='fastrpc-*'
+udevadm settle
+systemctl enable hexagonrpcd-adsp-sensorspd.service
+systemctl start --no-block hexagonrpcd-adsp-sensorspd.service
+systemctl try-restart --no-block iio-sensor-proxy.service || true

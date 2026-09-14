@@ -1,0 +1,40 @@
+{
+  "$schema": "https://github.com/fastfetch-cli/fastfetch/raw/master/doc/json_schema.json",
+  "modules": [
+    "title",
+    "separator",
+    "os",
+    "host",
+    "kernel",
+    "uptime",
+    "packages",
+    "shell",
+    "display",
+    "de",
+    "wm",
+    "wmtheme",
+    "theme",
+    "icons",
+    "font",
+    "cursor",
+    "terminal",
+    "terminalfont",
+    {
+      "type": "cpu",
+      "format": "Qualcomm Snapdragon 8 Gen 2 ({cores-logical})"
+    },
+    {
+      "type": "gpu",
+      "format": "Qualcomm Adreno 740 [Integrated]"
+    },
+    "memory",
+    "swap",
+    "disk",
+    "localip",
+    "battery",
+    "poweradapter",
+    "locale",
+    "break",
+    "colors"
+  ]
+}

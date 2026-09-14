@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: MIT
+#
+# The Logitech DJ/HID++ child for the PRO X 2 DEX advertises the complete
+# HID++ key bitmap in addition to its real mouse axes.  input_id consequently
+# labels it as an internal keyboard because the virtual HID child has a
+# platform path.  Mutter then leaves tablet mode and stops managing panel
+# orientation whenever the mouse is attached.  Keep the real pointer identity,
+# but do not expose this mouse as a built-in keyboard or power switch.
+ACTION!="remove", SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Logitech PRO X 2 DEX", ENV{ID_INPUT_MOUSE}="1", ENV{ID_INPUT_KEY}="", ENV{ID_INPUT_KEYBOARD}="", ENV{ID_INTEGRATION}="external", TAG-="power-switch"

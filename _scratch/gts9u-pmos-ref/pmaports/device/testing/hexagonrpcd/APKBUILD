@@ -1,0 +1,45 @@
+# Contributor: Galaxy Tab S9 Ultra port contributors <noreply@localhost>
+# Maintainer: Dylan Van Assche <dylan@postmarketos.org>
+pkgname=hexagonrpcd
+pkgver=0.4.0
+pkgrel=4
+pkgdesc="Qualcomm HexagonFS daemon with Samsung sensor registry mapping"
+url="https://github.com/linux-msm/hexagonrpc"
+arch="aarch64"
+license="GPL-3.0-or-later"
+makedepends="linux-headers meson"
+# Alpine edge's cross GCC currently cannot spawn cc1 in this workspace.
+# Native AArch64 compilation through QEMU is slower but reproducible.
+options="!pmb:crossdirect"
+install="$pkgname.pre-install"
+subpackages="$pkgname-doc $pkgname-systemd $pkgname-udev"
+
+source="$pkgname-$pkgver.tar.gz::https://github.com/linux-msm/hexagonrpc/archive/refs/tags/v$pkgver.tar.gz
+	10-fastrpc.rules
+	https://gitlab.alpinelinux.org/alpine/aports/-/raw/master/community/hexagonrpcd/systemd-services.patch
+	support-samsung-sensor-registry-writes.patch
+	"
+builddir="$srcdir/hexagonrpc-$pkgver"
+
+build() {
+	abuild-meson -Db_lto=true . output
+	meson compile -C output
+}
+
+check() {
+	meson test -C output
+}
+
+package() {
+	DESTDIR="$pkgdir" meson install --no-rebuild -C output
+
+	install -Dm644 "$srcdir"/10-fastrpc.rules \
+		-t "$pkgdir"/usr/lib/udev/rules.d/
+}
+
+sha512sums="
+18ebe4beeed97018243bec5043b8395c07c76f1174085e41a32648fd481485076fefffa091700ca1f72163687405456e5537aa538bc4f08fecacb3f83e3a82d8  hexagonrpcd-0.4.0.tar.gz
+f931cf5f901a7c17ffb0eb194b5de2c532fd238692898bf264c484b13b93119c9727bd8f8daf6a7d1668cc9108a9a0662231d300c6f1376e3e4edd3ce41d235d  10-fastrpc.rules
+2ebd6709180f2c60e355770d091c61d95e012727c94101d5e3e451c91af43f4334ef02ebd85c8ad1f99d3adc7fcb27ff5db1afaeec71cddc638db95b626128ad  systemd-services.patch
+eb2bd18a2fdd08f174b6ac2fd7e10ea76661763bf8ca840f4354a6631f072f4dac045a33588e51826d19bede1bc2d5fd0d92d1d86da6b6d6aec8707b6bfe2337  support-samsung-sensor-registry-writes.patch
+"

@@ -1,0 +1,137 @@
+From: SM-X910 postmarketOS port <gts9uwifi@example.com>
+Subject: [PATCH] modesetting: optionally expose PRIME sink without glamor
+
+The split msm topology uses a render-only Adreno DRM as the PRIME source and
+a scanout-only msm-kms DRM as the sink.  The sink deliberately runs without
+glamor, but modesetting's non-reverse PRIME path can still import the source
+dma-buf through drmmode_SetSlaveBO().
+
+Add opt-in switches for this topology instead of changing generic modesetting
+behaviour: one exposes a software-backed SinkOffload provider, and the other
+allows a connectorless accelerated primary while a secondary KMS provider
+supplies the physical output.  The latter also creates the synthetic mode that
+xf86InitViewport requires for a connectorless primary.  Both remain disabled
+by default.  For legacy DRI3 PixmapFromBuffer clients, a separate global debug
+switch can explicitly treat implicit dma-bufs as linear on this split device.
+
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -48,6 +48,7 @@
+ #include "edid.h"
+ #include "xf86i2c.h"
+ #include "xf86Crtc.h"
++#include "xf86Modes.h"
+ #include "miscstruct.h"
+ #include "dixstruct.h"
+ #include "xf86xv.h"
+
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -61,6 +61,8 @@ typedef enum {
+     OPTION_VARIABLE_REFRESH,
+     OPTION_USE_GAMMA_LUT,
+     OPTION_ASYNC_FLIP_SECONDARIES,
++    OPTION_PRIME_SINK_OFFLOAD,
++    OPTION_ALLOW_EMPTY_INITIAL_CONFIGURATION,
+ } modesettingOpts;
+ 
+ typedef struct
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -143,5 +143,7 @@ static const OptionInfoRec Options[] = {
+     {OPTION_USE_GAMMA_LUT, "UseGammaLUT", OPTV_BOOLEAN, {0}, FALSE},
+     {OPTION_ASYNC_FLIP_SECONDARIES, "AsyncFlipSecondaries", OPTV_BOOLEAN, {0}, FALSE},
++    {OPTION_PRIME_SINK_OFFLOAD, "PrimeSinkOffload", OPTV_BOOLEAN, {0}, FALSE},
++    {OPTION_ALLOW_EMPTY_INITIAL_CONFIGURATION, "AllowEmptyInitialConfiguration", OPTV_BOOLEAN, {0}, FALSE},
+     {-1, NULL, OPTV_NONE, {0}, FALSE}
+ };
+ 
+@@ -1257,7 +1258,9 @@ static Bool PreInit(ScrnInfoPtr pScrn, int flags)
+     if (ret == 0) {
+         if (connector_count && (value & DRM_PRIME_CAP_IMPORT)) {
+             pScrn->capabilities |= RR_Capability_SinkOutput;
+-            if (ms->drmmode.glamor)
++            if (ms->drmmode.glamor ||
++                xf86ReturnOptValBool(ms->drmmode.Options,
++                                     OPTION_PRIME_SINK_OFFLOAD, FALSE))
+                 pScrn->capabilities |= RR_Capability_SinkOffload;
+         }
+ #ifdef GLAMOR_HAS_GBM_LINEAR
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1305,8 +1309,27 @@ static Bool PreInit(ScrnInfoPtr pScrn, int flags)
+-    if (!(pScrn->is_gpu && connector_count == 0) && pScrn->modes == NULL) {
++    Bool allow_empty =
++        xf86ReturnOptValBool(ms->drmmode.Options,
++                             OPTION_ALLOW_EMPTY_INITIAL_CONFIGURATION, FALSE);
++
++    if (!(pScrn->is_gpu && connector_count == 0) && pScrn->modes == NULL &&
++        !allow_empty) {
+         xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "No modes.\n");
+         return FALSE;
+     }
+ 
++    if (pScrn->modes == NULL && allow_empty) {
++        int width = pScrn->virtualX ? pScrn->virtualX : 1024;
++        int height = pScrn->virtualY ? pScrn->virtualY : 768;
++
++        pScrn->modes = xf86CVTMode(width, height, 60, FALSE, FALSE);
++        if (pScrn->modes == NULL)
++            return FALSE;
++        pScrn->modes->next = pScrn->modes;
++        pScrn->modes->prev = pScrn->modes;
++        xf86DrvMsg(pScrn->scrnIndex, X_INFO,
++                   "Using synthetic %dx%d mode for connectorless primary\n",
++                   width, height);
++    }
++
+     pScrn->currentMode = pScrn->modes;
+ 
+     /* Set display resolution */
+--- a/hw/xfree86/modes/xf86RandR12.c
++++ b/hw/xfree86/modes/xf86RandR12.c
+@@ -1842,9 +1842,10 @@ xf86RandR12CreateScreenResources12(ScreenPtr pScreen)
+     RRScreenSetSizeRange(pScreen, config->minWidth, config->minHeight,
+                          config->maxWidth, config->maxHeight);
+ 
+-    xf86RandR12CreateMonitors(pScreen);
++    if (config->num_output)
++        xf86RandR12CreateMonitors(pScreen);
+ 
+-    if (!pScreen->isGPU) {
++    if (!pScreen->isGPU && config->num_output) {
+         rp->primaryOutput = config->output[0]->randr_output;
+         RROutputChanged(rp->primaryOutput, FALSE);
+         rp->layoutChanged = TRUE;
+--- a/glamor/glamor_egl.c
++++ b/glamor/glamor_egl.c
+@@ -594,5 +594,9 @@ glamor_pixmap_from_fds(ScreenPtr screen,
+     glamor_egl = glamor_egl_get_screen_private(xf86ScreenToScrn(screen));
+ 
++    if (glamor_egl->dmabuf_capable && modifier == DRM_FORMAT_MOD_INVALID &&
++        xf86Info.debug && strstr(xf86Info.debug, "force_linear_dri3"))
++        modifier = DRM_FORMAT_MOD_LINEAR;
++
+     pixmap = screen->CreatePixmap(screen, 0, 0, depth, 0);
+ 
+ #ifdef GBM_BO_WITH_MODIFIERS
+--- a/hw/xfree86/drivers/modesetting/modesetting.man
++++ b/hw/xfree86/drivers/modesetting/modesetting.man
+@@ -69,4 +69,17 @@ One of \*qglamor\*q or \*qnone\*q.  Default: glamor.
+ .TP
++.BI "Option \*qPrimeSinkOffload\*q \*q" boolean \*q
++Expose PRIME Sink Offload capability even when glamor is disabled.  This is
++intended for split render/scanout DRM devices whose KMS driver can import the
++render device's dma-bufs through the modesetting shared-pixmap path.  The
++default is
++.B off.
++.TP
++.BI "Option \*qAllowEmptyInitialConfiguration\*q \*q" boolean \*q
++Allow a primary modesetting screen with no connectors or initial modes.  This
++supports an accelerated render-only primary whose physical outputs are
++provided later by a secondary output provider.  The default is
++.B off.
++.TP
+ .BI "Option \*qPageFlip\*q \*q" boolean \*q
+ Enable DRI3 page flipping.  The default is
+ .B on.

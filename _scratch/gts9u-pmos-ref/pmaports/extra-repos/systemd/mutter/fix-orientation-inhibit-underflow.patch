@@ -1,0 +1,102 @@
+Mutter balances several independent orientation inhibitors: the orientation
+lock, display power-save state and whether the built-in panel is managed.
+On this tablet the accelerometer appears asynchronously after the monitor.
+The managed-panel transition can therefore call uninhibit while the counter is
+already zero.  The counter becomes negative and sync_accelerometer_claimed()
+is never reached again, although PanelOrientationManaged remains true.
+
+Do not let an unmatched uninhibit underflow the counter.  Treat it as the
+already-uninhibited state and resynchronise the D-Bus claim.
+
+SensorProxy must be restarted after deep suspend because Qualcomm's SSC
+service is power-collapsed and libssc 0.4.4 does not reconnect an existing QMI
+client.  A new SensorProxy name owner invalidates every previous claim.  Reset
+Mutter's cached claim state when the new proxy is ready so the normal sync path
+always issues a fresh ClaimAccelerometer instead of keeping "undefined".
+
+There is a second ordering race when the accelerometer first appears after the
+built-in monitor is already managed.  The first sensor-active signal runs the
+initial-orientation compatibility path, which unconditionally adds the
+inhibitor that normally represents an as-yet unmanaged panel.  No later
+managed-panel transition exists to remove it, so Mutter releases the sensor
+immediately after applying one orientation.  Keep that compatibility path when
+the panel is still unmanaged, but do not synthesize its inhibitor after the
+panel has already become managed.
+
+Finally, the persisted user orientation lock must not share the anonymous
+inhibit counter.  If the session starts with orientation-lock=true before the
+late accelerometer makes the panel managed, the panel transition's unmatched
+uninhibit consumes the user's lock.  The UI still says locked, but Mutter
+tracks the sensor until the setting is toggled twice.  The manager already
+stores orientation_locked separately, so make it an independent claim
+condition and let setting changes resynchronise the claim directly.
+
+diff --git a/src/backends/meta-orientation-manager.c b/src/backends/meta-orientation-manager.c
+index 0991fdb..f933fe4 100644
+--- a/src/backends/meta-orientation-manager.c
++++ b/src/backends/meta-orientation-manager.c
+@@ -291 +291,2 @@ sync_accelerometer_claimed (MetaOrientationManager *self)
+-  should_claim = self->iio_proxy && self->inhibited_count == 0;
++  should_claim = (self->iio_proxy && self->inhibited_count == 0 &&
++                  !self->orientation_locked);
+@@ -341,6 +342,2 @@ orientation_lock_changed (MetaOrientationManager *self)
+   self->orientation_locked = orientation_locked;
+-
+-  if (self->orientation_locked)
+-    meta_orientation_manager_inhibit_tracking (self);
+-  else
+-    meta_orientation_manager_uninhibit_tracking (self);
++  sync_accelerometer_claimed (self);
+@@ -361,6 +361,10 @@ iio_proxy_ready (GObject      *source,
+       return;
+     }
+ 
++  /* A new D-Bus owner cannot inherit the claim made on the old owner. */
++  self->should_claim = FALSE;
++  self->is_claimed = FALSE;
++
+   self->iio_proxy = proxy;
+   g_signal_connect_object (self->iio_proxy, "g-properties-changed",
+                            G_CALLBACK (iio_properties_changed), self, 0);
+@@ -528,6 +532,13 @@ meta_orientation_manager_uninhibit_tracking (MetaOrientationManager *self)
+ {
++  if (self->inhibited_count == 0)
++    {
++      g_warning ("Ignoring unmatched orientation tracking uninhibit");
++      sync_accelerometer_claimed (self);
++      return;
++    }
++
+   self->inhibited_count--;
+ 
+   if (self->inhibited_count == 0)
+     sync_accelerometer_claimed (self);
+ }
+diff --git a/src/backends/meta-monitor-manager.c b/src/backends/meta-monitor-manager.c
+index f37b0a7..d8f74ee 100644
+--- a/src/backends/meta-monitor-manager.c
++++ b/src/backends/meta-monitor-manager.c
+@@ -987,16 +987,20 @@ orientation_changed (MetaMonitorManager *manager)
+ 
+   if (!priv->initial_orient_change_done)
+     {
+       priv->initial_orient_change_done = TRUE;
+-      if (handle_initial_orientation_change (orientation_manager, manager))
++
++      if (!manager->panel_orientation_managed)
+         {
++          if (handle_initial_orientation_change (orientation_manager, manager))
++            {
++              meta_orientation_manager_inhibit_tracking (orientation_manager);
++              return;
++            }
++
+           meta_orientation_manager_inhibit_tracking (orientation_manager);
+-          return;
+         }
+-
+-      meta_orientation_manager_inhibit_tracking (orientation_manager);
+     }
+ 
+   if (!manager->panel_orientation_managed)
+     return;

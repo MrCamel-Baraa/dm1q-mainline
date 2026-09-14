@@ -1,0 +1,43 @@
+#!/bin/sh
+# SPDX-License-Identifier: MIT
+#
+# GNOME resumes the session after a SW_LID wake, but Mutter can retain
+# PowerSaveMode=3 (off).  The DRM connector and backlight are otherwise active,
+# so ask the compositor to light the panel after the user session has thawed.
+set -u
+
+attempt=0
+while [ "$attempt" -lt 10 ]; do
+	attempt=$((attempt + 1))
+	for session in $(loginctl list-sessions --no-legend 2>/dev/null |
+		awk '$6 == "user" || $6 == "greeter" { print $1 }'); do
+		active=$(loginctl show-session "$session" -p Active --value 2>/dev/null || true)
+		type=$(loginctl show-session "$session" -p Type --value 2>/dev/null || true)
+		class=$(loginctl show-session "$session" -p Class --value 2>/dev/null || true)
+		user=$(loginctl show-session "$session" -p Name --value 2>/dev/null || true)
+		uid=$(loginctl show-session "$session" -p User --value 2>/dev/null || true)
+		if [ "$active" != yes ] || [ "$type" != wayland ] ||
+		   { [ "$class" != user ] && [ "$class" != greeter ]; } ||
+		   [ -z "$user" ] || [ -z "$uid" ]; then
+			continue
+		fi
+
+		runtime="/run/user/$uid"
+		if runuser -u "$user" -- env \
+			XDG_RUNTIME_DIR="$runtime" \
+			DBUS_SESSION_BUS_ADDRESS="unix:path=$runtime/bus" \
+			gdbus call --session \
+				--dest org.gnome.Mutter.DisplayConfig \
+				--object-path /org/gnome/Mutter/DisplayConfig \
+				--method org.freedesktop.DBus.Properties.Set \
+				org.gnome.Mutter.DisplayConfig \
+				PowerSaveMode '<int32 0>' >/dev/null 2>&1; then
+			echo "gts9uwifi-display-wake: enabled the panel for session $session"
+			exit 0
+		fi
+	done
+	sleep 1
+done
+
+echo "gts9uwifi-display-wake: no active Wayland session accepted the wake request" >&2
+exit 0

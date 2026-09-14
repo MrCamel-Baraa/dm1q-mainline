@@ -1,0 +1,55 @@
+From: SM-X910 postmarketOS port <gts9uwifi@example.com>
+Subject: [PATCH] about: use commercial SM8550 and Adreno 740 names on X910
+
+The generic ARM topology is useful to low-level tools but makes the About
+panel show four CPU core codenames instead of the SoC sold with the device.
+Likewise, Mesa's renderer token is FD740.  Keep the override strictly scoped to
+the Samsung X910 compatible and leave the generic detection untouched.
+
+--- a/panels/system/about/cc-system-details-window.c
++++ b/panels/system/about/cc-system-details-window.c
+@@ -166,6 +166,25 @@ typedef struct {
+   gboolean is_default;
+ } GpuData;
+ 
++static gboolean
++is_samsung_gts9uwifi (void)
++{
++  g_autofree char *compatibles = NULL;
++  gsize length = 0;
++
++  if (!g_file_get_contents ("/proc/device-tree/compatible",
++                            &compatibles,
++                            &length,
++                            NULL))
++    return FALSE;
++
++  /*
++   * Device-tree compatible strings are NUL separated, so use an explicit
++   * length instead of treating the blob as one C string.
++   */
++  return g_strstr_len (compatibles, length, "samsung,gts9uwifi") != NULL;
++}
++
+ static void
+ gpu_data_free (GpuData *data)
+ {
+@@ -313,6 +332,9 @@ create_graphics_rows (CcSystemDetailsWindow *self, GSList *devices)
+       const char *name = data->name;
+       g_autofree char *label = NULL;
+ 
++      if (is_samsung_gts9uwifi () && g_strcmp0 (name, "FD740") == 0)
++        name = "Qualcomm Adreno 740";
++
+       if (data->is_default)
+         label = g_strdup (_("Graphics"));
+       else
+@@ -498,6 +520,9 @@ get_cpu_info ()
+   int            i;
+   int            j;
+ 
++  if (is_samsung_gts9uwifi ())
++    return g_strdup ("Qualcomm Snapdragon 8 Gen 2");
++
+   counts = g_hash_table_new (g_str_hash, g_str_equal);
+   info = glibtop_get_sysinfo ();

@@ -1,0 +1,36 @@
+The SM-X910 is a fixed slate without a laptop/tablet mode switch.  Mutter's
+fallback touch-mode heuristic disables touch mode whenever any pointer is
+present.  That also sets PanelOrientationManaged=false, hides GNOME's rotation
+lock and stops autorotation when a USB mouse is attached.
+
+This Mutter package is device-scoped to the X910.  Keep managing the built-in
+panel whenever its accelerometer exists; the user-facing orientation lock
+still provides the explicit opt-out.
+
+diff --git a/src/backends/meta-monitor-manager.c b/src/backends/meta-monitor-manager.c
+index f37b0a7..877b504 100644
+--- a/src/backends/meta-monitor-manager.c
++++ b/src/backends/meta-monitor-manager.c
+@@ -1096,17 +1096,15 @@ update_panel_orientation_managed (MetaMonitorManager *manager)
+ {
+   MetaOrientationManager *orientation_manager;
+-  ClutterBackend *clutter_backend;
+-  ClutterSeat *seat;
+   gboolean panel_orientation_managed;
+ 
+-  clutter_backend = meta_backend_get_clutter_backend (manager->backend);
+-  seat = clutter_backend_get_default_seat (clutter_backend);
+-
+   orientation_manager = meta_backend_get_orientation_manager (manager->backend);
+ 
++  /*
++   * This device-scoped build runs on a fixed slate.  An external pointer
++   * changes the seat's touch-mode heuristic, not the tablet's posture.
++   */
+   panel_orientation_managed =
+-    (clutter_seat_get_touch_mode (seat) &&
+-     meta_orientation_manager_has_accelerometer (orientation_manager) &&
++    (meta_orientation_manager_has_accelerometer (orientation_manager) &&
+      meta_monitor_manager_get_builtin_monitor (manager));
+ 
+   if (manager->panel_orientation_managed == panel_orientation_managed)

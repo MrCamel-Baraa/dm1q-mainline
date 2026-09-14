@@ -9,9 +9,10 @@ understanding of what's SoC-baseline vs. board-specific.
 These gate everything below. Do these first; don't start diffing devicetrees
 until they're answered.
 
-- [ ] Confirm dm1q's bootloader can actually be OEM-unlocked / already is
-      (should be, since it's running crDroid — but note exact method used,
-      for the record).
+- [x] Confirm dm1q's bootloader can actually be OEM-unlocked / already is.
+      **Done 2026-09-13**: standard Samsung method — Developer Options →
+      OEM unlock toggle, then unlock confirmed via Download Mode. No
+      device-specific quirks reported.
 - [x] Confirm dm1q pmaports package: kernel type, maintainer, last activity —
       **answer as of 2026-09-13: no such package exists in current pmaports**
       (searched live repo directly, zero matches for dm1q/dm2q/dm3q/kalama/
@@ -20,38 +21,40 @@ until they're answered.
       follow-up (re-run `pmbootstrap init` interactively to resolve the
       discrepancy). Either way, there's no existing package to pull
       kernel-type/maintainer/activity info from.
-- [ ] Confirm the WCN Wi-Fi/BT chip in dm1q's crDroid kernel tree is WCN6855
-      (`ath11k`), as strongly indicated by teardown/community sourcing (see
-      docs/02-open-questions-and-risks.md, item 1 — resolved but not yet
-      confirmed against dm1q's own kernel source). Grep for `wcn6855` /
-      `qcom,wcn6855`. **Working assumption: the Tab S9 Ultra's ath12k/WCN7850
-      PCIe/WiFi node structure does NOT directly apply to dm1q** — build the
-      WCN6855/ath11k node from scratch or from another ath11k-based mainline
-      device instead.
-- [ ] Identify the exact PMIC part(s) paired with dm1q (PM8550 vs PM8550B vs
-      PM8550VE, etc.) from the crDroid kernel tree / downstream DT.
-- [ ] Note the panel driver/compatible string and touch controller vendor
-      used in the downstream kernel — these are 100% board-specific and will
-      need their own driver regardless of what else transfers.
+- [x] Confirm the WCN Wi-Fi/BT chip in dm1q's crDroid kernel tree. **Done
+      2026-09-13, and it's a CORRECTION, not a confirmation**: real source
+      shows **QCA6490**, not WCN6855 as previously assumed from teardowns.
+      See docs/02-open-questions-and-risks.md item 1 (corrected) for detail.
+- [x] Identify the exact PMIC part(s) paired with dm1q. **Done 2026-09-13**:
+      PM8550 (main), PM8550B, PM8550VE, PM8550VS, PM8010, PM8350C — see
+      docs/02-open-questions-and-risks.md item 2 (resolved).
+- [x] Note the panel driver/compatible string and touch controller vendor.
+      **Done 2026-09-13**: dual-sourced panel — Samsung S6E3FAC (cell
+      AMB606AW01) primary, Silicon Works LX83118 (cell CM002) alternate.
+      Touch: Goodix Berlin (`goodix-berlin@5d`). See
+      docs/02-open-questions-and-risks.md item 3b (resolved).
 
 ## Step 1 — Get reference materials in one place
 
 - [x] Clone the Tab S9 Ultra pmOS repo (see 03-references.md) into a scratch
-      location (not committed here — it's someone else's repo, just a
-      reference to diff against). Done 2026-09-13:
-      `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref`.
+      location (originally kept uncommitted, moved into this repo under
+      `_scratch/` on 2026-09-14 — see `_scratch/README.md`). Done
+      2026-09-13: `_scratch/gts9u-pmos-ref` and `_scratch/gts9u-ubuntu-ref`.
 - [x] Pull a recent mainline kernel tree (or at least `arch/arm64/boot/dts/qcom/`)
       to get the baseline `sm8550*.dtsi` files. Done 2026-09-13: sparse
-      partial clone of `torvalds/linux` into `../_scratch/linux-mainline`,
+      partial clone of `torvalds/linux` into `_scratch/linux-mainline`,
       checked out to just `arch/arm64/boot/dts/qcom/` (~25MB total —
       slower than expected to fetch even with `blob:none`, since git still
       walks the full tree-object graph for one commit, but data-light on
       actual bytes transferred).
-- [ ] Extract dm1q's downstream device tree / kernel source from crDroid.
-      This is the ground truth for board-specific values (regulators,
-      pinctrl, panel init sequence). **Not yet done — this is the actual
-      next real blocker**, since everything in Step 2 below still needs
-      real dm1q values to fill in against the gts9u/mainline skeleton.
+- [x] Extract dm1q's downstream device tree / kernel source from crDroid.
+      **Done 2026-09-13**: real Samsung downstream `.dts` files (10 board
+      revisions, `dm1q_eur_openx_w00_r01` through `r13`) from
+      `crdroidandroid/android_kernel_samsung_sm8550-devicetrees` (the real,
+      official crDroid devicetree-only repo — much smaller and more direct
+      than pulling a full kernel source tree), cloned into
+      `_scratch/crdroid-dm1q-dts` (~96MB). This is the ground truth used
+      for the WCN/PMIC/panel/touch answers above.
 
 ## Step 2 — The diff
 
@@ -69,14 +72,18 @@ is now backed by that real data rather than assumption alone:
 - UFS controller node (protocol-level — storage *layout* still device-specific)
 - USB controller (DWC3) core setup
 - PCIe controller *core* structure (bus/link setup transfers; the WiFi
-  endpoint device node itself does not — dm1q is WCN6855/ath11k while the
+  endpoint device node itself does not — dm1q is QCA6490/ath11k (corrected
+  2026-09-13, was previously wrongly assumed to be WCN6855) while the
   Tab S9 Ultra reference is WCN7850/ath12k, see Step 0 and
   docs/02-open-questions-and-risks.md item 1)
 
 **Needs full rebuild (board-level, source from crDroid tree):**
-- Display panel driver (S23's AMOLED panel is a different part from the
-  tablet's LCD/OLED — needs its own DSI panel driver from scratch)
-- Touch controller driver
+- Display panel driver — dual-sourced: Samsung S6E3FAC (cell AMB606AW01)
+  and Silicon Works LX83118 (cell CM002), confirmed 2026-09-13. Different
+  IC from the tablet reference either way — needs its own DSI panel
+  driver(s) from scratch.
+- Touch controller driver — Goodix Berlin (`goodix-berlin@5d`), confirmed
+  2026-09-13.
 - PMIC regulator mapping (rail names/voltages are per-board-schematic —
   the single most Samsung-model-specific piece)
 - Battery fuel gauge, charger IC
@@ -102,6 +109,13 @@ canonical version of this checklist):
 
 _(append dated entries here as work happens)_
 
+**Note (2026-09-14): `_scratch/` was moved from a sibling, uncommitted
+location into this repo (with `.git` stripped from each cloned subfolder)
+and is now documented in `_scratch/README.md` and the main README. Log
+entries below that describe it as "sibling to this repo, not committed
+here" were accurate at the time they were written — treat them as history,
+not current layout.**
+
 - 2026-09-13: Repo created, workplan drafted from initial research. No boot
   attempt yet. Step 0 items outstanding.
 - 2026-09-13 (later same day): Fact-check pass on all docs. Found and
@@ -117,7 +131,7 @@ _(append dated entries here as work happens)_
 - 2026-09-13 (later still): Ran the actual pmaports check from Step 0 using
   Desktop Commander (shell access) instead of `pmbootstrap init`, via a
   data-light sparse partial clone (`git clone --filter=blob:none --depth=1
-  --no-checkout`) of the live repo into `../_scratch/pmaports` (sibling to
+  --no-checkout`) of the live repo into `_scratch/pmaports` (sibling to
   this repo, not committed here). Searched the full tree directly with
   `git ls-tree -r` for dm1q/dm2q/dm3q/kalama/sm8550 — **zero matches
   anywhere**, including device/main. This contradicts the earlier "confirmed
@@ -142,7 +156,7 @@ _(append dated entries here as work happens)_
   and reasoning logged in docs/03-references.md and
   docs/02-open-questions-and-risks.md item 4.
   Both repos now cloned (shallow, depth=1, ~9.7MB total) into
-  `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref` (siblings
+  `_scratch/gts9u-pmos-ref` and `_scratch/gts9u-ubuntu-ref` (siblings
   to this repo, not committed here) for actual use as SM8550 reference
   material going forward. Next real step: use these — particularly
   `gts9u-pmos-ref/pmaports/device/testing/{device,linux}-samsung-gts9uwifi*`
@@ -153,7 +167,7 @@ _(append dated entries here as work happens)_
   values.
 
 - 2026-09-13 (night, session close): Pulled real mainline
-  `arch/arm64/boot/dts/qcom/` (sparse clone, `../_scratch/linux-mainline`)
+  `arch/arm64/boot/dts/qcom/` (sparse clone, `_scratch/linux-mainline`)
   and diffed the gts9u board devicetree against the four upstream files it
   includes (`sm8550.dtsi`, `pm8550.dtsi`, `pm8550vs.dtsi`, `pmk8550.dtsi`).
   Full categorized result in the new
@@ -178,3 +192,25 @@ _(append dated entries here as work happens)_
   (WCN chip confirmation, PMIC part number, panel/touch compatible strings,
   real pinctrl/GPIO/regulator values) to fill into the gts9u-derived
   skeleton. Nothing else meaningfully progresses until that happens.
+
+- 2026-09-14: **Phase 1 Step 0 fully complete.** Found the real crDroid
+  devicetree-only repo (`crdroidandroid/android_kernel_samsung_sm8550-devicetrees`,
+  official, much smaller than a full kernel tree) and pulled dm1q's actual
+  Samsung downstream `.dts` files (10 board revisions, ~96MB, into
+  `_scratch/crdroid-dm1q-dts`). This resolved every remaining Step 0 item
+  with ground truth rather than inference:
+  - **WCN chip corrected**: dm1q uses QCA6490, not WCN6855 (all 10 revisions
+    checked, zero WCN6855 references). Still ath11k-family, mainlined
+    earlier than WCN6855 if anything. Memory and docs 00/01/02/04 updated.
+  - **PMIC confirmed**: PM8550, PM8550B, PM8550VE, PM8550VS, PM8010,
+    PM8350C — a multi-PMIC setup, not the single part previously assumed.
+  - **Panel confirmed**: dual-sourced — Samsung S6E3FAC (AMB606AW01) and
+    Silicon Works LX83118 (CM002).
+  - **Touch confirmed**: Goodix Berlin (`goodix-berlin@5d`).
+  - **Bootloader unlock confirmed** (user-reported, not from source):
+    standard Samsung OEM-unlock toggle + Download Mode, no quirks.
+  Full detail in docs/02-open-questions-and-risks.md items 1, 2, 3b.
+  **Step 0 is the first fully-closed step in this project.** Next real work
+  is filling dm1q's real values (now in hand) into the gts9u/mainline
+  skeleton from Step 2 — i.e., actually starting to write dm1q's own
+  devicetree, not just planning it.
