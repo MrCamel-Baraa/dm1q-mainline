@@ -235,3 +235,35 @@ not current layout.**
     extraction — those subnodes don't carry descriptive names in this
     decompiled file. Flagged as a follow-up for when writing those specific
     consumer nodes, not a blocker.
+
+- 2026-09-14 (continued, deep dive at user's request to "do it right, no
+  corners cut" on PM8550 regulator mapping): Investigated whether the full
+  PM8550 SPMI regulator channel-to-consumer mapping could be recovered from
+  the downstream source. Found a genuine architectural wall: Qualcomm's
+  downstream Android driver models PMIC regulators via an RPMh ARC voting
+  layer (`kalama-regulators.dtsi`, internal codenames like `pm_v6e_l1`) —
+  architecturally different from mainline's `qcom,rpmh-regulator` binding
+  (`vreg_l1b`-style). No clean automatic translation exists between them,
+  which is fine, since the mainline devicetree needs mainline's convention
+  regardless.
+  Resolved the QCA6490 WLAN/BT case specifically and completely by finding
+  Samsung's own DTB+DTBO overlay fixup tables directly in dm1q's real
+  source (`grep 'qcom,cnss-qca6490:.*-supply'`) — direct evidence, not
+  inference: `vdd-wlan-io-supply`→L15B, `vdd-wlan-dig-supply`→S4E,
+  `vdd-wlan-rfa1-supply`→S6G, `vdd-wlan-rfa2-supply`→S4G,
+  `vdd-wlan-aon-supply`→S2G. Cross-confirmed against gts9u's independently-
+  verified mainline mapping for the same RPMh resource IDs (S2G/S4E/S4G/S6G
+  match exactly) and against dm1q's own separate WLAN PDC voting table
+  (same resource IDs again) — three independent pieces of evidence
+  agreeing.
+  **Also corrected a wrong assumption made earlier in the same
+  investigation**: initially assumed QCA6490 would use gts9u's WCN7850
+  7-supply naming scheme (vdd/vddio/vddio1p2/vddaon/vdddig/vddrfa1p2/
+  vddrfa1p8). Real evidence shows QCA6490's actual downstream driver only
+  has 5 named supplies — genuinely different (simpler) binding, not a
+  smaller version of the same one. Caught and fixed before it could get
+  baked into a wrong devicetree later.
+  Full writeup in docs/05-dm1q-real-hardware-values.md. Same fixup-table
+  method is available for other consumers (panel, touch, etc.) on an
+  as-needed basis when actually writing those specific nodes, rather than
+  as a blanket upfront task.
