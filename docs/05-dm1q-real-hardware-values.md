@@ -1,7 +1,7 @@
 # dm1q real hardware values — extracted from crDroid downstream source
 
 Date: 2026-09-14
-Source: `_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts`
+Source: `../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts`
 (real Samsung downstream devicetree, decompiled/flattened DTB — labels are
 lost, phandles are numeric, structured as DT overlay fragments rather than
 a clean node tree)
@@ -97,7 +97,7 @@ Representative examples:
 
 **The architectural wall we hit, and why it doesn't matter:** Qualcomm's
 downstream Android driver models PMIC regulators through an RPMh ARC voting
-layer (`_scratch/crdroid-dm1q-dts/qcom/kalama-regulators.dtsi`, internal
+layer (`../_scratch/crdroid-dm1q-dts/qcom/kalama-regulators.dtsi`, internal
 codenames like `pm_v6e_l1`) — a completely different abstraction from
 mainline's `qcom,rpmh-regulator` binding (`vreg_l1b`-style direct-named
 nodes). There's no clean automatic translation between the two, and that's
@@ -155,8 +155,8 @@ inferred-by-analogy.
 ## Regenerating this data
 
 ```
-python3 notes/extract_regulators.py _scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts
-python3 notes/extract_pinctrl.py _scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts
+python3 notes/extract_regulators.py ../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts
+python3 notes/extract_pinctrl.py ../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts
 ```
 Both scripts take a `.dts` path as their only argument — point them at a
 different board revision (`dm1q_eur_openx_w00_r01` through `r13`) to compare

@@ -43,7 +43,7 @@ here with their answer and source, and are also reflected in 00-overview.md.
    not visible in that board's devicetree). Regulator *names* will need
    verifying node-by-node against dm1q's real rail usage rather than assumed
    1:1 from the tablet reference. See
-   `_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts` for the
+   `../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts` for the
    real source.
 
 3. **GPU/CPU OPP table retuning.**

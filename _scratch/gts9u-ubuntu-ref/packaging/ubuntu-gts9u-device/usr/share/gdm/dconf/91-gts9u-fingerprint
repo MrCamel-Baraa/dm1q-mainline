@@ -1,3 +1,0 @@
-# System extension only; this does not change PAM or password authentication.
-[org/gnome/shell]
-enabled-extensions=['gts9u-fingerprint-overlay@agcarbajo']

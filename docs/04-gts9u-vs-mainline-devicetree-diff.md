@@ -16,7 +16,7 @@ references), not a real DT-semantics-aware diff. It will miss things like
 existing SoC-level bus" from "board defines something genuinely new" in every
 case. Treat this as a first-pass map for planning, not a verified spec.
 Result: 105 labels appear in the board file that don't appear in the four
-upstream includes. Full list in `_scratch/gts9u-board-specific-labels.txt`.
+upstream includes. Full list in `../_scratch/gts9u-board-specific-labels.txt`.
 
 ## Grouped by what it means for dm1q's own work
 

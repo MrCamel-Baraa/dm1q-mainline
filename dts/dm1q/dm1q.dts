@@ -1,0 +1,329 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Initial mainline device tree for the Samsung Galaxy S23 (SM-S911B, dm1q).
+ *
+ * STATUS: first draft, not yet tested on hardware. This is a starting point
+ * built from real evidence, not a finished/verified devicetree. See the
+ * per-block comments below for exactly what's confirmed vs. inferred vs.
+ * still TODO, and see docs/05-dm1q-real-hardware-values.md and
+ * docs/01-phase1-workplan.md for the full research trail behind each value.
+ *
+ * Structural template: agcarbajo's Tab S9 Ultra mainline port
+ * (_scratch/gts9u-pmos-ref) and the real Qualcomm SM8450-HDK reference board
+ * (_scratch/linux-mainline/.../sm8450-hdk.dts) -- both real, verified
+ * sources, not guessed at. Board-specific values (GPIOs, regulator channel
+ * identities, WLAN PDC calibration) are from dm1q's own real downstream
+ * devicetree source (_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts)
+ * wherever marked CONFIRMED below.
+ *
+ * NOT yet attempted in this file: display/panel driver, PCIe, UFS, USB,
+ * camera. These need real driver work beyond devicetree wiring, or are
+ * still-open research items -- see docs/02-open-questions-and-risks.md.
+ *
+ * _scratch/ is a sibling directory to the repo root (../../../_scratch/
+ * from this file's own location), not tracked in git -- see
+ * docs/01-phase1-workplan.md's log for why.
+ * To recompile this file for a syntax check:
+ *   cpp -nostdinc -I ../../../_scratch/linux-mainline/arch/arm64/boot/dts/qcom \
+ *       -I ../../../_scratch/linux-mainline/include -undef \
+ *       -x assembler-with-cpp dm1q.dts | dtc -@ -I dts -O dtb -o /tmp/out.dtb -
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include "sm8550.dtsi"
+#include "pm8550.dtsi"
+#include "pm8550b.dtsi"
+#include "pm8550vs.dtsi"
+#include "pmk8550.dtsi"
+
+/* dm1q's actual PMIC set is PM8550/PM8550B/PM8550VE/PM8550VS/PM8010/PM8350C,
+ * confirmed directly from real downstream devicetree source -- see
+ * docs/02-open-questions-and-risks.md item 2. PM8550VE, PM8010, and
+ * PM8350C aren't included yet since nothing in this file needs them so far
+ * -- add each .dtsi include when a consumer requiring it gets written.
+ * Note for PM8550VE specifically: its .dtsi requires a #define PMK8550VE_SID
+ * before including (an SPMI slave-ID board convention used by that file
+ * only, not the others) -- we don't have a confirmed real SID value for
+ * dm1q yet, so don't add the include until that's resolved. */
+
+/ {
+	model = "Samsung Galaxy S23";
+	/*
+	 * qcom,msm-id and the first three compatible strings are identical to
+	 * the real values found in dm1q's own downstream devicetree source
+	 * (CONFIRMED) -- these are SoC-family-level IDs, not board-specific;
+	 * also identical in agcarbajo's gts9uwifi reference, cross-confirming
+	 * they're platform-constant, not device-specific guesses.
+	 */
+	compatible = "qcom,kalama-mtp", "qcom,kalama", "qcom,mtp",
+		     "samsung,dm1q", "qcom,sm8550";
+	qcom,msm-id = <0x218 0x20000 0x207 0x20000
+		       0x207 0x10000 0x218 0x10000>;
+	/* board-id CONFIRMED from dm1q's real source, revision r13 (0x0d) */
+	qcom,board-id = <0x10008 0x0d>;
+	chassis-type = "handset";
+
+	aliases {
+		/*
+		 * TODO -- NOT YET CONFIRMED for dm1q specifically. Carried over
+		 * from the gts9uwifi reference as a starting assumption. Needs
+		 * checking against dm1q's own real UART/SDHC instance usage
+		 * before trusting this for a serial console / eMMC-SD boot.
+		 */
+		serial0 = &uart7;
+		mmc1 = &sdhc_2;
+	};
+
+	chosen {
+		stdout-path = "serial0:115200n8";
+	};
+};
+
+/*
+ * WLAN/BT power rails, using the real mainline qcom,pm8550*-rpmh-regulators
+ * binding (regulators live under &apps_rsc, grouped by PMIC instance letter
+ * via qcom,pmic-id -- confirmed by checking the real gts9uwifi reference's
+ * actual structure, correcting an earlier draft of this file that used a
+ * fabricated, syntactically-invalid override pattern instead).
+ *
+ * A note on the "e" vs "f" letters, since it's an easy mix-up: PM8550VS-E
+ * and PM8550VS-G below are two SPMI-addressed *instances* of the same
+ * PM8550VS chip type (same compatible, different qcom,pmic-id) -- not two
+ * different chip variants. PM8550VE ("f" in gts9uwifi's numbering) is a
+ * genuinely different chip and isn't used by anything in this file yet.
+ *
+ * Channel identities (L15B/S2G/S4G/S4E/S6G) are CONFIRMED directly from
+ * dm1q's own downstream DTB+DTBO overlay fixup tables (see
+ * docs/05-dm1q-real-hardware-values.md). Voltage values are INFERRED from
+ * agcarbajo's gts9uwifi reference, which votes the identical RPMh resource
+ * IDs (S2G/S4E/S4G/S6G) -- these are platform-level fixed voltages, not
+ * board-tunable, so this is a well-justified inference, not a guess, but
+ * hasn't been separately confirmed against dm1q's own board specifically.
+ */
+&apps_rsc {
+	regulators-0 {
+		compatible = "qcom,pm8550b-rpmh-regulators";
+		qcom,pmic-id = "b";
+
+		vreg_l15b_1p8: ldo15 {
+			regulator-name = "vreg_l15b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	regulators-1 {
+		compatible = "qcom,pm8550vs-rpmh-regulators";
+		qcom,pmic-id = "e";
+		vdd-s4-supply = <&vph_pwr>;
+
+		vreg_s4e_0p952: smps4 {
+			regulator-name = "vreg_s4e_0p952";
+			regulator-min-microvolt = <952000>;
+			regulator-max-microvolt = <952000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	regulators-2 {
+		compatible = "qcom,pm8550vs-rpmh-regulators";
+		qcom,pmic-id = "g";
+		vdd-s2-supply = <&vph_pwr>;
+		vdd-s4-supply = <&vph_pwr>;
+		vdd-s6-supply = <&vph_pwr>;
+
+		vreg_s2g_0p98: smps2 {
+			regulator-name = "vreg_s2g_0p98";
+			regulator-min-microvolt = <980000>;
+			regulator-max-microvolt = <980000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_s4g_1p352: smps4 {
+			regulator-name = "vreg_s4g_1p352";
+			regulator-min-microvolt = <1352000>;
+			regulator-max-microvolt = <1352000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_s6g_1p904: smps6 {
+			regulator-name = "vreg_s6g_1p904";
+			regulator-min-microvolt = <1904000>;
+			regulator-max-microvolt = <1904000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+};
+
+/*
+ * vph_pwr (battery rail) -- required as the vdd-sN-supply parent for the
+ * regulators above. CONFIRMED this exact node exists and is needed: the
+ * real gts9uwifi reference defines it identically. Not yet confirmed this
+ * is dm1q's own real battery-voltage node name, but it's a very standard,
+ * low-risk convention (fixed always-on regulator representing the battery
+ * rail itself) used across essentially all Qualcomm mainline boards.
+ */
+/ {
+	vph_pwr: vph-pwr-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vph_pwr";
+		regulator-min-microvolt = <3700000>;
+		regulator-max-microvolt = <3700000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};
+
+/*
+ * WLAN/BT combo chip. dm1q uses QCA6490 (CONFIRMED, see
+ * docs/02-open-questions-and-risks.md item 1 -- this corrected an earlier
+ * wrong assumption that it was WCN6855). The real mainline binding for this
+ * chip family is "qcom,wcn6855-pmu" (same PMU-sequencer driver covers both
+ * WCN6855 and QCA6490) -- confirmed by checking the real SM8450-HDK
+ * reference board, which uses the exact same chip.
+ */
+&soc {
+	wcn6855-pmu {
+		compatible = "qcom,wcn6855-pmu";
+		pinctrl-names = "default";
+		pinctrl-0 = <&wlan_en_default>, <&bt_en_default>,
+			    <&sw_ctrl_default>, <&xo_clk_default>;
+
+		/*
+		 * GPIO80/81/82/204 -- CONFIRMED, exact match between dm1q's own
+		 * real downstream source AND the real SM8450-HDK reference
+		 * board using the same chip. This is a fixed SoC-platform pin
+		 * assignment, not a coincidence -- high confidence.
+		 */
+		wlan-enable-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
+		bt-enable-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
+		swctrl-gpios = <&tlmm 82 GPIO_ACTIVE_HIGH>;
+		xo-clk-gpios = <&tlmm 204 GPIO_ACTIVE_HIGH>;
+
+		/*
+		 * Supply mapping. Physical channel identity for io/aon/rfa2/
+		 * dig/rfa1 (L15B/S2G/S4G/S4E/S6G) is CONFIRMED from dm1q's own
+		 * downstream fixup table. The specific *grouping* of mainline's
+		 * 10 named supplies onto those 5 physical regulators is INFERRED
+		 * by structural pattern-matching against the real SM8450-HDK
+		 * reference, which has the identical 1/3/3/1/2 grouping shape
+		 * (one physical regulator per io and dig-class rail, three
+		 * names sharing each of the aon-class and rfa2-class rails, two
+		 * names sharing the rfa1-class rail). Well-justified, not yet
+		 * independently confirmed against dm1q's own fixup table for
+		 * every individual name (the fixup table only directly named
+		 * vdd-wlan-io/dig/rfa1/rfa2/aon, not the finer split).
+		 */
+		vddio-supply = <&vreg_l15b_1p8>;
+		vddaon-supply = <&vreg_s2g_0p98>;
+		vddpmucx-supply = <&vreg_s2g_0p98>;
+		vddrfa0p95-supply = <&vreg_s2g_0p98>;
+		vddpmu-supply = <&vreg_s4g_1p352>;
+		vddrfa1p3-supply = <&vreg_s4g_1p352>;
+		vddpcie1p3-supply = <&vreg_s4g_1p352>;
+		vddpmumx-supply = <&vreg_s4e_0p952>;
+		vddrfa1p9-supply = <&vreg_s6g_1p904>;
+		vddpcie1p9-supply = <&vreg_s6g_1p904>;
+
+		/*
+		 * WLAN PDC calibration table. This IS dm1q's own real
+		 * board-specific calibration data (CONFIRMED -- read directly
+		 * from dm1q's downstream source, NOT copied from gts9uwifi's
+		 * different calibration values). The stock cnss2 driver sends
+		 * this via the AOP QMP mailbox before first WLAN power-on.
+		 */
+		qcom,qmp = <&aoss_qmp>;
+		qcom,wlan-pdc-init =
+			"{class: wlan_pdc, ss: rf, res: s4e.v, upval: 966}",
+			"{class: wlan_pdc, ss: rf, res: s4e.v, dwnval: 615}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, upval: 1350}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, dwnval: 945}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, upval: 1900}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, dwnval: 1825}",
+			"{class: wlan_pdc, ss: rf, res: s2g.m, enable: 1}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, enable: 1}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, upval: 1012}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, dwnval: 515}";
+	};
+
+	/*
+	 * Touch controller. Goodix Berlin, I2C address 0x5d -- CONFIRMED from
+	 * dm1q's own real source. GPIO24 (reset) / GPIO25 (irq) -- CONFIRMED
+	 * from the same source. Compatible string "goodix,berlin" is a
+	 * reasonable placeholder based on the chip family name -- NOT yet
+	 * verified against the actual mainline Goodix Berlin driver binding
+	 * (if one exists yet); check before relying on this compiling/probing
+	 * correctly.
+	 */
+	i2c-touchscreen {
+		/* TODO: which I2C bus instance -- not yet confirmed for dm1q. */
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		touchscreen@5d {
+			compatible = "goodix,berlin";
+			reg = <0x5d>;
+			interrupt-parent = <&tlmm>;
+			interrupts = <25 IRQ_TYPE_EDGE_FALLING>;
+			reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
+			irq-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
+
+&tlmm {
+	wlan_en_default: wlan-en-default-state {
+		pins = "gpio80";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	bt_en_default: bt-en-default-state {
+		pins = "gpio81";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	sw_ctrl_default: sw-ctrl-default-state {
+		pins = "gpio82";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	xo_clk_default: xo-clk-default-state {
+		pins = "gpio204";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+/*
+ * ============================================================
+ * NOT STARTED -- deliberately left out of this first draft:
+ * ============================================================
+ *
+ * - Display panel: dm1q is dual-sourced (Samsung S6E3FAC / Silicon Works
+ *   LX83118, see docs/02-open-questions-and-risks.md item 3b). Needs real
+ *   panel driver work, not just devicetree wiring. Real GPIO values are
+ *   known (reset=GPIO125, TE=GPIO86/87) -- see
+ *   docs/05-dm1q-real-hardware-values.md -- but no panel node is written
+ *   yet since there's no driver to attach it to.
+ * - PCIe / UFS / USB: SoC-level structure transfers from sm8550.dtsi
+ *   directly; board-level wiring not yet started.
+ * - Camera: out of scope per current risk assessment (see
+ *   docs/02-open-questions-and-risks.md item 4).
+ * - s2mpb02 sub-PMIC (camera/display rails) and the VDD_BTP_1P8
+ *   fingerprint rail: real values are known (see
+ *   docs/05-dm1q-real-hardware-values.md) but not wired up since nothing
+ *   in this file consumes them yet.
+ */

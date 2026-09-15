@@ -38,11 +38,11 @@ until they're answered.
 
 - [x] Clone the Tab S9 Ultra pmOS repo (see 03-references.md) into a scratch
       location (originally kept uncommitted, moved into this repo under
-      `_scratch/` on 2026-09-14 — see `_scratch/README.md`). Done
-      2026-09-13: `_scratch/gts9u-pmos-ref` and `_scratch/gts9u-ubuntu-ref`.
+      `../_scratch/` on 2026-09-14 — see `../_scratch/README.md`). Done
+      2026-09-13: `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref`.
 - [x] Pull a recent mainline kernel tree (or at least `arch/arm64/boot/dts/qcom/`)
       to get the baseline `sm8550*.dtsi` files. Done 2026-09-13: sparse
-      partial clone of `torvalds/linux` into `_scratch/linux-mainline`,
+      partial clone of `torvalds/linux` into `../_scratch/linux-mainline`,
       checked out to just `arch/arm64/boot/dts/qcom/` (~25MB total —
       slower than expected to fetch even with `blob:none`, since git still
       walks the full tree-object graph for one commit, but data-light on
@@ -53,7 +53,7 @@ until they're answered.
       `crdroidandroid/android_kernel_samsung_sm8550-devicetrees` (the real,
       official crDroid devicetree-only repo — much smaller and more direct
       than pulling a full kernel source tree), cloned into
-      `_scratch/crdroid-dm1q-dts` (~96MB). This is the ground truth used
+      `../_scratch/crdroid-dm1q-dts` (~96MB). This is the ground truth used
       for the WCN/PMIC/panel/touch answers above.
 
 ## Step 2 — The diff
@@ -109,9 +109,9 @@ canonical version of this checklist):
 
 _(append dated entries here as work happens)_
 
-**Note (2026-09-14): `_scratch/` was moved from a sibling, uncommitted
+**Note (2026-09-14): `../_scratch/` was moved from a sibling, uncommitted
 location into this repo (with `.git` stripped from each cloned subfolder)
-and is now documented in `_scratch/README.md` and the main README. Log
+and is now documented in `../_scratch/README.md` and the main README. Log
 entries below that describe it as "sibling to this repo, not committed
 here" were accurate at the time they were written — treat them as history,
 not current layout.**
@@ -131,7 +131,7 @@ not current layout.**
 - 2026-09-13 (later still): Ran the actual pmaports check from Step 0 using
   Desktop Commander (shell access) instead of `pmbootstrap init`, via a
   data-light sparse partial clone (`git clone --filter=blob:none --depth=1
-  --no-checkout`) of the live repo into `_scratch/pmaports` (sibling to
+  --no-checkout`) of the live repo into `../_scratch/pmaports` (sibling to
   this repo, not committed here). Searched the full tree directly with
   `git ls-tree -r` for dm1q/dm2q/dm3q/kalama/sm8550 — **zero matches
   anywhere**, including device/main. This contradicts the earlier "confirmed
@@ -156,7 +156,7 @@ not current layout.**
   and reasoning logged in docs/03-references.md and
   docs/02-open-questions-and-risks.md item 4.
   Both repos now cloned (shallow, depth=1, ~9.7MB total) into
-  `_scratch/gts9u-pmos-ref` and `_scratch/gts9u-ubuntu-ref` (siblings
+  `../_scratch/gts9u-pmos-ref` and `../_scratch/gts9u-ubuntu-ref` (siblings
   to this repo, not committed here) for actual use as SM8550 reference
   material going forward. Next real step: use these — particularly
   `gts9u-pmos-ref/pmaports/device/testing/{device,linux}-samsung-gts9uwifi*`
@@ -167,7 +167,7 @@ not current layout.**
   values.
 
 - 2026-09-13 (night, session close): Pulled real mainline
-  `arch/arm64/boot/dts/qcom/` (sparse clone, `_scratch/linux-mainline`)
+  `arch/arm64/boot/dts/qcom/` (sparse clone, `../_scratch/linux-mainline`)
   and diffed the gts9u board devicetree against the four upstream files it
   includes (`sm8550.dtsi`, `pm8550.dtsi`, `pm8550vs.dtsi`, `pmk8550.dtsi`).
   Full categorized result in the new
@@ -197,7 +197,7 @@ not current layout.**
   devicetree-only repo (`crdroidandroid/android_kernel_samsung_sm8550-devicetrees`,
   official, much smaller than a full kernel tree) and pulled dm1q's actual
   Samsung downstream `.dts` files (10 board revisions, ~96MB, into
-  `_scratch/crdroid-dm1q-dts`). This resolved every remaining Step 0 item
+  `../_scratch/crdroid-dm1q-dts`). This resolved every remaining Step 0 item
   with ground truth rather than inference:
   - **WCN chip corrected**: dm1q uses QCA6490, not WCN6855 (all 10 revisions
     checked, zero WCN6855 references). Still ath11k-family, mainlined
@@ -216,7 +216,7 @@ not current layout.**
   devicetree, not just planning it.
 
 - 2026-09-14 (continued): Deeper extraction pass on the real dm1q crDroid
-  devicetree source (`_scratch/crdroid-dm1q-dts`), per user request for
+  devicetree source (`../_scratch/crdroid-dm1q-dts`), per user request for
   full regulator/pinctrl/GPIO tables. Wrote two small extraction scripts
   (`notes/extract_regulators.py`, `notes/extract_pinctrl.py`) since the
   source is a dtc-decompiled DTB (numeric phandles, lost labels) rather
@@ -267,3 +267,83 @@ not current layout.**
   method is available for other consumers (panel, touch, etc.) on an
   as-needed basis when actually writing those specific nodes, rather than
   as a blanket upfront task.
+
+- 2026-09-14 (night): **First real devicetree draft written: dts/dm1q/dm1q.dts.**
+  Structural template from gts9uwifi + the real SM8450-HDK reference board
+  (same QCA6490 chip, better match than gts9uwifi's WCN7850 for this
+  specific node). Content: model/compatible/msm-id/board-id (CONFIRMED real
+  values), the 5 real PM8550-family regulators behind dm1q's WLAN/BT
+  (L15B/S2G/S4G/S4E/S6G, channel identities CONFIRMED, voltages INFERRED
+  from platform-constant reasoning), the QCA6490 wcn6855-pmu node with real
+  GPIO80/81/82/204 and the resolved supply mapping, and a touch controller
+  placeholder (Goodix Berlin, real GPIO24/25, bus instance NOT yet
+  confirmed). Display/PCIe/UFS/USB/camera deliberately left out --
+  explicitly marked, not silently missing.
+  **Compiled and verified with real tooling, not just eyeballed**: `cpp`
+  (for the #include/dt-bindings macros) piped into `dtc -@ -I dts -O dtb`,
+  using the real mainline sm8550.dtsi/pm8550*.dtsi as includes. Exit code 0,
+  produces a valid .dtb. Caught and fixed two real bugs this way before they
+  could sit undetected in the file: (1) an invalid, fabricated
+  `label: &node-ref {}` override syntax for the L15B regulator that isn't
+  valid devicetree at all; (2) a wrong PMIC assignment -- confused
+  PM8550VS-E (an *instance letter* of PM8550VS) with PM8550VE (a
+  *different chip*) for the S4E regulator. Both corrected by checking
+  gts9uwifi's actual real structure rather than guessing.
+  Needed two extra dependency fetches to get `dtc`/`cpp` working:
+  `include/dt-bindings/` (7.7MB) and the one transitively-missing
+  `linux-event-codes.h` target file -- both fetched into a genuinely
+  separate `/tmp` location first, then copied in as plain files (same
+  pattern as everything else in `../_scratch/`), not git-cloned directly into
+  `../_scratch/linux-mainline` itself.
+
+- 2026-09-14 (night, incident during the above): **Real, well-understood
+  accident, fully recovered, documented for transparency and to prevent
+  recurrence.** While trying to fetch missing dt-bindings headers, ran `git
+  sparse-checkout` commands with cwd inside `../_scratch/linux-mainline`.
+  **Root cause: `../_scratch/linux-mainline` (and everything else under
+  `../_scratch/`) has no `.git` of its own** -- deliberately stripped before
+  committing these as plain files into the outer repo (see
+  `../_scratch/README.md`). Any `git` command run from inside those
+  directories doesn't fail -- it silently walks up and operates on the
+  **outer dm1q-mainline repo's `.git` instead**, since that's the nearest
+  real one. This happened twice in a row before being correctly diagnosed,
+  twice leaving the outer repo's `core.sparseCheckout` config stuck `true`
+  with a cone-mode pattern excluding all subdirectories -- `docs/`,
+  `notes/`, and most of `../_scratch/` disappeared from the working directory
+  (but were NEVER at risk in git history/objects -- `git log` showed all
+  commits intact throughout, and `git ls-tree HEAD` always showed the full
+  file list). Fully recovered via `git sparse-checkout disable` (had to be
+  run twice, since the first recovery attempt itself triggered the second
+  incident the same way) and verified thoroughly afterward: tracked file
+  count matches exactly between `git ls-tree HEAD` and the actual working
+  directory (6895 = 6895), `git diff --stat` empty, directory sizes sane.
+  **Lesson for future sessions: NEVER run `git` commands with cwd inside
+  any `../_scratch/` subdirectory. If external repo content needs fetching or
+  updating, do it in a genuinely separate location (e.g. `/tmp/`) and copy
+  the needed files in afterward** -- exactly the pattern used successfully
+  for the dt-bindings fetch right after this incident, and the same pattern
+  already used (correctly) for every other addition to `../_scratch/` so far.
+
+- 2026-09-15: **`_scratch/` moved back OUT of the repo, to a sibling
+  location (`../_scratch/` from the repo root), not tracked in git.**
+  Reverses the 2026-09-14 decision to commit it. Reasoning: the incident
+  earlier this session (see the "Real, well-understood accident" entry
+  above) happened specifically because `_scratch/`'s subdirectories have no
+  `.git` of their own while living *inside* a git-tracked working tree --
+  any `git` command run there silently walks up and hits the outer repo's
+  `.git` instead of failing cleanly. Confirmed `~/Documents/GitHub` itself
+  is not a git repository (`git rev-parse --is-inside-work-tree` ->
+  "not a git repository, stopping at filesystem boundary"), so as a
+  sibling location, the same mistake would now fail loudly and safely
+  instead of silently damaging the repo. User's call, given they're the
+  only person using this repo and `_scratch/` is genuinely just a
+  workspace: prefer the sibling location; bring specific files back into
+  the repo "in a more organized manner" later, once actually needed for
+  something durable (e.g. once the real research file is settled, not the
+  whole 90MB+ reference dump).
+  Added `.gitignore` (`_scratch/`) to prevent accidentally re-tracking it.
+  Fixed all path references in docs/README/dts (were `_scratch/...`, now
+  `../_scratch/...` for files at repo root depth, or the correct relative
+  depth for `dts/dm1q/dm1q.dts` specifically). Verified nothing broke:
+  recompiled `dm1q.dts` from its new required path and got a byte-identical
+  `.dtb` (same SHA256) as before the move.

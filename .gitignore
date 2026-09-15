@@ -1,0 +1,5 @@
+# _scratch/ is external reference material -- frozen snapshots of other
+# people's repos, kept as a sibling workspace outside this repo, not
+# tracked here. See the project docs for why (the git-tracked-nested-repo
+# incident documented in docs/01-phase1-workplan.md's log).
+_scratch/

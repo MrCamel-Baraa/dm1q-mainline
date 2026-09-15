@@ -1,3 +1,0 @@
-# Let desktop users in video control only continuous torch brightness.  Strobe,
-# timeout and fault controls remain root-only for camera-stack synchronisation.
-SUBSYSTEM=="leds", KERNEL=="white:flash", RUN+="/usr/libexec/ubuntu-gts9u-flashlight-permissions %p"
