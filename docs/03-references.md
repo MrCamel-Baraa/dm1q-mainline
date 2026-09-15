@@ -161,3 +161,65 @@
   confirm the S23 series ships Wi-Fi 6E only in software/firmware despite the
   Ultra's chip having native Wi-Fi 7 capability — consistent with the
   FastConnect 7800/WCN7850 identification above.
+
+
+## Bootloader method reference — Samsung SDM670 case study (2026-09-15)
+
+- **A70q (SM-A705FN, SDM670/sm6150) "vibe-coded" mainline pmOS port** —
+  raised in conversation as an unverified community claim (AI-assisted,
+  ChatGPT, non-technical author), later reported as verified working by ROM
+  maintainers with logs/video. Cloned and directly inspected both repos
+  rather than trusting the secondhand description:
+  - `github.com/redzrush101/linux`, branch `a70q/mainline-next` — real DTS
+    at `arch/arm64/boot/dts/qcom/sm6150-samsung-a70q.dts`.
+  - `github.com/redzrush101/pmaports`, branch `a70q/pmaports-next` (NOT
+    `main` — the default branch has no A70q content at all) — real device
+    package at `device/testing/device-samsung-a70q/`, plus a substantial
+    kernel patch set (`device/testing/linux-postmarketos-qcom-sm6150/`)
+    covering display, GPU, Venus, ADSP, touchscreen enablement and CPU/
+    cluster power-collapse tuning. Granular, plausible, non-trivial patch
+    work — not fabricated placeholder content.
+  - **Bootloader method confirmed from the real deviceinfo file:
+    `deviceinfo_flash_method="heimdall-bootimg"`.** No U-Boot, no uniLoader,
+    no intermediate chainloaded bootloader at all — Samsung's stock SBL
+    loads a standard Android boot.img (mainline kernel + DTB + ramdisk)
+    directly, flashed to the BOOT partition via Heimdall (open-source Odin
+    protocol tool). Rootfs flashed separately to USERDATA.
+  - Flashing flow (from a Heimdall-based pmOS install doc, screenshotted in
+    conversation): clear the stock DTBO partition first
+    (`heimdall flash --DTBO empty_dtbo.img`) so it can't silently override
+    the mainline devicetree, then `pmbootstrap install --split` +
+    `pmbootstrap export` to produce separate boot/root images, then
+    `img2simg` to convert both to Android sparse image format (required by
+    Heimdall/Odin's protocol) before flashing.
+  - **Relevance to dm1q:** dm1q shares the same Samsung SBL lineage. This
+    suggests `heimdall-bootimg` (no intermediate bootloader) may be viable
+    for dm1q too, which would avoid U-Boot chainload work entirely if it
+    pans out. Worth testing early once bootloader-stage work starts, rather
+    than assuming U-Boot is required by default.
+
+## uniLoader (bootloader, noted for completeness)
+
+- Minimal intermediate ARMv7/ARMv8 bootloader used across the pmOS
+  ecosystem, mainly on Exynos Samsung devices (dreamlte, starlte, herolte,
+  beyond1lte, zeroflte) with some Qualcomm/MediaTek entries elsewhere. Same
+  role as U-Boot (stock bootloader → uniLoader → kernel) but deliberately
+  minimal — no scripting environment, no FIT image handling. Less relevant
+  to dm1q than U-Boot or the heimdall-bootimg approach above; noted here for
+  completeness since it came up during bootloader-method research.
+
+## Kupfer — U-Boot/aboot gap (2026-09-15)
+
+- Kupfer's own porting docs confirm the workflow is: take an existing pmOS
+  device port (unofficial/local is fine — upstream pmaports merge is NOT a
+  prerequisite) and port its APKBUILD/deviceinfo to Kupfer's PKGBUILD
+  scheme, using existing Kupfer device ports as a template.
+- **Gap that matters for sequencing:** Kupferbootstrap currently only knows
+  how to produce Android aboot-style boot images. It does not yet call into
+  `boot-deploy` (postmarketOS's boot-artifact-assembly tool, successor to
+  android-bootimg-updater) for U-Boot targets. If dm1q ends up needing a
+  U-Boot chainload (as opposed to the heimdall-bootimg approach noted
+  above), Kupfer bring-up would need `boot-deploy` support wired into
+  Kupferbootstrap first — that's tooling work upstream in Kupfer itself, not
+  something resolvable in this repo alone. If heimdall-bootimg works for
+  dm1q instead, this gap may not apply at all.

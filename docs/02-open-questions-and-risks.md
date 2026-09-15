@@ -167,3 +167,28 @@ here with their answer and source, and are also reflected in 00-overview.md.
    The exact current number/list in 00-overview.md ("~10 devices") was not
    re-verified live against `kupfer.gitlab.io/devices/` on 2026-09-13 — treat
    that specific figure as dated until checked again.
+
+## Newly raised — bootloader method (2026-09-15)
+
+10. **dm1q bootloader/flash method — open, but a promising low-effort
+   candidate exists.** Not yet tested against dm1q specifically. Two
+   candidates identified so far:
+   - `heimdall-bootimg` (no intermediate bootloader; stock SBL loads a
+     standard Android boot.img directly) — confirmed working on a real
+     comparable Samsung Qualcomm device (A70q/SDM670, see 03-references.md
+     for the full case study and deviceinfo evidence). Worth trying first
+     given it avoids all U-Boot chainload work.
+   - U-Boot chainload — the default assumption discussed earlier in this
+     project, consistent with general Samsung/Qualcomm mainlining precedent
+     and the separate A70q U-Boot porting project, but not yet confirmed
+     necessary for dm1q specifically.
+   Decision deferred until bootloader-stage work begins; test
+   heimdall-bootimg first since it's the lower-effort path if it works.
+
+11. **Kupfer U-Boot/aboot gap — only matters if dm1q needs U-Boot.**
+   Kupferbootstrap currently only produces aboot-style boot images; it does
+   not yet integrate `boot-deploy` for U-Boot targets. If item 10 above
+   resolves to U-Boot being necessary for dm1q, Kupfer bring-up will need
+   this upstream gap closed first (not resolvable within this repo). If
+   heimdall-bootimg (the no-intermediate-bootloader approach) works instead,
+   this gap likely doesn't apply. See 03-references.md for detail.
