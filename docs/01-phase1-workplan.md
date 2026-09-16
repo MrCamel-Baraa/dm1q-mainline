@@ -364,13 +364,20 @@ not current layout.**
     — sm8550.dtsi disables it by default, so without this there would be
     zero boot console output regardless of the aliases/chosen nodes already
     in the file. This was a real, silent first-boot blocker.
-  - **microSD (sdhc_2) alias corrected, left deliberately disabled.**
-    Initially assumed dm1q might lack SD support (later S-series phones
-    often do) — wrong assumption, corrected: dm1q's real source has a
-    genuine card-detect GPIO12 (this is the EUR/hybrid-tray variant).
-    sdhc_2 confirmed as the only candidate (no sdhc_1 exists on this SoC).
-    Left disabled since it needs vmmc/vqmmc regulators not yet identified,
-    and isn't needed for first boot (that's UFS, not SD).
+  - **microSD (sdhc_2) alias — corrected twice, see below for the final
+    answer.** First pass: initially assumed dm1q might lack SD support
+    (later S-series phones often do), then wrongly "corrected" to assume
+    it DOES have SD support based on a real card-detect GPIO12 found in
+    dm1q's downstream source. **Both were wrong. Final correction
+    (2026-09-15, from the user, who physically owns the device): the
+    Galaxy S23 has no microSD slot at all.** The card-detect GPIO12 is
+    real data but doesn't mean what it was assumed to mean — it's
+    evidently a leftover/shared definition from Samsung's common
+    devicetree base, not populated hardware on this device. Lesson: real
+    hardware ground truth from someone who owns the device beats
+    devicetree-archaeology inference, however well-evidenced the
+    inference seemed. `mmc1` alias removed entirely, `sdhc_2` left
+    disabled permanently (not "deferred" — this is settled, not open).
   - **UFS (actual boot/root storage) substantially wired up.** Real
     fixup-table cross-referencing (same method as the QCA6490 regulator
     resolution) confirmed: reset-gpios = GPIO210 (exact match with
@@ -398,8 +405,8 @@ not current layout.**
   warnings (duplicate i2c/spi unit addresses — normal Qualcomm QUP pattern,
   not something to fix here).
   **Still open after this pass**: UFS vcc-supply identity, touch
-  controller's I2C bus instance, sdhc_2 regulators (deferred, not a boot
-  blocker), display/panel (deferred, needs real driver work).
+  controller's I2C bus instance, display/panel (deferred, needs real
+  driver work). microSD is settled (no slot exists), not open.
 
 - 2026-09-15 (continued): **UFS vcc-supply resolved via live hardware
   measurement — a new technique for this project.** Gained root on the
@@ -442,3 +449,24 @@ not current layout.**
   (min=max). Full comparison table in docs/05-dm1q-real-hardware-values.md.
   Fixed one duplicate-label bug introduced mid-edit (caught before commit
   via the usual cpp+dtc compile check, exit 0 clean).
+
+- 2026-09-15 (continued): **Two corrections from the user, plus the touch
+  controller I2C bus resolved.**
+  User corrected (ground truth, physically owns the device): the Galaxy
+  S23 has no microSD slot at all. This overturns an earlier "confirmed"
+  conclusion in this same file that took a real card-detect GPIO12 in
+  dm1q's source as sufficient evidence for SD support — it wasn't; that
+  GPIO is evidently a leftover/shared definition from Samsung's common
+  devicetree base. `mmc1` alias removed from dm1q.dts entirely, `sdhc_2`
+  now documented as permanently N/A rather than "deferred." Real hardware
+  ground truth from the device owner overrides devicetree-archaeology
+  inference, however well-evidenced the inference seemed at the time.
+  **Touch controller I2C bus — resolved via the live device's own booted
+  devicetree** (`/sys/firmware/devicetree/base/`, not inference): address
+  0xa90000 matches mainline's `&i2c4` exactly. Also cross-checked
+  reset-gpio/irq-gpio/irq-flags directly from the live tree — all matched
+  the earlier fixup-table-based extraction exactly, good corroboration of
+  that method too. dm1q.dts updated to use the real `&i2c4` bus instead of
+  a placeholder container; this also removed a real compile warning
+  (missing reg/ranges), not just resolved a TODO comment.
+  Verified via cpp+dtc as always: exit 0, one fewer warning than before.

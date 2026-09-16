@@ -255,3 +255,26 @@ use — e.g. `sm8450-hdk.dts`'s `vreg_s11b_0p95` has a real
 This is strong validation of the whole cross-referencing methodology used
 throughout this project (gts9uwifi's channel-identity mapping + real RPMh
 platform-constant reasoning) — every single inferred value checked out.
+
+## Touch controller I2C bus — resolved 2026-09-15
+
+Resolved via the live device's own booted devicetree
+(`/sys/firmware/devicetree/base/`, readable with root) — the strongest
+possible source, since it's literally what the running kernel uses, not
+reconstructed or inferred from anything else.
+
+Found: `.../qcom,qupv3_1_geni_se@ac0000/i2c@a90000/goodix-berlin@5d`.
+Address `0xa90000` matches mainline's `i2c4: i2c@a90000` in `sm8550.dtsi`
+exactly — fully unambiguous, no cross-referencing or inference needed.
+
+Also read the live `goodix,reset-gpio`, `goodix,irq-gpio`, and
+`goodix,irq-flags` properties directly (raw bytes via `xxd`) and decoded
+them: GPIO24 (reset), GPIO25 (irq), `IRQ_TYPE_EDGE_FALLING` (flag value 2)
+— all three exactly matched what was already in `dm1q.dts` from the
+earlier fixup-table-based extraction. Good additional confirmation that
+the earlier extraction pass was accurate, not just the bus instance.
+
+`dm1q.dts` updated: touch controller moved from a placeholder
+`i2c-touchscreen` container (which had a real `missing reg/ranges`
+compile warning) to the actual `&i2c4` bus override — the warning is now
+gone, not just documented as expected.

@@ -81,18 +81,19 @@
 		 * (qup_uart7_default: GPIO26 TX, GPIO27 RX, function qup1_se7).
 		 * High confidence.
 		 *
-		 * mmc1 = &sdhc_2 -- CONFIRMED 2026-09-15. dm1q's real source has
-		 * a real card-detect GPIO12 (sd_card_det_default), meaning this
-		 * EUR variant does have microSD support (initially assumed it
-		 * might not, since later S-series phones often drop this --
-		 * wrong assumption, corrected by checking real evidence rather
-		 * than general knowledge). sdhc_2 is the only SD-capable
-		 * controller that exists on this SoC at all (checked: no sdhc_1
-		 * in mainline sm8550.dtsi), so it's the only candidate --
-		 * unambiguous once card-detect is confirmed to exist.
+		 * mmc1 = &sdhc_2 -- REMOVED 2026-09-15, corrected by the user
+		 * (who physically holds the device): the Galaxy S23 has no
+		 * microSD slot. The real card-detect GPIO12 (sd_card_det_default)
+		 * found in dm1q's downstream source does NOT mean SD support
+		 * exists -- it's evidently a leftover/shared definition from
+		 * Samsung's common devicetree base across SKUs/regions, not
+		 * populated hardware on this device. This corrects an earlier
+		 * wrong conclusion in this same file that took the pinctrl
+		 * entry's existence as sufficient evidence -- it wasn't. Real
+		 * hardware ground truth (the person who owns the actual phone)
+		 * overrides the devicetree-archaeology inference here.
 		 */
 		serial0 = &uart7;
-		mmc1 = &sdhc_2;
 	};
 
 	chosen {
@@ -113,15 +114,13 @@
 };
 
 /*
- * sdhc_2 (microSD) deliberately left disabled for now. dm1q's real source
- * confirms this EUR variant has a card-detect GPIO (see the aliases note
- * above), so it's not a fabricated peripheral -- but it needs real
- * vmmc-supply/vqmmc-supply regulator values we haven't identified yet, and
- * SD card isn't needed for first boot to a shell (that's UFS, the actual
- * boot/root storage -- see the ufs_mem_hc block below). Wiring this up
- * half-correctly (status okay without real regulators) risks confusing
- * probe-deferral noise for no first-boot benefit. Revisit once UFS/display/
- * core boot path is working.
+ * sdhc_2 (microSD) -- CONFIRMED 2026-09-15 (corrected): the Galaxy S23 has
+ * no microSD slot at all. Left disabled permanently, not just deferred --
+ * this isn't a "revisit later" item, it's real hardware that doesn't
+ * exist on this device. The real card-detect GPIO12 in dm1q's downstream
+ * source is a leftover/shared platform definition, not populated hardware
+ * -- ground truth from the person who owns the actual phone, overriding
+ * the earlier devicetree-archaeology inference in this file.
  */
 
 /*
@@ -448,19 +447,28 @@
 	 * (if one exists yet); check before relying on this compiling/probing
 	 * correctly.
 	 */
-	i2c-touchscreen {
-		/* TODO: which I2C bus instance -- not yet confirmed for dm1q. */
-		#address-cells = <1>;
-		#size-cells = <0>;
+};
 
-		touchscreen@5d {
-			compatible = "goodix,berlin";
-			reg = <0x5d>;
-			interrupt-parent = <&tlmm>;
-			interrupts = <25 IRQ_TYPE_EDGE_FALLING>;
-			reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
-			irq-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
-		};
+/*
+ * CONFIRMED 2026-09-15 via the live device's own booted devicetree
+ * (/sys/firmware/devicetree/base/ -- not inferred, this is exactly what
+ * the running kernel actually uses): the touch controller sits at
+ * i2c@a90000, which mainline's sm8550.dtsi labels &i2c4 exactly
+ * (i2c4: i2c@a90000 { ... }; reg = <0 0x00a90000 ...>). Fully
+ * unambiguous. Also cross-checked reset-gpio/irq-gpio/irq-flags from the
+ * live devicetree directly -- all three exactly match what was already
+ * in this file (GPIO24 reset, GPIO25 irq, IRQ_TYPE_EDGE_FALLING).
+ */
+&i2c4 {
+	status = "okay";
+
+	touchscreen@5d {
+		compatible = "goodix,berlin";
+		reg = <0x5d>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <25 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
+		irq-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
 	};
 };
 
