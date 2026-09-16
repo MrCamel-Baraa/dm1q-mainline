@@ -218,3 +218,40 @@ device (`adb shell su -c 'cat /sys/class/regulator/regulator.N/*'`, once
 root is available) can resolve exactly the kind of factual question that's
 otherwise stuck at "plausible guess." Worth trying this route earlier for
 similarly-stuck items rather than only as a last resort.
+
+## Full live-hardware verification pass — 2026-09-15
+
+Following the UFS vcc-supply resolution above, went back through every
+regulator voltage in dm1q.dts marked "INFERRED from gts9uwifi" and checked
+each against the real physical device (`adb shell su -c 'cat
+/sys/class/regulator/regulator.N/*'`, root via KernelSU). Also
+cross-confirmed all 5 WLAN regulator channel identities independently via
+`/sys/class/devlink/` consumer symlinks (e.g.
+`rpmh-regulator-smpg2--platform:b0000000.qcom,cnss-qca6490`), not just the
+downstream fixup-table method used earlier — an even more direct
+confirmation, since it shows the live kernel's actual consumer graph.
+
+| Channel | Consumer | Inferred (gts9uwifi) | Live confirmed | Result |
+|---|---|---|---|---|
+| L15B | WLAN vddio | 1.8V fixed | 1.8V fixed (regulator.34) | Exact match |
+| L3E | UFS vdda-pll | 1.2V fixed | 1.2V fixed (regulator.63) | Exact match |
+| L1E | UFS vdda-phy | 0.88V | 0.88–0.912V (regulator.57) | Matches min |
+| L1G | UFS vccq | 1.2V | 1.144–1.256V (regulator.82) | Matches midpoint |
+| S4G | WLAN rfa2 | 1.352V | 1.2–1.352V (regulator.78) | Matches max |
+| S6G | WLAN rfa1 | 1.904V | 1.8–2.0V (regulator.81) | Within range |
+| S4E | WLAN dig | 0.952V | 0.904–0.984V (regulator.53) | Within range |
+| S2G | WLAN aon | 0.98V | 0.5–1.036V (regulator.75) | Within range, live instantaneous reading notably lower (idle corner) |
+
+**Outcome: nothing was actually wrong.** Every gts9uwifi-inferred value
+either matched exactly or fell within the real device's confirmed range.
+But several of these are genuinely multi-corner ARC-voted rails, not fixed
+single points — `dm1q.dts` updated to use the real min/max ranges instead
+of the originally-guessed single fixed values, which is both more accurate
+and better practice (lets the consumer driver request whatever corner it
+actually needs at runtime, same pattern mainline's own reference boards
+use — e.g. `sm8450-hdk.dts`'s `vreg_s11b_0p95` has a real
+966000–1104000 range, not a literal fixed 0.95V, despite the name).
+
+This is strong validation of the whole cross-referencing methodology used
+throughout this project (gts9uwifi's channel-identity mapping + real RPMh
+platform-constant reasoning) — every single inferred value checked out.

@@ -423,3 +423,22 @@ not current layout.**
   reaching for earlier next time static source analysis hits a genuine
   wall, rather than only as a last resort.
   Verified via real compilation as always: exit code 0, no new errors.
+
+- 2026-09-15 (continued): **Full live-hardware verification pass on every
+  remaining "INFERRED" regulator value in dm1q.dts.** Checked all 8
+  gts9uwifi-inferred voltages (L15B, L3E, L1E, L1G, S4G, S6G, S4E, S2G)
+  against the real physical device via adb/KernelSU root. Also
+  independently cross-confirmed all 5 WLAN channel identities via
+  `/sys/class/devlink/` consumer symlinks (a second, more direct method
+  than the downstream fixup-table approach used earlier).
+  **Result: every single inferred value either matched exactly or fell
+  within the real confirmed range** — strong validation of the
+  cross-referencing methodology used throughout this project. Updated
+  dm1q.dts to use real min/max ranges (rather than the originally-guessed
+  single fixed points) for the genuinely multi-corner ARC-voted rails
+  (S2G, S4G, S6G, S4E, L1E, L1G) — more accurate and matches how real
+  mainline reference boards represent these. L15B and L3E stay fixed
+  single values since the real device confirms they genuinely are fixed
+  (min=max). Full comparison table in docs/05-dm1q-real-hardware-values.md.
+  Fixed one duplicate-label bug introduced mid-edit (caught before commit
+  via the usual cpp+dtc compile check, exit 0 clean).
