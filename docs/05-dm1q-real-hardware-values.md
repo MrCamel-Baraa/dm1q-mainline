@@ -161,3 +161,60 @@ python3 notes/extract_pinctrl.py ../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_o
 Both scripts take a `.dts` path as their only argument — point them at a
 different board revision (`dm1q_eur_openx_w00_r01` through `r13`) to compare
 across revisions if needed.
+
+## UFS regulator mapping — resolved 2026-09-15
+
+Same fixup-table cross-referencing method as the QCA6490 WLAN/BT mapping
+above, applied to `&ufs_mem_hc`/`&ufs_mem_phy`. All channel identities
+below are from dm1q's own real DTB+DTBO overlay fixup tables, not
+inference:
+
+| Supply | Real channel | Cross-check |
+|---|---|---|
+| `reset-gpios` | GPIO210 (`0xd2`) | Exact match with gts9uwifi's reset-gpio |
+| `vccq-supply` | PM8550VS-G L1 (`pm_v6g_l1`) | Exact channel match with gts9uwifi's `vreg_l1g_1p2` |
+| `vdda-pll-supply` | PM8550VS-E L3 (`pm_v6e_l3`) | Exact channel match with gts9uwifi's `vreg_l3e_1p2` |
+| `vdda-phy-supply` | PM8550VS-E L1 (`pm_v6e_l1`, downstream name `vdda-qref-supply`) | Exact channel match with gts9uwifi's `vreg_l1e_0p88` |
+| `vdd-hba-supply`/ref-clk | PM8550VS-G L3 (`pm_v6g_l3`) | Exact channel match with gts9uwifi's `vdd-hba-supply = vreg_l3g_1p2` |
+
+**`vcc-supply` (main UFS power) — a genuinely harder case, resolved by live
+hardware measurement rather than static source analysis.** dm1q's fixup
+table showed this fed by `pm_humu_l17` — a PMIC instance ("humu") absent
+from Qualcomm's own reference `kalama-pmic-overlay.dtsi` entirely.
+Investigation trail:
+1. Checked real kernel mailing list patches for PM8350C's documented
+   regulator range: `smps1-smps10, ldo1-ldo13, bob`. This matches the BOB
+   (buck-boost) capability seen alongside `humu` in dm1q's source, but
+   the L17 numbering exceeds PM8350C's documented L1-L13 range — a real
+   inconsistency, not resolved by this alone.
+2. Connected to the actual physical device over `adb` (root via KernelSU)
+   and read `/sys/class/regulator/` directly. Found `regulator.44`
+   (`pm_humu_l17`) has a symlink literally named `1d84000.ufshc-vcc` with
+   consumer `platform:1d84000.ufshc` — `1d84000` is the exact UFS host
+   controller address from mainline's own `ufshc@1d84000` node.
+   **Fully unambiguous, live confirmation**, not inferred: `state=enabled`,
+   `microvolts=2504000` (2.504V, fixed — min equals max), `num_users=1`,
+   `opmode=fast`.
+3. Given the channel count (17 LDOs + 2 BOB outputs under "humu") exceeds
+   any single chip in dm1q's confirmed PMIC set, "humu" is likely an RPMh
+   voting domain that aggregates multiple physical PMICs (dm1q has 2×
+   PM8010, 7 LDOs each = 14, plus PM8350C's LDOs/BOB — both already in
+   dm1q's confirmed PMIC list), not a single chip. The exact SPMI-level
+   binding for this aggregate domain was not resolved.
+
+**Practical resolution in dm1q.dts**: modeled as a simple `regulator-fixed`
+node at the confirmed real voltage (2.504V), rather than the real "humu"
+PMIC chain. This is a deliberate, evidenced simplification: UFS holds the
+boot media itself, so this rail must already be enabled by firmware
+(PBL/XBL) before Linux starts — the bootloader couldn't otherwise read the
+kernel off UFS. The live `num_users=1` confirms nothing else shares this
+rail, so a static always-on representation doesn't misrepresent any
+dynamic sharing behavior either.
+
+**Methodology note for future items like this**: when static source
+archaeology hits a genuine wall (chip identity ambiguous, downstream/
+mainline binding mismatch), live measurement against the actual physical
+device (`adb shell su -c 'cat /sys/class/regulator/regulator.N/*'`, once
+root is available) can resolve exactly the kind of factual question that's
+otherwise stuck at "plausible guess." Worth trying this route earlier for
+similarly-stuck items rather than only as a last resort.

@@ -245,6 +245,21 @@
 		regulator-always-on;
 		regulator-boot-on;
 	};
+
+	/* CONFIRMED 2026-09-15 via live hardware measurement (see the
+	 * &ufs_mem_hc block below for the full evidence trail) -- real
+	 * UFS main power rail, 2.504V, already enabled by firmware before
+	 * Linux starts. Modeled as fixed rather than through the real
+	 * "humu" PMIC chain, whose exact devicetree binding wasn't
+	 * identified -- see docs/05-dm1q-real-hardware-values.md. */
+	vreg_ufs_vcc_2p5: vreg-ufs-vcc-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vreg_ufs_vcc_2p5";
+		regulator-min-microvolt = <2504000>;
+		regulator-max-microvolt = <2504000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
 };
 
 /*
@@ -270,25 +285,35 @@
 	vccq-max-microamp = <1200000>;
 
 	/*
-	 * vcc-supply -- DELIBERATELY LEFT AS TODO, not filled in with a
-	 * guess. dm1q's real fixup table shows this fed by "pm_humu_l17" --
-	 * a PMIC instance letter ("humu") that does NOT appear anywhere in
-	 * Qualcomm's own reference kalama-pmic-overlay.dtsi at all, meaning
-	 * it's a Samsung-specific addition, not one of the PM8550-family
-	 * chips this file already includes. This directly CONTRADICTS
-	 * blindly reusing gts9uwifi's vcc-supply = vreg_l17b_2p5 (PM8550B
-	 * L17) -- that would be wiring UFS main power to the wrong physical
-	 * chip. "humu" shows BOB (buck-boost) outputs in dm1q's source,
-	 * which plausibly matches PM8350C (a known charger/haptics
-	 * companion chip with that signature) but this is an unconfirmed
-	 * guess, not evidence -- don't treat it as settled. Needs its own
-	 * proper identification before this UFS node can safely be marked
-	 * status = "okay". Catching this now (instead of copying gts9uwifi's
-	 * value) is the kind of check this whole file is trying to get
-	 * right rather than fast.
+	 * vcc-supply -- RESOLVED 2026-09-15 via live hardware measurement,
+	 * not static source archaeology. Connected to the real device over
+	 * adb (root via KernelSU) and read /sys/class/regulator/ directly:
+	 * regulator.44 ("pm_humu_l17") has a symlink literally named
+	 * "1d84000.ufshc-vcc" with consumer "platform:1d84000.ufshc" --
+	 * 1d84000 is the exact UFS host controller address from mainline's
+	 * own ufshc@1d84000 node. Fully unambiguous, not inferred.
+	 * Live values: state=enabled, microvolts=2504000 (2.504V, fixed --
+	 * min_microvolts == max_microvolts, not a range), num_users=1,
+	 * opmode=fast.
+	 * Modeled here as a simple fixed regulator rather than through the
+	 * real "humu" PMIC chain (whose exact devicetree binding was never
+	 * identified -- see docs/05-dm1q-real-hardware-values.md for that
+	 * investigation). This is a deliberate, reasoned simplification, not
+	 * a guess: UFS holds the boot media itself, so this rail must
+	 * already be powered on by firmware (PBL/XBL) before Linux even
+	 * starts -- the bootloader couldn't otherwise read the kernel off
+	 * UFS to begin with. num_users=1 on the live system confirms nothing
+	 * else shares this rail, so a static always-on representation
+	 * doesn't misrepresent any dynamic sharing behavior either.
 	 */
+	vcc-supply = <&vreg_ufs_vcc_2p5>;
+	vcc-max-microamp = <1300000>; /* placeholder, matching gts9uwifi's
+					  value -- not independently confirmed
+					  for dm1q, low first-boot risk since
+					  it's a ceiling, not a set-point */
 
-	status = "disabled"; /* stays disabled until vcc-supply is resolved */
+	status = "okay"; /* CONFIRMED 2026-09-15, was "disabled" pending
+			     vcc-supply resolution above */
 };
 
 &ufs_mem_phy {

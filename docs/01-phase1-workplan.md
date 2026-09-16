@@ -400,3 +400,26 @@ not current layout.**
   **Still open after this pass**: UFS vcc-supply identity, touch
   controller's I2C bus instance, sdhc_2 regulators (deferred, not a boot
   blocker), display/panel (deferred, needs real driver work).
+
+- 2026-09-15 (continued): **UFS vcc-supply resolved via live hardware
+  measurement — a new technique for this project.** Gained root on the
+  physical device via KernelSU (whitelisted the `shell` identity for adb),
+  then read `/sys/class/regulator/` directly. Found `regulator.44`
+  (`pm_humu_l17`) has a consumer symlink literally naming the UFS host
+  controller's exact address — fully unambiguous. Live values:
+  state=enabled, 2.504V (fixed), 1 consumer, fast mode. Also checked real
+  kernel mailing list patches for PM8350C's documented regulator range,
+  which partially matches "humu"'s BOB capability but not its full channel
+  count — concluded "humu" is likely an RPMh domain aggregating multiple
+  PMICs (2× PM8010 + PM8350C), not a single chip, and didn't force a wrong
+  single-chip identification.
+  dm1q.dts now models this as a `regulator-fixed` node at the real
+  measured voltage rather than the unresolved real PMIC chain — a
+  deliberate, evidenced choice (UFS holds boot media, so firmware must
+  already enable this rail before Linux starts; live num_users=1 confirms
+  no dynamic sharing to misrepresent). `&ufs_mem_hc` now `status = "okay"`.
+  Full writeup in docs/05-dm1q-real-hardware-values.md. **This live-device
+  measurement technique is now available for other stuck items** — worth
+  reaching for earlier next time static source analysis hits a genuine
+  wall, rather than only as a last resort.
+  Verified via real compilation as always: exit code 0, no new errors.
