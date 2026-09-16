@@ -46,12 +46,26 @@ here with their answer and source, and are also reflected in 00-overview.md.
    `../_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts` for the
    real source.
 
-3. **GPU/CPU OPP table retuning.**
-   The S23 uses SM8550-AC ("for Galaxy" bin), a higher factory-tested
-   clock/voltage bin than reference kalama. Copy-pasting the Tab S9 Ultra's
-   OPP tables verbatim is likely wrong — they'll need to be checked/retuned
-   against whatever clock speeds crDroid reports for dm1q.
-   Status: unresolved.
+3. **GPU/CPU OPP table retuning — RESOLVED (favorably) 2026-09-15.**
+   Checked mainline's actual `sm8550.dtsi` CPU OPP tables directly rather
+   than assuming: they specify `opp-hz` (frequency) and `opp-peak-kBps`
+   (memory bandwidth) only — **no `opp-microvolt` at all**. Mainline uses
+   `qcom,sm8550-cpufreq-epss` (Qualcomm's EPSS hardware), which reads
+   per-chip voltage calibration from silicon fuses at runtime rather than
+   using static devicetree voltage values. Checked dm1q's own downstream
+   source for comparison: zero `opp-table`/`opp-hz`/`opp-microvolt` entries
+   found at all, consistent with Android's downstream driver also relying
+   on runtime calibration, not static per-board tables.
+   **Practical conclusion: the "SM8550-AC bin" concern is not a
+   boot-reliability risk.** EPSS will read dm1q's actual chip's real fused
+   calibration regardless of which marketing bin it is, so voltage
+   correctness isn't at stake. The real (much smaller) risk is a
+   *frequency ceiling* mismatch — if dm1q's AC bin is fused for higher max
+   frequencies than generic reference kalama, using the stock mainline OPP
+   table would simply leave performance on the table (safe, just
+   suboptimal), not risk instability. Not a first-boot blocker. Revisit
+   only once basic boot is working and performance tuning becomes the
+   actual goal — not before.
 
 3b. **Panel driver and touch controller — RESOLVED 2026-09-13.**
    From the same real dm1q devicetree source: dm1q is **dual-sourced** for

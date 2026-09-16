@@ -347,3 +347,56 @@ not current layout.**
   depth for `dts/dm1q/dm1q.dts` specifically). Verified nothing broke:
   recompiled `dm1q.dts` from its new required path and got a byte-identical
   `.dtb` (same SHA256) as before the move.
+
+- 2026-09-15 (continued): **Fixed the first-boot-relevant TODOs in
+  dm1q.dts, starting from the user's request to investigate GPU/CPU OPP
+  retuning.**
+  - **OPP/CPR investigation (see docs/02-open-questions-and-risks.md item 3
+    for full detail): resolved favorably, no devicetree changes needed.**
+    Mainline's SM8550 CPU OPP tables use EPSS hardware-driven voltage
+    scaling (real per-chip fuse calibration at runtime), not static
+    devicetree voltages — confirmed by reading the actual opp-table entries
+    in sm8550.dtsi (opp-hz only, no opp-microvolt). The "SM8550-AC bin"
+    concern doesn't threaten boot reliability; worst case is underclocking.
+  - **UART console (uart7) confirmed and enabled.** Cross-checked GPIO26/27
+    + function name in dm1q's real source against mainline's uart7 pinctrl
+    — exact match. Added the missing `&uart7 { status = "okay"; }` override
+    — sm8550.dtsi disables it by default, so without this there would be
+    zero boot console output regardless of the aliases/chosen nodes already
+    in the file. This was a real, silent first-boot blocker.
+  - **microSD (sdhc_2) alias corrected, left deliberately disabled.**
+    Initially assumed dm1q might lack SD support (later S-series phones
+    often do) — wrong assumption, corrected: dm1q's real source has a
+    genuine card-detect GPIO12 (this is the EUR/hybrid-tray variant).
+    sdhc_2 confirmed as the only candidate (no sdhc_1 exists on this SoC).
+    Left disabled since it needs vmmc/vqmmc regulators not yet identified,
+    and isn't needed for first boot (that's UFS, not SD).
+  - **UFS (actual boot/root storage) substantially wired up.** Real
+    fixup-table cross-referencing (same method as the QCA6490 regulator
+    resolution) confirmed: reset-gpios = GPIO210 (exact match with
+    gts9uwifi), vccq-supply = PM8550VS-G L1, vdda-pll-supply = PM8550VS-E
+    L3, vdda-phy-supply = PM8550VS-E L1 (downstream property name differs
+    — "vdda-qref-supply" — but same physical rail, confirmed by channel
+    match). All channel identities confirmed via dm1q's own fixup tables,
+    all four exactly matching gts9uwifi's channel assignments (strong
+    platform-fixed-channel cross-confirmation, same pattern as WLAN).
+    **vcc-supply (main UFS power) deliberately left unresolved, not
+    guessed**: dm1q's fixup table shows it fed by a PMIC instance letter
+    ("humu") that doesn't appear anywhere in Qualcomm's own reference
+    kalama-pmic-overlay.dtsi — a Samsung-specific addition, not one of the
+    chips already in this file. Blindly copying gts9uwifi's vreg_l17b_2p5
+    (PM8550B) would have wired UFS main power to the wrong physical chip.
+    UFS host controller node stays `status = "disabled"` until this is
+    resolved — better to boot without storage working than to guess wrong
+    on the main power rail for the boot device.
+  Verified throughout with real `cpp`+`dtc` compilation, not just written
+  and assumed correct — caught and fixed one real syntax bug (an orphaned
+  comment block from a bad find-replace) during this pass. Final state:
+  exit code 0, only the two already-known/flagged placeholder warnings
+  (wcn6855-pmu, i2c-touchscreen — both have missing reg/ranges by design,
+  since they're intentionally incomplete) plus mainline's own upstream
+  warnings (duplicate i2c/spi unit addresses — normal Qualcomm QUP pattern,
+  not something to fix here).
+  **Still open after this pass**: UFS vcc-supply identity, touch
+  controller's I2C bus instance, sdhc_2 regulators (deferred, not a boot
+  blocker), display/panel (deferred, needs real driver work).

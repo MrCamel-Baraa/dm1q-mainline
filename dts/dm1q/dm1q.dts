@@ -70,10 +70,26 @@
 
 	aliases {
 		/*
-		 * TODO -- NOT YET CONFIRMED for dm1q specifically. Carried over
-		 * from the gts9uwifi reference as a starting assumption. Needs
-		 * checking against dm1q's own real UART/SDHC instance usage
-		 * before trusting this for a serial console / eMMC-SD boot.
+		 * serial0 = &uart7 -- CONFIRMED 2026-09-15. dm1q's real downstream
+		 * source has no explicit console/stdout-path node (Samsung
+		 * disables debug console in retail firmware, as usual), so this
+		 * couldn't be confirmed the direct way. Instead cross-checked by
+		 * GPIO: dm1q's real source has a node literally named
+		 * "qupv3_se7_2hsuart_pins" using GPIO26 (function qup1_se7_l2) and
+		 * GPIO27 (qup1_se7_l3) -- exact match, same GPIOs and same
+		 * function family, as mainline's own &uart7 pinctrl
+		 * (qup_uart7_default: GPIO26 TX, GPIO27 RX, function qup1_se7).
+		 * High confidence.
+		 *
+		 * mmc1 = &sdhc_2 -- CONFIRMED 2026-09-15. dm1q's real source has
+		 * a real card-detect GPIO12 (sd_card_det_default), meaning this
+		 * EUR variant does have microSD support (initially assumed it
+		 * might not, since later S-series phones often drop this --
+		 * wrong assumption, corrected by checking real evidence rather
+		 * than general knowledge). sdhc_2 is the only SD-capable
+		 * controller that exists on this SoC at all (checked: no sdhc_1
+		 * in mainline sm8550.dtsi), so it's the only candidate --
+		 * unambiguous once card-detect is confirmed to exist.
 		 */
 		serial0 = &uart7;
 		mmc1 = &sdhc_2;
@@ -83,6 +99,30 @@
 		stdout-path = "serial0:115200n8";
 	};
 };
+
+/*
+ * uart7 is "disabled" by default in sm8550.dtsi (as most peripherals are --
+ * SoC dtsi defines the hardware, board files enable what's actually wired
+ * up). Without this, there would be zero boot console output regardless of
+ * the aliases/chosen node above -- this is a real first-boot blocker, not
+ * cosmetic. compatible = "qcom,geni-debug-uart" in the SoC definition
+ * itself further confirms this is meant as the debug console UART.
+ */
+&uart7 {
+	status = "okay";
+};
+
+/*
+ * sdhc_2 (microSD) deliberately left disabled for now. dm1q's real source
+ * confirms this EUR variant has a card-detect GPIO (see the aliases note
+ * above), so it's not a fabricated peripheral -- but it needs real
+ * vmmc-supply/vqmmc-supply regulator values we haven't identified yet, and
+ * SD card isn't needed for first boot to a shell (that's UFS, the actual
+ * boot/root storage -- see the ufs_mem_hc block below). Wiring this up
+ * half-correctly (status okay without real regulators) risks confusing
+ * probe-deferral noise for no first-boot benefit. Revisit once UFS/display/
+ * core boot path is working.
+ */
 
 /*
  * WLAN/BT power rails, using the real mainline qcom,pm8550*-rpmh-regulators
@@ -129,6 +169,23 @@
 			regulator-max-microvolt = <952000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		/* CONFIRMED channel identity (PM8550VS-E L1/L3), voltage
+		 * INFERRED from gts9uwifi -- see the UFS PHY block below for
+		 * the evidence trail. */
+		vreg_l1e_0p88: ldo1 {
+			regulator-name = "vreg_l1e_0p88";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <880000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		vreg_l3e_1p2: ldo3 {
+			regulator-name = "vreg_l3e_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 
 	regulators-2 {
@@ -158,6 +215,16 @@
 			regulator-max-microvolt = <1904000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		/* CONFIRMED channel identity (PM8550VS-G L1) via dm1q's own
+		 * fixup table (see the UFS host controller block below).
+		 * Voltage INFERRED from gts9uwifi. */
+		vreg_l1g_1p2: ldo1 {
+			regulator-name = "vreg_l1g_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 };
 
@@ -179,6 +246,80 @@
 		regulator-boot-on;
 	};
 };
+
+/*
+ * UFS -- the actual boot/root storage, unlike sdhc_2 above. Far more
+ * important for first boot than the SD card. Regulator channel identities
+ * confirmed the same way as the QCA6490 mapping earlier: real fixup tables
+ * in dm1q's own downstream source.
+ */
+&ufs_mem_hc {
+	/* CONFIRMED 2026-09-15: exact GPIO match (0xd2 = 210) between dm1q's
+	 * real source and the gts9uwifi reference -- same platform-fixed pin,
+	 * high confidence, same pattern as the QCA6490 GPIOs earlier. */
+	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
+
+	/* CONFIRMED 2026-09-15 via dm1q's own fixup table: vccq-supply is fed
+	 * by PM8550VS-G L1 (fixup key "pm_v6g_l1"). Exact same channel
+	 * (G/L1) as gts9uwifi's vccq-supply = vreg_l1g_1p2 -- cross-confirms
+	 * the platform-fixed-channel pattern holds for UFS too, not just
+	 * WLAN. Voltage (1.2V) is INFERRED from gts9uwifi by the same
+	 * platform-constant reasoning used for the WLAN rails, not
+	 * independently confirmed for dm1q. */
+	vccq-supply = <&vreg_l1g_1p2>;
+	vccq-max-microamp = <1200000>;
+
+	/*
+	 * vcc-supply -- DELIBERATELY LEFT AS TODO, not filled in with a
+	 * guess. dm1q's real fixup table shows this fed by "pm_humu_l17" --
+	 * a PMIC instance letter ("humu") that does NOT appear anywhere in
+	 * Qualcomm's own reference kalama-pmic-overlay.dtsi at all, meaning
+	 * it's a Samsung-specific addition, not one of the PM8550-family
+	 * chips this file already includes. This directly CONTRADICTS
+	 * blindly reusing gts9uwifi's vcc-supply = vreg_l17b_2p5 (PM8550B
+	 * L17) -- that would be wiring UFS main power to the wrong physical
+	 * chip. "humu" shows BOB (buck-boost) outputs in dm1q's source,
+	 * which plausibly matches PM8350C (a known charger/haptics
+	 * companion chip with that signature) but this is an unconfirmed
+	 * guess, not evidence -- don't treat it as settled. Needs its own
+	 * proper identification before this UFS node can safely be marked
+	 * status = "okay". Catching this now (instead of copying gts9uwifi's
+	 * value) is the kind of check this whole file is trying to get
+	 * right rather than fast.
+	 */
+
+	status = "disabled"; /* stays disabled until vcc-supply is resolved */
+};
+
+&ufs_mem_phy {
+	/* CONFIRMED 2026-09-15 via dm1q's own fixup table, same method as
+	 * above: vdda-pll-supply fed by PM8550VS-E L3 (fixup key
+	 * "pm_v6e_l3") -- exact channel match with gts9uwifi's
+	 * vdda-pll-supply = vreg_l3e_1p2. vdda-phy-supply fed by PM8550VS-E
+	 * L1 (fixup key "pm_v6e_l1", downstream property name
+	 * "vdda-qref-supply" -- different name, same physical rail, same
+	 * pattern as the QCA6490 downstream/mainline naming difference
+	 * found earlier) -- exact channel match with gts9uwifi's
+	 * vdda-phy-supply = vreg_l1e_0p88. Voltages inferred from
+	 * gts9uwifi by platform-constant reasoning, not independently
+	 * confirmed for dm1q. */
+	vdda-phy-supply = <&vreg_l1e_0p88>;
+	vdda-pll-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+};
+
+/*
+ * The regulators referenced above (L1E, L1G, L3E) need their own
+ * definitions -- same qcom,pm8550vs-rpmh-regulators pattern as the WLAN
+ * regulators-1/regulators-2 blocks above, but PM8550VS-E and PM8550VS-G are
+ * separate SPMI instances from each other, so these need their own
+ * regulators-N block per instance actually used. L3G (PM8550VS-G) is
+ * already defined above under regulators-2 (shared PMIC instance with the
+ * WLAN S2G/S4G/S6G rails) -- add L1 to that same block rather than
+ * duplicating the qcom,pmic-id = "g" block. L1E (PM8550VS-E) needs a new
+ * instance since regulators-1 above only has S4E defined so far -- add L1
+ * to that block too, same PMIC instance.
+ */
 
 /*
  * WLAN/BT combo chip. dm1q uses QCA6490 (CONFIRMED, see
