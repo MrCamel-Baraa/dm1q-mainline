@@ -198,16 +198,6 @@
     pans out. Worth testing early once bootloader-stage work starts, rather
     than assuming U-Boot is required by default.
 
-## uniLoader (bootloader, noted for completeness)
-
-- Minimal intermediate ARMv7/ARMv8 bootloader used across the pmOS
-  ecosystem, mainly on Exynos Samsung devices (dreamlte, starlte, herolte,
-  beyond1lte, zeroflte) with some Qualcomm/MediaTek entries elsewhere. Same
-  role as U-Boot (stock bootloader → uniLoader → kernel) but deliberately
-  minimal — no scripting environment, no FIT image handling. Less relevant
-  to dm1q than U-Boot or the heimdall-bootimg approach above; noted here for
-  completeness since it came up during bootloader-method research.
-
 ## Kupfer — U-Boot/aboot gap (2026-09-15)
 
 - Kupfer's own porting docs confirm the workflow is: take an existing pmOS
