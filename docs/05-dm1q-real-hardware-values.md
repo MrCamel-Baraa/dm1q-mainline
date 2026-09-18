@@ -388,3 +388,42 @@ cross-reference — not because anything is currently in doubt, but because
 free additional confirmation from independent real upstream code is
 worth having on record. Not yet done this session; a good next check
 before or alongside starting a boot attempt.
+
+## Cross-check against sm8550-samsung-q5q.dts — 2026-09-16
+
+Following the discovery that `sm8550-samsung-q5q.dts` (Z Fold5, real
+already-upstream mainline Linux) exists, cross-checked it against
+everything already wired in dm1q.dts. Scope check first: q5q does **not**
+have WLAN/BT or USB PHY nodes wired up in this particular mainline state
+(not yet upstreamed for those subsystems), so only PCIe (already checked,
+see the dedicated section above) and UFS were comparable.
+
+**UFS comparison result: this genuinely improved the file, not just
+confirmed it.**
+
+| Property | Before | After (via q5q) |
+|---|---|---|
+| `reset-gpios` | GPIO210 | Unchanged — exact match |
+| `vccq-supply` | L1G | Unchanged — exact match |
+| `vdda-pll-supply` (PHY) | L3E | Unchanged — exact match |
+| `vdda-phy-supply` (PHY) | L1E | q5q uses L1D — **not changed**, see below |
+| `vdd-hba-supply` | **missing entirely** | Added: L3G |
+| `vcc-supply` | Workaround `regulator-fixed` at the real measured voltage (2.504V), because the real PMIC chain ("humu") couldn't be identified | **Properly resolved**: q5q's real value is `vreg_l17b_2p5` — exactly matching the live-measured channel (`regulator.44`, `pm_humu_l17`) we'd already confirmed. This also resolves what "humu" is: PM8550B's own internal RPMh codename, consistent with the L5B/L15B findings from the USB work. |
+
+**On the one real discrepancy (`vdda-phy-supply`: L1E for dm1q vs. L1D for
+q5q)**: not changed, and shouldn't be — dm1q's value comes from direct
+evidence in dm1q's *own* fixup table (`pm_v6e_l1`), not a guess. q5q is a
+different physical board (foldable vs. slab phone), and Samsung's board
+designers plausibly assigned different PM8550VS SPMI instance letters for
+similar-purpose rails on different PCB layouts. This is an expected
+board-to-board difference, not a contradiction — flagged and reasoned
+through rather than either blindly copied or blindly dismissed.
+
+**Bigger-picture value of this cross-check**: it resolved a real,
+previously-flagged architectural gap (the unidentified "humu" PMIC chain
+for UFS's main power) using a second, independent, high-quality source —
+not by re-deriving it from scratch, but by recognizing the same live
+evidence we already had (`pm_humu_l17`) matched a real upstream board's
+value exactly. This is a good example of why it's worth periodically
+cross-checking accumulated work against any new real reference that turns
+up, even for things already marked "resolved."

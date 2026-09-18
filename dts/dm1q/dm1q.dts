@@ -159,6 +159,25 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		/* CONFIRMED 2026-09-16, resolving an earlier architectural gap:
+		 * the real UFS vcc-supply channel. Live measurement (see
+		 * &ufs_mem_hc below) already showed this exact channel is
+		 * "pm_humu_l17", 2504000uV fixed, state=enabled -- but at the
+		 * time we couldn't identify which chip "humu" was, so it was
+		 * modeled as a workaround fixed-regulator instead of a real
+		 * PM8550B subnode. Cross-checking against sm8550-samsung-q5q.dts
+		 * (Z Fold5, real already-upstream mainline) resolved it: q5q's
+		 * real UFS vcc-supply is vreg_l17b_2p5 -- exact same physical
+		 * channel as our live measurement (L17 on PM8550B). This also
+		 * confirms "humu" is PM8550B's internal RPMh codename, matching
+		 * the L5B/L15B findings from the USB work. */
+		vreg_l17b_2p5: ldo17 {
+			regulator-name = "vreg_l17b_2p5";
+			regulator-min-microvolt = <2504000>;
+			regulator-max-microvolt = <2504000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
 		/* CONFIRMED 2026-09-15 via live hardware measurement: fixed
 		 * 3104000 (regulator.24, pm_humu_l5). Feeds the eUSB2
 		 * repeater's vdd3-supply -- see the &i2c6 block below. */
@@ -258,6 +277,22 @@
 			regulator-max-microvolt = <1256000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		/* ADDED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
+		 * (Z Fold5, real already-upstream mainline): q5q's UFS
+		 * vdd-hba-supply is vreg_l3g_1p2. Channel identity (PM8550VS-G
+		 * L3) already independently confirmed for dm1q via its own
+		 * fixup table ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply, see the
+		 * &ufs_mem_hc block below) -- q5q's value fills in the actual
+		 * mainline property name (vdd-hba-supply) this channel maps to,
+		 * which we hadn't wired up yet. Voltage not independently
+		 * live-measured for dm1q specifically; using q5q's real value. */
+		vreg_l3g_1p2: ldo3 {
+			regulator-name = "vreg_l3g_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 
 	/*
@@ -302,21 +337,6 @@
 		regulator-always-on;
 		regulator-boot-on;
 	};
-
-	/* CONFIRMED 2026-09-15 via live hardware measurement (see the
-	 * &ufs_mem_hc block below for the full evidence trail) -- real
-	 * UFS main power rail, 2.504V, already enabled by firmware before
-	 * Linux starts. Modeled as fixed rather than through the real
-	 * "humu" PMIC chain, whose exact devicetree binding wasn't
-	 * identified -- see docs/05-dm1q-real-hardware-values.md. */
-	vreg_ufs_vcc_2p5: vreg-ufs-vcc-regulator {
-		compatible = "regulator-fixed";
-		regulator-name = "vreg_ufs_vcc_2p5";
-		regulator-min-microvolt = <2504000>;
-		regulator-max-microvolt = <2504000>;
-		regulator-always-on;
-		regulator-boot-on;
-	};
 };
 
 /*
@@ -341,29 +361,32 @@
 	vccq-supply = <&vreg_l1g_1p2>;
 	vccq-max-microamp = <1200000>;
 
+	/* CONFIRMED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
+	 * (Z Fold5, real already-upstream mainline): vdd-hba-supply is
+	 * vreg_l3g_1p2. Channel identity (PM8550VS-G L3) already
+	 * independently confirmed for dm1q via its own fixup table
+	 * ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply on the PHY, same physical
+	 * rail). This was a real gap in the original resolution -- the
+	 * channel identity was known but never wired to this actual mainline
+	 * property name until this cross-check. */
+	vdd-hba-supply = <&vreg_l3g_1p2>;
+
 	/*
-	 * vcc-supply -- RESOLVED 2026-09-15 via live hardware measurement,
-	 * not static source archaeology. Connected to the real device over
-	 * adb (root via KernelSU) and read /sys/class/regulator/ directly:
-	 * regulator.44 ("pm_humu_l17") has a symlink literally named
-	 * "1d84000.ufshc-vcc" with consumer "platform:1d84000.ufshc" --
-	 * 1d84000 is the exact UFS host controller address from mainline's
-	 * own ufshc@1d84000 node. Fully unambiguous, not inferred.
-	 * Live values: state=enabled, microvolts=2504000 (2.504V, fixed --
-	 * min_microvolts == max_microvolts, not a range), num_users=1,
-	 * opmode=fast.
-	 * Modeled here as a simple fixed regulator rather than through the
-	 * real "humu" PMIC chain (whose exact devicetree binding was never
-	 * identified -- see docs/05-dm1q-real-hardware-values.md for that
-	 * investigation). This is a deliberate, reasoned simplification, not
-	 * a guess: UFS holds the boot media itself, so this rail must
-	 * already be powered on by firmware (PBL/XBL) before Linux even
-	 * starts -- the bootloader couldn't otherwise read the kernel off
-	 * UFS to begin with. num_users=1 on the live system confirms nothing
-	 * else shares this rail, so a static always-on representation
-	 * doesn't misrepresent any dynamic sharing behavior either.
-	 */
-	vcc-supply = <&vreg_ufs_vcc_2p5>;
+	 * vcc-supply -- fully RESOLVED 2026-09-16 (properly this time).
+	 * Original resolution (2026-09-15) used live hardware measurement:
+	 * regulator.44 ("pm_humu_l17") confirmed via a symlink literally
+	 * named "1d84000.ufshc-vcc" with consumer "platform:1d84000.ufshc"
+	 * -- 1d84000 is the exact UFS host controller address. Live values:
+	 * state=enabled, microvolts=2504000 (2.504V, fixed), num_users=1,
+	 * opmode=fast. At the time, the real "humu" PMIC chain couldn't be
+	 * identified, so this was modeled as a workaround fixed regulator.
+	 * Cross-checking against sm8550-samsung-q5q.dts resolved that gap:
+	 * q5q's real vcc-supply is vreg_l17b_2p5 -- exact same physical
+	 * channel as the live measurement above (L17 on PM8550B), and
+	 * confirms "humu" is PM8550B's internal RPMh codename. Now wired to
+	 * the real regulator subnode (see regulators-0 above) instead of a
+	 * standalone workaround. */
+	vcc-supply = <&vreg_l17b_2p5>;
 	vcc-max-microamp = <1300000>; /* placeholder, matching gts9uwifi's
 					  value -- not independently confirmed
 					  for dm1q, low first-boot risk since

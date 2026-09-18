@@ -517,3 +517,34 @@ not current layout.**
   we didn't know existed until now. Should happen before or alongside the
   actual boot attempt.
   Verified via cpp+dtc: exit 0, no new errors, only expected warnings.
+
+- 2026-09-16: **Cross-checked dm1q.dts against sm8550-samsung-q5q.dts (Z
+  Fold5, real already-upstream mainline), per the follow-up flagged at
+  the end of the PCIe work.** WLAN and USB not comparable (q5q doesn't
+  have those wired up in this mainline state). UFS comparison genuinely
+  improved the file:
+  - Added the missing `vdd-hba-supply` (L3G) -- a real gap, not just a
+    confirmation.
+  - **Properly resolved `vcc-supply`**, replacing the workaround
+    fixed-regulator with the real PM8550B L17 subnode. q5q's real value
+    exactly matched the live-measured channel from the earlier UFS
+    investigation -- this also retroactively confirms "humu" (the
+    previously-unidentified PMIC codename) is PM8550B's own internal
+    RPMh codename.
+  - One genuine discrepancy found and correctly left alone:
+    `vdda-phy-supply` is L1E for dm1q (direct evidence from dm1q's own
+    fixup table) vs. L1D for q5q -- reasoned through as an expected
+    board-to-board SPMI-instance-letter difference (different physical
+    PCB layouts, foldable vs. slab phone), not a contradiction requiring
+    a fix.
+  Removed the now-dead `vreg_ufs_vcc_2p5` workaround regulator definition.
+  Verified via cpp+dtc: exit 0, no new errors.
+  User caught and corrected a mix-up during this session: an earlier
+  reply mistakenly implied the user had told Claude the touch controller
+  was Goodix -- it was actually found independently from dm1q's own real
+  devicetree (twice: static source + live confirmation). Also flagged a
+  real discrepancy worth recording: an iFixit teardown identifies the
+  touch controller as STMicroelectronics for the S23 *Ultra*
+  specifically -- confirmed via the user's own further research that the
+  base S23 (dm1q) does use Goodix, resolving the apparent conflict as a
+  variant difference, not an error in either source.
