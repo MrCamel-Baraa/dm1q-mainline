@@ -498,3 +498,22 @@ not current layout.**
   Verified via cpp+dtc throughout: exit 0, no new errors, only expected
   warnings (own placeholder + mainline's own upstream duplicate-address
   warnings).
+
+- 2026-09-15 (continued): **PCIe0 wired up — the bus QCA6490 actually
+  attaches over.** Confirmed genuinely needed (dm1q's real
+  qcom,wlan-rc-num=0, and the live device's actual PCI bus topology shows
+  exactly one populated domain with the QCA6490 endpoint at the expected
+  vendor/device ID). pcie1 exists but is unused on this board.
+  **Major discovery: sm8550-samsung-q5q.dts (Z Fold5) already exists in
+  real, already-upstream mainline Linux** (named Linaro/community
+  contributors, not something needing the same scrutiny as the earlier
+  agcarbajo situation). Its real values for PCIe (GPIOs, regulators)
+  exactly match what we'd already independently confirmed via live
+  measurement on dm1q -- genuinely strong cross-validation from two
+  independent methods landing on the same answer.
+  **Follow-up identified, not yet done**: worth cross-checking q5q against
+  everything already wired in dm1q.dts (WLAN, UFS, USB) as additional free
+  confirmation, given it's a real, same-family, already-upstream reference
+  we didn't know existed until now. Should happen before or alongside the
+  actual boot attempt.
+  Verified via cpp+dtc: exit 0, no new errors, only expected warnings.

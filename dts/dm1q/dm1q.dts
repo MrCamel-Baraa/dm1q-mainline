@@ -419,6 +419,44 @@
 	status = "okay";
 };
 
+/*
+ * PCIe0 -- the actual bus QCA6490 (WLAN/BT) attaches over. CONFIRMED
+ * 2026-09-15 to be genuinely needed: dm1q's real downstream source votes
+ * qcom,wlan-rc-num = <0x00> ("rc-num" = PCIe Root Complex number), and the
+ * live device's own /sys/bus/pci/devices/ shows exactly one populated
+ * domain -- 1c00000.qcom,pcie (pcie0) -- with the QCA6490 endpoint
+ * (vendor 0x17cb Qualcomm Atheros, device 0x1103, matching QCA6490's real
+ * PCI ID) at 0000:01:00.0. pcie1 (the other SM8550 controller) is present
+ * in the tree but has no device on this board.
+ *
+ * All values here are an EXACT match with sm8550-samsung-q5q.dts (Z
+ * Fold5, real already-upstream mainline work by Linaro/community
+ * contributors) -- same GPIOs, same regulators, remarkable independent
+ * cross-validation: q5q's real mainline values match dm1q's live-measured
+ * values exactly, confirming this GPIO/regulator assignment is a
+ * Samsung-SM8550-platform-wide constant, not device-specific guesswork.
+ * perst-gpios/wake-gpios CONFIRMED directly from dm1q's own live
+ * devicetree (GPIO94 PERST, GPIO96 WAKE -- exact match with q5q).
+ * pcie0_phy supplies reuse the same L1E/L3E channels already defined
+ * above (shared with USB/UFS PHYs, same as q5q).
+ * pcie0_default_state is a generic SoC-level pinctrl state already
+ * defined in sm8550.dtsi -- no board-specific pinctrl needed, same as
+ * q5q's approach.
+ */
+&pcie0 {
+	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&pcie0_default_state>;
+	pinctrl-names = "default";
+	status = "okay";
+};
+
+&pcie0_phy {
+	vdda-phy-supply = <&vreg_l1e_0p88>;
+	vdda-pll-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+};
+
 &i2c6 {
 	status = "okay";
 

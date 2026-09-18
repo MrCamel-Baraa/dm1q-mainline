@@ -352,3 +352,39 @@ present in the tree but not what's actually active on this board.
   cross-matching the dmesg log byte-for-byte (register:value pairs
   0x06:0x40, 0x07:0x20, 0x08:0x62, 0x09:0x03, 0x0a:0x00). Not
   reconstructed or inferred — copied from the actual running system.
+
+## PCIe0 — resolved 2026-09-15
+
+The actual bus QCA6490 (WLAN/BT) attaches over. Confirmed genuinely
+needed (not assumed): dm1q's real downstream source votes
+`qcom,wlan-rc-num = <0x00>` (PCIe Root Complex 0), and the live device's
+own `/sys/bus/pci/devices/` shows exactly one populated domain —
+`1c00000.qcom,pcie` (pcie0) — with the QCA6490 endpoint (vendor `0x17cb`
+Qualcomm Atheros, device `0x1103`, matching QCA6490's real PCI ID) at
+`0000:01:00.0`. `pcie1` (SM8550's other controller) exists in the tree
+but has no device on this board.
+
+**A significant discovery along the way: `sm8550-samsung-q5q.dts` (Z
+Fold5) already exists in mainline** — real, already-upstream work by
+named Linaro/community contributors (not something needing the same
+verification scrutiny as the earlier agcarbajo repos; this is literally
+in `torvalds/linux`). Same SM8550 SoC, same Samsung PMIC family.
+
+**Remarkable independent cross-validation**: q5q's real mainline values
+exactly match dm1q's own live-measured values — `wake-gpios`=GPIO96,
+`perst-gpios`=GPIO94, `pcie0_phy` `vdda-phy-supply`=L1E,
+`vdda-pll-supply`=L3E — all identical. This isn't one source confirming
+itself; it's two independent methods (live measurement on dm1q, real
+upstream code for a sibling device) landing on the same answer, strong
+confirmation this GPIO/regulator assignment is a Samsung-SM8550-platform
+constant, not device-specific guesswork. `pcie0_default_state` pinctrl is
+already generic at the SoC level (`sm8550.dtsi`) — no board-specific
+pinctrl needed.
+
+**Implication worth flagging**: since q5q is real, upstream, and uses the
+same PMIC family as dm1q, it's worth checking against everything else
+already wired in dm1q.dts (WLAN, UFS, USB) as an additional real
+cross-reference — not because anything is currently in doubt, but because
+free additional confirmation from independent real upstream code is
+worth having on record. Not yet done this session; a good next check
+before or alongside starting a boot attempt.
