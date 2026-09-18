@@ -278,3 +278,77 @@ the earlier extraction pass was accurate, not just the bus instance.
 `i2c-touchscreen` container (which had a real `missing reg/ranges`
 compile warning) to the actual `&i2c4` bus override — the warning is now
 gone, not just documented as expected.
+
+## Display panel driver — investigation status 2026-09-15 (paused, not resolved)
+
+Obtained Samsung's real official GPL kernel source
+(opensource.samsung.com, SM-S911B) — extracted to
+`../_scratch/samsung-opensource-s911b/`. Confirmed real, substantial driver
+source exists for both dm1q panels:
+`kernel/vendor/qcom/opensource/display-drivers/msm/samsung/S6E3FAC_AMB606AW01/`
+and `DM1_LX83118_CM002/` (plus DM1-specific wrapper dirs).
+
+**Confirmed real**: full driver logic — power sequencing, brightness/gamma
+algorithms (real compensation tables across 48/60/96/120Hz), HLPM/ALPM
+low-power modes, VRR handling. ~14,000 lines across the main driver files.
+
+**Not yet found**: the exact raw DCS init byte sequence for dm1q's actual
+panels. Checked and ruled out: the panel's own devicetree node (has timing/
+config properties only, no on/off-command byte arrays), the `.dat`
+debug-override files (confirmed empty via `xxd`), direct `ss_cmd_desc`
+struct declarations in both `.c` and the 11.9MB `.h` file (zero matches).
+Samsung's panels use a proprietary `ss_cmd`/`ss_cmd_desc` framework,
+architecturally separate from Qualcomm's generic `qcom,mdss-dsi-on-command`
+devicetree property (which IS real and present, but only for the generic
+Qualcomm reference/simulator panels also in the same devicetree — Sharp,
+Truly, Visionox r66451/vtdr6130 — not dm1q's actual Samsung panels).
+
+**Where to look next, when this gets picked back up**: the byte table
+almost certainly exists somewhere in the extracted source (this is real,
+complete driver code, the data has to exist for the panel to work) --
+likely needs either a smarter search pattern, or tracing a build-time
+codegen/data-loading mechanism not yet identified. Worth checking for a
+`.dat`/binary file elsewhere in the tree beyond `panel_data_file/`, or a
+python/codegen script under `kernel_platform/` that might populate these
+tables from a separate source file at build time.
+
+## USB — resolved 2026-09-15
+
+Both PHYs (HS/eUSB2 and SS/USB3-DP-alt-mode) plus the real eUSB2 repeater
+chip, all confirmed via live devlink evidence (same method as UFS/WLAN).
+
+**HS PHY (`usb_1_hsphy`)**: `vdd-supply`=L1E, `vdda12-supply`=L3E — both
+already-defined channels, shared with the UFS PHY (same physical rails
+feed both). Matches gts9uwifi's identical sharing pattern.
+
+**SS PHY (`usb_dp_qmpphy`)**: `vdda-phy-supply`=L3E (shared again),
+`vdda-pll-supply`=**L3F, a newly-identified PM8550VE channel**
+(`regulator.72`, `pm_v8_l3` — "v8" is PM8550VE's internal RPMh codename).
+Required adding `pm8550ve.dtsi` to the includes, with its real SID (5,
+confirmed via `qcom,pm8550ve_f@5` in the live devicetree) — this resolves
+a TODO left over from the very first draft of this file, which explicitly
+deferred PM8550VE inclusion for lack of a confirmed SID.
+
+**eUSB2 repeater — resolved via real kernel dmesg, not just devicetree.**
+Two candidate repeater nodes exist in the devicetree: a PMIC-integrated
+`qcom,pmic-eusb2-repeater` (SPMI, under PM8550B) and a discrete
+`nxp,eusb2-repeater` (I2C, address 0x4f on `&i2c6`). Checked `dmesg` on
+the live device: only the NXP one shows real probe/init activity
+(`eusb2-repeater 59-004f: eUSB2 repeater version = 0xa2`, `NXP CLIENT
+mode`, full real register write sequence). The PMIC-integrated one is
+present in the tree but not what's actually active on this board.
+- `reset-gpio`: GPIO4, confirmed via the live devicetree directly
+  (matches the earlier pinctrl-table extraction exactly).
+- `vdd18-supply`: L15B — same rail as WLAN's vddio, shared, no new
+  regulator needed.
+- `vdd3-supply`: **L5B, a newly-identified channel** (`regulator.24`,
+  `pm_humu_l5`, 3.104V fixed). Also reinforces that "humu" is PM8550B's
+  own internal codename (both L5 and L15/L17 confirmed under it) rather
+  than a multi-chip aggregate as originally guessed during the UFS
+  investigation — a useful correction, though it didn't change any
+  practical outcome there.
+- `qcom,param-override-seq`: the **real init register sequence**, read
+  directly from the live device's own booted devicetree and
+  cross-matching the dmesg log byte-for-byte (register:value pairs
+  0x06:0x40, 0x07:0x20, 0x08:0x62, 0x09:0x03, 0x0a:0x00). Not
+  reconstructed or inferred — copied from the actual running system.

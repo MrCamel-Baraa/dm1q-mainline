@@ -470,3 +470,31 @@ not current layout.**
   a placeholder container; this also removed a real compile warning
   (missing reg/ranges), not just resolved a TODO comment.
   Verified via cpp+dtc as always: exit 0, one fewer warning than before.
+
+- 2026-09-15 (continued): **USB fully wired up (HS PHY, SS PHY, real
+  eUSB2 repeater), using the same live-evidence methodology as UFS/WLAN.**
+  Confirmed QCA6490 is genuinely PCIe-attached (`qcom,wlan-rc-num = <0x00>`
+  in dm1q's real source, "rc-num" = PCIe Root Complex number) before
+  starting PCIe work next.
+  New PMIC channels identified: L5B (PM8550B, 3.104V, eUSB2 repeater
+  vdd3) and L3F (PM8550VE, 0.912V, USB SS PHY vdda-pll) -- the latter
+  required finally adding `pm8550ve.dtsi` with its real confirmed SID (5),
+  resolving a TODO left over from the very first devicetree draft.
+  eUSB2 repeater resolved via real kernel dmesg (not just static
+  devicetree): of two candidate repeater nodes in the tree (PMIC-SPMI vs.
+  NXP-I2C), only the NXP one shows real probe activity on the live
+  device. Its full real init register sequence was read directly from
+  the device's own booted devicetree and cross-matched dmesg byte-for-byte.
+  Obtained Samsung's own official GPL kernel source
+  (opensource.samsung.com, SM-S911B, ~3.5GB) for the display driver
+  investigation -- confirmed real, substantial panel driver logic exists,
+  but the exact raw DCS byte table wasn't located this session (see the
+  dedicated section in docs/05 for the full trail and where to look next).
+  Also downloaded crDroid's full kernel source (not just -devicetrees) to
+  check for panel driver code there -- confirmed it does NOT contain
+  Samsung's proprietary panel framework (only generic Qualcomm DPU
+  controller code), consistent with that framework being distributed as
+  a vendor module rather than GPL kernel source in crDroid's build.
+  Verified via cpp+dtc throughout: exit 0, no new errors, only expected
+  warnings (own placeholder + mainline's own upstream duplicate-address
+  warnings).

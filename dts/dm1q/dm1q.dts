@@ -16,9 +16,10 @@
  * devicetree source (_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts)
  * wherever marked CONFIRMED below.
  *
- * NOT yet attempted in this file: display/panel driver, PCIe, UFS, USB,
- * camera. These need real driver work beyond devicetree wiring, or are
- * still-open research items -- see docs/02-open-questions-and-risks.md.
+ * NOT yet attempted in this file: display/panel driver, PCIe, camera.
+ * Display needs real driver work (see docs/05-dm1q-real-hardware-values.md
+ * for the investigation into Samsung's real GPL panel driver source).
+ * UFS, USB, and WLAN/BT are wired up. See docs/02-open-questions-and-risks.md.
  *
  * _scratch/ is a sibling directory to the repo root (../../../_scratch/
  * from this file's own location), not tracked in git -- see
@@ -39,17 +40,19 @@
 #include "pm8550.dtsi"
 #include "pm8550b.dtsi"
 #include "pm8550vs.dtsi"
+/* PMK8550VE_SID CONFIRMED 2026-09-15 via live devicetree: the real SPMI
+ * slave address is qcom,pm8550ve_f@5 -- SID = 5. */
+#define PMK8550VE_SID 5
+#include "pm8550ve.dtsi"
 #include "pmk8550.dtsi"
 
 /* dm1q's actual PMIC set is PM8550/PM8550B/PM8550VE/PM8550VS/PM8010/PM8350C,
  * confirmed directly from real downstream devicetree source -- see
- * docs/02-open-questions-and-risks.md item 2. PM8550VE, PM8010, and
- * PM8350C aren't included yet since nothing in this file needs them so far
- * -- add each .dtsi include when a consumer requiring it gets written.
- * Note for PM8550VE specifically: its .dtsi requires a #define PMK8550VE_SID
- * before including (an SPMI slave-ID board convention used by that file
- * only, not the others) -- we don't have a confirmed real SID value for
- * dm1q yet, so don't add the include until that's resolved. */
+ * docs/02-open-questions-and-risks.md item 2. PM8010 and PM8350C aren't
+ * included yet since nothing in this file needs them so far -- add each
+ * .dtsi include when a consumer requiring it gets written. PM8550VE is
+ * now included (2026-09-15) -- its real SID (5) was confirmed via live
+ * devicetree, needed for the USB SS PHY's vdda-pll-supply below. */
 
 / {
 	model = "Samsung Galaxy S23";
@@ -155,6 +158,16 @@
 			regulator-max-microvolt = <1800000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: fixed
+		 * 3104000 (regulator.24, pm_humu_l5). Feeds the eUSB2
+		 * repeater's vdd3-supply -- see the &i2c6 block below. */
+		vreg_l5b_3p104: ldo5 {
+			regulator-name = "vreg_l5b_3p104";
+			regulator-min-microvolt = <3104000>;
+			regulator-max-microvolt = <3104000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
 	};
 
 	regulators-1 {
@@ -243,6 +256,30 @@
 			regulator-name = "vreg_l1g_1p2";
 			regulator-min-microvolt = <1144000>;
 			regulator-max-microvolt = <1256000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	/*
+	 * PM8550VE ("f"). CONFIRMED channel identity (L3F) via live devlink
+	 * evidence (regulator.72, pm_v8_l3 -- "v8" is PM8550VE's internal
+	 * RPMh codename). Feeds the USB SS PHY's vdda-pll-supply -- see the
+	 * &usb_dp_qmpphy block below.
+	 */
+	regulators-3 {
+		compatible = "qcom,pm8550ve-rpmh-regulators";
+		qcom,pmic-id = "f";
+		vdd-l1-supply = <&vreg_s4e_0p952>;
+		vdd-l2-supply = <&vreg_s4e_0p952>;
+		vdd-l3-supply = <&vreg_s4e_0p952>;
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * live reading 912000, matching the top of gts9uwifi's real
+		 * documented range (880000-912000) exactly. */
+		vreg_l3f_0p912: ldo3 {
+			regulator-name = "vreg_l3f_0p912";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <912000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 	};
@@ -354,17 +391,71 @@
 };
 
 /*
- * The regulators referenced above (L1E, L1G, L3E) need their own
- * definitions -- same qcom,pm8550vs-rpmh-regulators pattern as the WLAN
- * regulators-1/regulators-2 blocks above, but PM8550VS-E and PM8550VS-G are
- * separate SPMI instances from each other, so these need their own
- * regulators-N block per instance actually used. L3G (PM8550VS-G) is
- * already defined above under regulators-2 (shared PMIC instance with the
- * WLAN S2G/S4G/S6G rails) -- add L1 to that same block rather than
- * duplicating the qcom,pmic-id = "g" block. L1E (PM8550VS-E) needs a new
- * instance since regulators-1 above only has S4E defined so far -- add L1
- * to that block too, same PMIC instance.
+ * USB. Both the HS (eUSB2) and SS (USB3/DP-alt-mode) PHYs, plus the real
+ * eUSB2 repeater chip. All channel identities CONFIRMED 2026-09-15 via
+ * live devlink evidence (same method as UFS/WLAN above), not inferred.
  */
+&usb_1_hsphy {
+	/* vdd-supply/vdda12-supply CONFIRMED via devlink: regulator.57 (L1E)
+	 * and regulator.63 (L3E) -- both already defined above for UFS PHY,
+	 * exact same physical rails shared between the two PHYs. Matches
+	 * gts9uwifi's identical sharing pattern. */
+	vdd-supply = <&vreg_l1e_0p88>;
+	vdda12-supply = <&vreg_l3e_1p2>;
+	phys = <&eusb2_repeater>;
+	status = "okay";
+};
+
+&usb_1 {
+	status = "okay";
+};
+
+&usb_dp_qmpphy {
+	/* vdda-phy-supply CONFIRMED via devlink: regulator.63 (L3E, shared
+	 * with UFS PHY/HS PHY again). vdda-pll-supply CONFIRMED: regulator.72
+	 * (L3F, PM8550VE -- newly added above specifically for this). */
+	vdda-phy-supply = <&vreg_l3e_1p2>;
+	vdda-pll-supply = <&vreg_l3f_0p912>;
+	status = "okay";
+};
+
+&i2c6 {
+	status = "okay";
+
+	/*
+	 * eUSB2 repeater -- CONFIRMED 2026-09-15 via real kernel dmesg log
+	 * from the running device (not just devicetree inference): this NXP
+	 * chip at 59-004f is the actual active repeater. A second candidate
+	 * (a PMIC-integrated qcom,pmic-eusb2-repeater under PM8550B) also
+	 * exists in the devicetree but its dmesg showed no probe activity --
+	 * this NXP one is confirmed live-active, not a guess between two
+	 * options.
+	 * reset-gpio CONFIRMED: GPIO4 (matches the earlier pinctrl-table
+	 * extraction exactly). vdd18-supply CONFIRMED: L15B (regulator.34,
+	 * same rail as WLAN vddio -- shared, no new regulator needed).
+	 * vdd3-supply CONFIRMED: L5B (regulator.24, newly added above).
+	 * qcom,param-override-seq CONFIRMED: real init register sequence
+	 * read directly from the live device's own booted devicetree,
+	 * cross-matches the real dmesg log byte-for-byte (register:value
+	 * pairs 0x06:0x40, 0x07:0x20, 0x08:0x62, 0x09:0x03, 0x0a:0x00).
+	 */
+	eusb2_repeater: eusb2-repeater@4f {
+		compatible = "nxp,eusb2-repeater";
+		reg = <0x4f>;
+		reset-gpios = <&tlmm 4 GPIO_ACTIVE_LOW>;
+		vdd18-supply = <&vreg_l15b_1p8>;
+		vdd3-supply = <&vreg_l5b_3p104>;
+		#phy-cells = <0>;
+
+		qcom,param-override-seq = <
+			0x40 0x06
+			0x20 0x07
+			0x62 0x08
+			0x03 0x09
+			0x00 0x0a
+		>;
+	};
+};
 
 /*
  * WLAN/BT combo chip. dm1q uses QCA6490 (CONFIRMED, see
