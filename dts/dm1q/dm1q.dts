@@ -278,15 +278,17 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
-		/* ADDED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
+		/* CONFIRMED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
 		 * (Z Fold5, real already-upstream mainline): q5q's UFS
 		 * vdd-hba-supply is vreg_l3g_1p2. Channel identity (PM8550VS-G
 		 * L3) already independently confirmed for dm1q via its own
 		 * fixup table ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply, see the
 		 * &ufs_mem_hc block below) -- q5q's value fills in the actual
 		 * mainline property name (vdd-hba-supply) this channel maps to,
-		 * which we hadn't wired up yet. Voltage not independently
-		 * live-measured for dm1q specifically; using q5q's real value. */
+		 * which we hadn't wired up yet. Voltage independently
+		 * live-verified on dm1q directly: regulator.86, confirmed via
+		 * devlink as the real consumer of 1d84000.ufshc, reads
+		 * 1200000uV fixed (min=max) -- exact match with q5q. */
 		vreg_l3g_1p2: ldo3 {
 			regulator-name = "vreg_l3g_1p2";
 			regulator-min-microvolt = <1200000>;
@@ -361,14 +363,18 @@
 	vccq-supply = <&vreg_l1g_1p2>;
 	vccq-max-microamp = <1200000>;
 
-	/* CONFIRMED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
+	/* CONFIRMED 2026-09-16, cross-checked against sm8550-samsung-q5q.dts
 	 * (Z Fold5, real already-upstream mainline): vdd-hba-supply is
 	 * vreg_l3g_1p2. Channel identity (PM8550VS-G L3) already
 	 * independently confirmed for dm1q via its own fixup table
 	 * ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply on the PHY, same physical
 	 * rail). This was a real gap in the original resolution -- the
 	 * channel identity was known but never wired to this actual mainline
-	 * property name until this cross-check. */
+	 * property name until this cross-check. Voltage independently
+	 * live-verified on dm1q directly (not just borrowed from q5q):
+	 * regulator.86, confirmed via devlink as the real consumer of
+	 * 1d84000.ufshc, reads 1200000uV fixed (min=max), state=enabled --
+	 * exact match. */
 	vdd-hba-supply = <&vreg_l3g_1p2>;
 
 	/*

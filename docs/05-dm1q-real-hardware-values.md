@@ -407,7 +407,7 @@ confirmed it.**
 | `vccq-supply` | L1G | Unchanged — exact match |
 | `vdda-pll-supply` (PHY) | L3E | Unchanged — exact match |
 | `vdda-phy-supply` (PHY) | L1E | q5q uses L1D — **not changed**, see below |
-| `vdd-hba-supply` | **missing entirely** | Added: L3G |
+| `vdd-hba-supply` | **missing entirely** | Added: L3G, 1.2V — independently live-verified on dm1q afterward (`regulator.86`, confirmed via devlink as the real `1d84000.ufshc` consumer, exact match) |
 | `vcc-supply` | Workaround `regulator-fixed` at the real measured voltage (2.504V), because the real PMIC chain ("humu") couldn't be identified | **Properly resolved**: q5q's real value is `vreg_l17b_2p5` — exactly matching the live-measured channel (`regulator.44`, `pm_humu_l17`) we'd already confirmed. This also resolves what "humu" is: PM8550B's own internal RPMh codename, consistent with the L5B/L15B findings from the USB work. |
 
 **On the one real discrepancy (`vdda-phy-supply`: L1E for dm1q vs. L1D for
