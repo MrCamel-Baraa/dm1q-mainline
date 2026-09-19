@@ -16,10 +16,10 @@
  * devicetree source (_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts)
  * wherever marked CONFIRMED below.
  *
- * NOT yet attempted in this file: display/panel driver, PCIe, camera.
+ * NOT yet attempted in this file: display/panel driver, camera.
  * Display needs real driver work (see docs/05-dm1q-real-hardware-values.md
  * for the investigation into Samsung's real GPL panel driver source).
- * UFS, USB, and WLAN/BT are wired up. See docs/02-open-questions-and-risks.md.
+ * UFS, USB, WLAN/BT, and PCIe0 are wired up. See docs/02-open-questions-and-risks.md.
  *
  * _scratch/ is a sibling directory to the repo root (../../../_scratch/
  * from this file's own location), not tracked in git -- see
@@ -671,8 +671,8 @@
  *   known (reset=GPIO125, TE=GPIO86/87) -- see
  *   docs/05-dm1q-real-hardware-values.md -- but no panel node is written
  *   yet since there's no driver to attach it to.
- * - PCIe / UFS / USB: SoC-level structure transfers from sm8550.dtsi
- *   directly; board-level wiring not yet started.
+ * - PCIe / UFS / USB: DONE -- see above. All board-level wiring live-verified
+ *   or cross-confirmed against a real upstream reference (sm8550-samsung-q5q.dts).
  * - Camera: out of scope per current risk assessment (see
  *   docs/02-open-questions-and-risks.md item 4).
  * - s2mpb02 sub-PMIC (camera/display rails) and the VDD_BTP_1P8
