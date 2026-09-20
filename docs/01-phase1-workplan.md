@@ -548,3 +548,107 @@ not current layout.**
   specifically -- confirmed via the user's own further research that the
   base S23 (dm1q) does use Goodix, resolving the apparent conflict as a
   variant difference, not an error in either source.
+
+- 2026-09-19: **Checked kernel defconfig against postmarketOS's real
+  kconfigcheck.toml spec** (fetched fresh from pmaports, "community"
+  category -- the full real target checklist). Wrote
+  notes/check_kconfig.py to parse the TOML (handles version/arch ranges)
+  and cross-check against our actual .config, since manual comparison
+  against 475 option requirements isn't practical by hand.
+  **Result: 313 of 475 don't match.** Mostly not concerning for right now
+  -- the bulk is accessibility (SPEAKUP screen reader), containers/
+  Waydroid netfilter rules, exotic filesystems (exFAT/F2FS/XFS/EROFS),
+  and hardening/CFI -- all genuinely needed for a real, polished,
+  submittable pmOS device port, but not relevant to the immediate goal
+  (prove the devicetree boots to a shell).
+  **Applied narrowly**: only UEVENT_HELPER=y and NULL_TTY=m -- cheap,
+  harmless, genuinely useful for device-node robustness even in a minimal
+  initramfs, verified via scripts/config + olddefconfig. Confirmed
+  DEVTMPFS/DEVTMPFS_MOUNT/TMPFS/SERIAL_QCOM_GENI_CONSOLE were already on
+  by default, covering what's actually load-bearing for the shell itself.
+  **Deliberately deferred**: the other ~311 items. Revisit once basic
+  boot is proven and an actual pmaports submission is the goal, not
+  before. kconfigcheck.toml and kconfig-generic.toml fetched to
+  /tmp during this check (not persisted anywhere in-repo since they're
+  a live upstream spec, easy to re-fetch when needed again).
+
+- 2026-09-20: **First real kernel build + boot image assembly — materials
+  ready for a real flash/boot attempt, not yet flashed.**
+
+  **Scope clarified up front**: this builds a real upstream mainline
+  kernel with dm1q.dts, plus a bare-minimum custom initramfs (busybox +
+  a one-line shell /init). This is NOT postmarketOS -- no Alpine
+  userspace, no pmaports packaging, no init system. It's the smallest
+  possible thing that can prove "does this kernel initialize dm1q's real
+  hardware," deliberately separated from the actual pmOS work.
+
+  **Safety planning first**: user's device is their daily driver, so
+  walked through real risk before touching anything. Corrected an early
+  wrong assumption of mine: Samsung phones do NOT support fastboot at
+  all (confirmed via web search) -- they use their own proprietary Odin/
+  Download Mode protocol exclusively (heimdall on Linux). No
+  temporary/non-persistent boot option exists the way fastboot boot
+  offers on other Android devices -- any real test requires an actual
+  persistent flash. Real risk assessment: true hard-bricking is rare for
+  boot-partition-only testing, since Download Mode lives in the PBL
+  (protected boot ROM) entirely separate from anything being flashed,
+  and is specifically designed to survive a bad kernel/bootloader.
+  Real risks are wrong-partition-targeting and power loss mid-flash, not
+  kernel badness itself. User has stock firmware, crDroid, OrangeFox, and
+  confirmed Download Mode access as the recovery path. User will do the
+  actual flashing themselves via Heimdall GUI.
+
+  **Kernel build**: full shallow clone of torvalds/linux (2.1GB,
+  `../_scratch/linux-build/full`), built with clang/LLVM (already
+  available, no separate cross-toolchain needed -- matches what real
+  Android GKI kernels use). arm64 defconfig already had everything
+  needed for SM8550 (CONFIG_INTERCONNECT_QCOM_SM8550=y confirmed, all
+  PHY/UFS/USB/PCIe/ATH11K/regulator drivers present). Kernel version
+  built: 7.3.0-rc3.
+
+  **Checked against postmarketOS's real kconfigcheck.toml spec**
+  (per user's specific request) -- see the 2026-09-19 entry above for
+  the full detail. Applied only the two genuinely load-bearing-adjacent
+  options (UEVENT_HELPER, NULL_TTY); deferred the other ~311 (real pmOS
+  submission work, not relevant to this first boot test).
+
+  **dm1q.dtb built through the real Kbuild system** (not just our
+  standalone cpp+dtc check used throughout earlier devicetree work) --
+  genuine additional validation that it integrates cleanly with the full
+  kernel build, not just standalone dtc. 120176 bytes.
+
+  **Initramfs**: real Alpine busybox-static (v1.37.0-r30, aarch64,
+  fetched directly from dl-cdn.alpinelinux.org -- thematically apt given
+  the eventual pmOS/Alpine target) plus a minimal /init that mounts
+  proc/sys/devtmpfs and execs a shell. 657KB gzip-compressed cpio.
+
+  **Real boot image structure discovered, not assumed**: pulled the
+  actual current boot/init_boot/vendor_boot partitions directly off the
+  device via adb+dd (root via KernelSU) -- this doubles as a complete,
+  exact backup of the working boot state before any flash is attempted.
+  unpack_bootimg revealed a true 3-way GKI split (boot=kernel only,
+  init_boot=generic ramdisk, vendor_boot=vendor ramdisk+dtb), header
+  version 4, matching gts9uwifi's real deviceinfo (header_version=4,
+  flash_pagesize=4096) exactly. Extracted real parameters: kernel load
+  0x8000, ramdisk load 0x1000000, dtb load 0x1f00000, real vendor
+  cmdline, os_version 16.0.0, patch level 2026-07.
+
+  **Built three replacement images** with mkbootimg, verified by
+  re-unpacking each and diffing against the originals -- everything
+  identical except the intentional swaps (our kernel in boot_new.img,
+  our initramfs in init_boot_new.img, our dtb -- 120176 bytes, replacing
+  Samsung's 1.8MB multi-board-revision blob -- in vendor_boot_new.img,
+  vendor ramdisk otherwise byte-identical). Both raw .img and
+  img2simg-converted .simg versions produced, since it wasn't certain
+  which format this Heimdall GUI expects (Heimdall/Odin traditionally
+  expects raw, sparse is more of an AOSP/fastboot convention) -- left
+  the choice to the user rather than guessing.
+
+  All materials in `../_scratch/boot-backup-20260920/`: the three
+  original partition dumps (backup/recovery path), the three new
+  replacement images (raw + sparse), and the unpacked component
+  directories for reference.
+
+  **Status: ready for the user to flash via Heimdall. Not yet flashed,
+  not yet tested on real hardware.** Next real milestone: an actual
+  boot/flash attempt.
