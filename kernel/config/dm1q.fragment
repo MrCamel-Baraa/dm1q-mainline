@@ -1,0 +1,22 @@
+# dm1q bring-up kernel config additions (on top of arm64 defconfig)
+# --- persistent log (v3)
+CONFIG_SAMSUNG_SEC_LOG=y
+# --- visible console over the ABL-preserved splash framebuffer (v4)
+CONFIG_DRM=y
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_SYSFB=y
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_FONTS=y
+CONFIG_FONT_TER16x32=y
+# --- USB2 peripheral + configfs ACM gadget, all built-in (initramfs carries no modules) (v4)
+CONFIG_USB_LIBCOMPOSITE=y
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_ACM=y
+CONFIG_USB_CONFIGFS_SERIAL=y
+CONFIG_PHY_SNPS_EUSB2=y
+CONFIG_PHY_NXP_PTN3222=y
+CONFIG_I2C_QCOM_GENI=y
+# NOTE: scripts/config needs --keep-case for FONT_TER16x32 (lower-case x), otherwise it silently does nothing.

@@ -54,6 +54,13 @@
  * now included (2026-09-15) -- its real SID (5) was confirmed via live
  * devicetree, needed for the USB SS PHY's vdda-pll-supply below. */
 
+/*
+ * Samsung's ADSP/SLPI carveout is larger than the SM8550 reference value.
+ * Live dm1q value (recovery's booted tree, 2026-09-21): adspslpi_region at
+ * 0x9ea00000, size 0x59b4000 -- identical to the gts9uwifi override.
+ */
+/delete-node/ &adspslpi_mem;
+
 / {
 	model = "Samsung Galaxy S23";
 	/*
@@ -100,8 +107,207 @@
 	};
 
 	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
 		stdout-path = "serial0:115200n8";
+
+		/*
+		 * ABL's preserved splash framebuffer (splash_region below,
+		 * 0xb8000000). No native display driver yet, so this is the only
+		 * way to see the kernel console. 1080x2340 = the S6E3FAC/LX83118
+		 * FHD+ panel (live downstream log: hactive=1080 vactive=2340).
+		 * UNVERIFIED: stride 4320 (=1080*4) and a8r8g8b8 are assumptions;
+		 * a skewed or colour-wrong console means adjust these two lines.
+		 */
+		framebuffer0: framebuffer@b8000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xb8000000 0x0 0x9a3f80>;
+			width = <1080>;
+			height = <2340>;
+			stride = <4320>;
+			format = "a8r8g8b8";
+		};
 	};
+
+	/*
+	 * Board carveouts that Samsung's stock DTBO normally adds. We make ABL
+	 * skip the stock DTBO (invalid dtbo image, see docs/01 2026-09-21), so
+	 * ABL no longer reconstructs them. Without them Linux treats protected
+	 * ranges as ordinary RAM; on gts9uwifi touching them can make secure
+	 * firmware reset the SoC (TZBSP_ERR_FATAL_NOC_ERROR). All values below
+	 * are read from dm1q's LIVE booted tree (recovery, 2026-09-21), see
+	 * notes/2026-09-21-v2-bootloop/live-reserved-memory.txt.
+	 */
+	reserved-memory {
+		kaslr_mem: kaslr@b01ff000 {
+			reg = <0x0 0xb01ff000 0x0 0x1000>;
+			no-map;
+		};
+
+		uh_heap_mem: uh-heap@b0200000 {
+			reg = <0x0 0xb0200000 0x0 0x40000>;
+			no-map;
+		};
+
+		/* dm1q live size 0x3000000 (gts9uwifi's is larger) */
+		uh_guest_mem: uh-guest@b1000000 {
+			reg = <0x0 0xb1000000 0x0 0x3000000>;
+			no-map;
+		};
+
+		chipinfo_mem: chipinfo@81cf4000 {
+			reg = <0x0 0x81cf4000 0x0 0x1000>;
+			no-map;
+		};
+
+		sec_xbl_ramdump_mem: sec-xbl-ramdump@a7d00000 {
+			reg = <0x0 0xa7d00000 0x0 0x300000>;
+			no-map;
+		};
+
+		adspslpi_mem: adspslpi@9ea00000 {
+			reg = <0x0 0x9ea00000 0x0 0x59b4000>;
+			no-map;
+		};
+
+		llcc_lpi_mem: llcc-lpi@ff800000 {
+			reg = <0x0 0xff800000 0x0 0x600000>;
+			no-map;
+		};
+
+		/*
+		 * ABL patches this region by its exact downstream node name and
+		 * label (live dm1q: node "splash_region", label
+		 * "cont_splash_region", reg 0xb8000000 size 0x2b00000).
+		 */
+		splash_region {
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			label = "cont_splash_region";
+			no-map;
+		};
+
+		sec_debug_pool_mem: sec-debug-pool@880100000 {
+			reg = <0x8 0x80100000 0x0 0xff000>;
+			no-map;
+		};
+
+		sec_reset_info_mem: sec-reset-info@8801ff000 {
+			reg = <0x8 0x801ff000 0x0 0x1000>;
+			no-map;
+		};
+
+		/*
+		 * Ring shared with Samsung's bootloader and recovery: recovery
+		 * exposes its previous contents as /proc/last_kmsg (used by the
+		 * persistent console driver below).
+		 */
+		sec_log_buf_mem: sec-log@880200000 {
+			reg = <0x8 0x80200000 0x0 0x200000>;
+		};
+
+		sec_debug_bl_mem: sec-debug-bl@880400000 {
+			reg = <0x8 0x80400000 0x0 0x500000>;
+			no-map;
+		};
+
+		sec_pmsg_mem: sec-pmsg@880900000 {
+			reg = <0x8 0x80900000 0x0 0x200000>;
+			no-map;
+		};
+
+		google_debug_kinfo_mem: google-debug-kinfo@880b00000 {
+			reg = <0x8 0x80b00000 0x0 0x1000>;
+			no-map;
+		};
+
+		hdm_mem: hdm@880b01000 {
+			reg = <0x8 0x80b01000 0x0 0x1000>;
+			no-map;
+		};
+
+		sec_qcom_rdx_mem: sec-qcom-rdx@880c00000 {
+			reg = <0x8 0x80c00000 0x0 0xad00000>;
+			no-map;
+		};
+
+		/*
+		 * Bring-up aid, not a Samsung carveout. 4 MiB in the free gap
+		 * between uh_guest_mem (ends 0xb4000000) and splash_region
+		 * (starts 0xb8000000) -- confirmed empty in the live
+		 * reserved-memory map, 2026-09-21. Survives a plain reset back
+		 * into THIS kernel (no other OS knows about this region), so a
+		 * crash/hang can be read from the very next mainline boot via
+		 * /sys/fs/pstore -- without detouring through recovery, whose
+		 * own downstream kernel reuses (and overwrites) Samsung's
+		 * sec_log_buf ring on every entry.
+		 */
+		ramoops: ramoops@b4000000 {
+			compatible = "ramoops";
+			reg = <0x0 0xb4000000 0x0 0x400000>;
+			record-size = <0x40000>;
+			console-size = <0x40000>;
+			pmsg-size = <0x20000>;
+			ecc-size = <16>;
+		};
+	};
+
+	/* Persistent early console -> sec_log_buf (kernel patch in kernel/patches/). */
+	sec-kernel-log {
+		compatible = "samsung,sec-kernel-log";
+		memory-region = <&sec_log_buf_mem>;
+	};
+};
+
+/*
+ * TLMM GPIOs reserved for TrustZone. FIRST-BOOT BLOCKER: Linux's tlmm
+ * probe touching these makes secure firmware reset the SoC with
+ * TZBSP_ERR_FATAL_NOC_ERROR -- exactly the reset dm1q showed after the v2
+ * flash (recovery /proc/last_kmsg: upload_cause = TZBSP_ERR_FATAL_NOC_ERROR,
+ * 2026-09-21). Values: dm1q's downstream r13 overlay fragment sets
+ * qcom,gpios-reserved = <0x24 0x25 0x26 0x27 0x32 0x33> (= GPIO 36-39 and
+ * 50-51), identical to the already-upstream sm8550-samsung-q5q.dts
+ * (`<36 4>, <50 2>`); on gts9uwifi the same fix (36-39) removed the fatal
+ * NoC. None of our wired GPIOs (4, 24, 25, 26, 27, 80-82, 94, 96, 125, 204,
+ * 210) fall in these ranges.
+ */
+&tlmm {
+	gpio-reserved-ranges = <36 4>, <50 2>;
+};
+
+/*
+ * Board-level clock roots and the GENI wrapper enable -- ADDED 2026-09-24.
+ *
+ * Found by diffing this file against the upstream sibling
+ * sm8550-samsung-q5q.dts (every sm8550 board file -- hdk, mtp, qrd, q5q,
+ * pdx234 -- does the same two clock overrides): sm8550.dtsi declares
+ * xo_board and sleep_clk as "fixed-clock" nodes WITHOUT a frequency and
+ * expects each board to supply it. Without clock-frequency,
+ * of_fixed_clk_setup() returns -EIO and the clock is never registered, so
+ * the RPMh XO (RPMH_CXO_CLK) -> bi_tcxo_div2 -> every GCC PLL/RCG ran at
+ * 0 Hz. Two consequences, both seen on hardware before this fix:
+ *  - any clk_set_rate() that reaches the XO subtree recurses through ALL of
+ *    its children; a disabled floor-policy RCG (gcc_sdcc2/4_apps_clk_src)
+ *    then got new_rate = 0 -> qcom_find_freq_floor() == NULL -> NULL deref
+ *    in __clk_rcg2_shared_set_rate() (the "PCIe0 OPP" oops at ~10.47 s;
+ *    see notes/2026-09-23-pcie-opp-crash/findings.md);
+ *  - every PLL-derived rate stayed 0 for UFS/USB/PCIe consumers.
+ *
+ * qupv3_id_0 (geniqup@ac0000) is the wrapper for i2c4 (touch), i2c6 (the
+ * eUSB2 repeater) and uart7. It is status = "disabled" in sm8550.dtsi and
+ * q5q.dts enables it; this file never did, so none of those three children
+ * could ever probe => no repeater => USB HS PHY deferred forever => no UDC.
+ */
+&xo_board {
+	clock-frequency = <76800000>;
+};
+
+&sleep_clk {
+	clock-frequency = <32764>;
+};
+
+&qupv3_id_0 {
+	status = "okay";
 };
 
 /*
@@ -436,6 +642,19 @@
 };
 
 &usb_1 {
+	/*
+	 * Forced USB2 peripheral, no role switch: there is no Type-C/PD
+	 * driver for the Samsung MAX77705/MUIC yet, and sm8550.dtsi's default
+	 * (usb-role-switch, dr_mode otg) would wait forever for a role.
+	 * HS-only: the SS PHY (&usb_dp_qmpphy) is left disabled for now to keep
+	 * the first USB bring-up minimal. Used for a configfs ACM gadget shell
+	 * from the initramfs.
+	 */
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	/delete-property/ usb-role-switch;
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
 	status = "okay";
 };
 
@@ -445,7 +664,8 @@
 	 * (L3F, PM8550VE -- newly added above specifically for this). */
 	vdda-phy-supply = <&vreg_l3e_1p2>;
 	vdda-pll-supply = <&vreg_l3f_0p912>;
-	status = "okay";
+	/* disabled for the HS-only peripheral bring-up above; re-enable for SS */
+	status = "disabled";
 };
 
 /*
@@ -507,11 +727,18 @@
 	 * pairs 0x06:0x40, 0x07:0x20, 0x08:0x62, 0x09:0x03, 0x0a:0x00).
 	 */
 	eusb2_repeater: eusb2-repeater@4f {
-		compatible = "nxp,eusb2-repeater";
+		/*
+		 * CORRECTED 2026-09-21: was "nxp,eusb2-repeater" with
+		 * vdd18-supply/vdd3-supply (downstream names). Mainline only has
+		 * the PTN3222 driver (compatible "nxp,ptn3222", supplies vdd3v3 /
+		 * vdd1v8), so the old node could never bind and the eUSB2 HS PHY
+		 * would defer forever. Same rails as before (L5B 3.1 V, L15B 1.8 V).
+		 */
+		compatible = "nxp,ptn3222";
 		reg = <0x4f>;
 		reset-gpios = <&tlmm 4 GPIO_ACTIVE_LOW>;
-		vdd18-supply = <&vreg_l15b_1p8>;
-		vdd3-supply = <&vreg_l5b_3p104>;
+		vdd1v8-supply = <&vreg_l15b_1p8>;
+		vdd3v3-supply = <&vreg_l5b_3p104>;
 		#phy-cells = <0>;
 
 		qcom,param-override-seq = <

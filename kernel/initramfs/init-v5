@@ -1,0 +1,72 @@
+#!/bin/busybox sh
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null
+/bin/busybox mkdir -p /dev/pts
+/bin/busybox mount -t devpts devpts /dev/pts 2>/dev/null
+/bin/busybox mount -t configfs configfs /sys/kernel/config 2>/dev/null
+/bin/busybox mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+
+echo ""
+echo "======================================================"
+echo " dm1q mainline v5 -- initramfs is running"
+echo "======================================================"
+/bin/busybox uname -a
+echo "======================================================"
+
+# ---- Show the PREVIOUS boot's console, if ramoops has one ----
+/bin/busybox mount -t pstore pstore /sys/fs/pstore 2>/dev/null
+P=$(/bin/busybox ls /sys/fs/pstore/ 2>/dev/null | /bin/busybox grep console-ramoops | /bin/busybox head -1)
+if [ -n "$P" ]; then
+	echo "======================================================"
+	echo " Previous boot's console (/sys/fs/pstore/$P):"
+	echo "======================================================"
+	/bin/busybox cat /sys/fs/pstore/$P
+	echo "======================================================"
+	echo " end of previous boot's console"
+	echo "======================================================"
+else
+	echo "(no previous-boot console in pstore -- first boot with ramoops,"
+	echo " or the last reset went through recovery/Download Mode and"
+	echo " ramoops RAM may have been reused by that OS)"
+fi
+
+echo "USB gadget (ACM serial shell) is being set up in the"
+echo "background: expect /dev/ttyACM0 on the host."
+echo "======================================================"
+
+# ---- USB peripheral gadget: CDC-ACM serial, then a shell on ttyGS0 ----
+(
+  G=/sys/kernel/config/usb_gadget/dm1q
+  /bin/busybox mkdir -p $G/strings/0x409 $G/configs/c.1/strings/0x409 $G/functions/acm.usb0
+  echo 0x1d6b > $G/idVendor
+  echo 0x0104 > $G/idProduct
+  echo "dm1q-mainline" > $G/strings/0x409/serialnumber
+  echo "dm1q mainline" > $G/strings/0x409/manufacturer
+  echo "dm1q initramfs console" > $G/strings/0x409/product
+  echo "ACM" > $G/configs/c.1/strings/0x409/configuration
+  /bin/busybox ln -s $G/functions/acm.usb0 $G/configs/c.1/ 2>/dev/null
+  n=0
+  U=""
+  while [ $n -lt 300 ]; do
+    for u in /sys/class/udc/*; do [ -e "$u" ] && U=${u##*/} && break; done
+    [ -n "$U" ] && break
+    n=$((n+1))
+    if [ $((n % 10)) -eq 0 ]; then echo "[gadget] still waiting for a UDC (${n}s)..."; fi
+    /bin/busybox sleep 1
+  done
+  if [ -n "$U" ]; then
+    echo "$U" > $G/UDC
+    echo "[gadget] bound to UDC $U"
+  else
+    echo "[gadget] no UDC appeared after 300 s (see dmesg | grep -i -E 'dwc3|eusb2|ptn3222')"
+    exit 0
+  fi
+  while [ ! -c /dev/ttyGS0 ]; do /bin/busybox sleep 1; done
+  while true; do
+    /bin/busybox setsid /bin/busybox sh -c 'exec /bin/busybox sh </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+    /bin/busybox sleep 1
+  done
+) &
+
+exec /bin/busybox sh

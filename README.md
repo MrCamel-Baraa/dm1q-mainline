@@ -26,6 +26,9 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
   values extracted directly from dm1q's own downstream devicetree source
 - `dts/` — devicetree work (diffs, drafts, extracted downstream references)
 - `notes/` — scratch notes, kernel config diffs, log dumps
+- `kernel/` — kernel patches and config fragments applied on top of upstream
+  (currently: `samsung-sec-log` persistent console, readable from recovery
+  as `/proc/last_kmsg`)
 - `../_scratch/` — sibling directory (outside this repo, gitignored) with
   frozen snapshots of external reference repos, kernel build workspace, and
   boot-image materials. See `../_scratch/README.md` for exact contents/
@@ -54,7 +57,7 @@ exact DCS byte table wasn't located yet (see docs/05 for where to pick
 this up).
 
 **A real kernel + boot images now exist, ready for a flash attempt — not
-yet flashed, not yet tested on hardware.** A real upstream mainline kernel
+yet flashed as of 2026-09-20. First flash attempt (2026-09-21) did not boot: Download Mode with a vbmeta/AVB error — see the 2026-09-21 entry in `docs/01-phase1-workplan.md`.** A real upstream mainline kernel
 was built with `dm1q.dts`, paired with a minimal busybox-based initramfs
 (just enough to prove the kernel initializes real hardware and reaches a
 shell — not postmarketOS itself, no Alpine userspace yet). The actual

@@ -1,0 +1,722 @@
+
+@ Ramdump Auto Summary
+@ General Info (RWC=92)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / TZBSP_ERR_FATAL_NOC_ERROR
+              
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.542496:    2736 MHz
+14.047246:    3686 MHz
+
+@ DDR PowerCollapse[3284534868] / Restore[834935782]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: [TZBSP_ERR_FATAL_NOC_ERROR]
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=91)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / TZBSP_ERR_FATAL_NOC_ERROR
+              
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.607180:    2736 MHz
+14.115734:    3686 MHz
+
+@ DDR PowerCollapse[3255174804] / Restore[869014142]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: [TZBSP_ERR_FATAL_NOC_ERROR]
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=90)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / TZBSP_ERR_FATAL_NOC_ERROR
+              
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.463292:    2736 MHz
+13.969257:    3686 MHz
+
+@ DDR PowerCollapse[3230008916] / Restore[2982943470]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: [TZBSP_ERR_FATAL_NOC_ERROR]
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Power Collapsed]  / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=89)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+0.865923:    2093 MHz
+1.460653:    2736 MHz
+
+@ DDR PowerCollapse[3284403924] / Restore[837683950]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0xe5346110)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=88)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+0.942432:    2093 MHz
+1.536633:    2736 MHz
+
+@ DDR PowerCollapse[3330674260] / Restore[835459814]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0x85746410)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=87)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.466518:    2736 MHz
+9.047883:    3686 MHz
+
+@ DDR PowerCollapse[3263563348] / Restore[3016497894]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+10.750254: <font color=yellow>WLAN_PDC_SEARCH_RES_FOUND</fon 0x40400 0x3 0x3 0x0
+13.431981: <font color=yellow>WLAN_PDC_SEARCH_RES_FOUND</fon 0x40400 0x2 0x2 0x0
+13.431990: <font color=yellow>WLAN_PDC_SEARCH_RES_FOUND</fon 0x40400 0x3 0x3 0x0
+10.749846: <font color=yellow>WLAN_PDC_SEARCH_RES_FOUND</fon 0x40400 0x9 0x2 0x0
+10.750245: <font color=yellow>WLAN_PDC_SEARCH_RES_FOUND</fon 0x40400 0x2 0x2 0x0
+36.511437:  0x0 0x0 0x0 0x0
+0.000000:  0x0 0x0 0x0 0x0
+0.000000:  0x0 0x0 0x0 0x0
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0xad606510)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 1804 MHZ] / [DVCS: 14->14]
+SILVER: [Freq: 2016 MHZ] / [DVCS: 0->15]
+GOLD: [Freq: 2707 MHZ] / [DVCS: 17->18]
+GOLD_PLUS: [Freq: 2956 MHZ] / [DVCS: 19->19]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC1_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC2_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC3_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=86)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+0.938089:    2093 MHz
+1.531949:    2736 MHz
+
+@ DDR PowerCollapse[3263563284] / Restore[2982419174]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0xb5304010)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 0 MHZ] / [DVCS: 0->0]
+SILVER: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD: [Freq: 0 MHZ] / [DVCS: 0->0]
+GOLD_PLUS: [Freq: 0 MHZ] / [DVCS: 0->0]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC1_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC2_SECURE/NSECURE_STATUS : 0x0 / 0x0
+LLCC3_SECURE/NSECURE_STATUS : 0x0 / 0x0
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=85)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ Reset Reason
+KP:0 / WP:0 / DP:0 / TP:0 / SP:0 / PP:0 / CP:0
+
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.532765:    2736 MHz
+5.655032:    3686 MHz
+
+@ DDR PowerCollapse[3263563476] / Restore[835455998]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0xad346030)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 1804 MHZ] / [DVCS: 14->14]
+SILVER: [Freq: 2016 MHZ] / [DVCS: 0->15]
+GOLD: [Freq: 2054 MHZ] / [DVCS: 12->13]
+GOLD_PLUS: [Freq: 2592 MHZ] / [DVCS: 16->16]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC1_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC2_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC3_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+@ Kernel Crash Infos
+
+
+@ Last Kmsg
+[ 1720.771542] [5:  kworker/u16:1:  844] sec_bat_monitor_work: lcd(1), slate(0), store(0), siop_level(0), sleep_mode(0), Cycle(-1)
+[ 1720.771549] [5:  kworker/u16:1:  844] sec-battery samsung_mobile_device:battery: sec_bat_set_polling: Polling time 30/30 sec.
+[ 1720.771758] [5:    kworker/5:8:  154] max77705_fg_read_current: current=-1041mA
+[ 1720.772142] [5:    kworker/5:8:  154] max77705_fg_read_avg_current: avg_current=-979mA
+[ 1720.772527] [5:    kworker/5:8:  154] max77705_fg_read_current: current=-1041mA
+[ 1720.773099] [5:    kworker/5:8:  154] max77705_fg_read_avg_current: avg_current=-980mA
+[ 1720.773410] [6:health@2.1-serv:  607] max77705_fg_read_current: current=-1041mA
+[ 1720.773846] [6:health@2.1-serv:  607] max77705_fg_read_avg_current: avg_current=-980mA
+[ 1720.773961] [6:health@2.1-serv:  607] healthd: battery l=42 v=3745 t=45.8 h=2 st=3 c=-1041 fc=3900000 chg=
+[ 1720.774201] [6:health@2.1-serv:  607] max77705_fg_read_current: current=-1041mA
+[ 1720.774638] [4:health@2.1-serv:  607] max77705_fg_read_avg_current: avg_current=-980mA
+[ 1720.810673] [7:    kworker/7:1:  846] ts_print: tsens[0:657][1:712][2:680][3:684][4:688][5:768][6:744][7:661][8:661][9:661][10:661][11:649][12:657][13:808][14:896][15:848][16:650][17:658][18:642][19:662][20:606][21:606][22:562][23:574][24:638][25:662][26:586][27:562][28:562][29:586][30:566][31:594][32:647][33:596][34:576][35:588][36:576][37:655][38:639][39:599][40:615]
+UFS Spec Version: 4.0
+UFS Manf info: CE0424
+UFS INQUIRY ID: SAMSUNG KLUEG4RHHD-B0G1 0011
+UFS Boot LUN: 1
+UFS Total Size: 256 GB
+PM: Driver Init # SPMI Transn: 916
+ufs_dbginfo_get_length: The directory length is 0x610
+ufs_dbginfo_get_length: The count of error directory entry is 0xc2
+ufs_dbginfo_get_length: buffer id(0x10), length = 0x804000
+ufs_dbginfo_get_length: buffer id(0x20), length = 0xf00000
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=84)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ Reset Reason
+KP:0 / WP:0 / DP:0 / TP:0 / SP:0 / PP:0 / CP:0
+
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.532145:    2736 MHz
+6.367470:    3686 MHz
+
+@ DDR PowerCollapse[3284551366] / Restore[2982976486]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0x81346410)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 1804 MHZ] / [DVCS: 14->14]
+SILVER: [Freq: 2016 MHZ] / [DVCS: 0->15]
+GOLD: [Freq: 2054 MHZ] / [DVCS: 14->13]
+GOLD_PLUS: [Freq: 2592 MHZ] / [DVCS: 16->16]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC1_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC2_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC3_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+@ Kernel Crash Infos
+
+
+@ Last Kmsg
+[  352.458025] [4:  kworker/u17:2:  914] sched_walt: cpufreq_walt_get_adaptive_freq: wg_policy NULL !!
+[  352.458027] [4:  kworker/u17:2:  914] cflm_update_current_freq: s((0, 0) ~ 2016000), g(499200 ~ 2803200), p(595200 ~arr[0] : 1
+[    1.417691] [7:           init:    1]  [Input Booster]  res_id(1) result(1)
+[    1.417692] [7:           init:    1] resource,id 0's Type Value(2)
+[    1.417693] [7:           init:    1] Target_arr[0] : 2
+[    1.417694] [7:           init:    1]  [Input Booster]  res_id(2) result(1)
+[    1.417695] [7:           init:    1] resource,id 0's Type Value(3)
+[    1.417695]7:  kworker/7:184:  623] ts_print: tsens[0:605][1:665][2:629][3:          init:    1]  [Input Booster]  res_id(3) result(1)
+[    1.417697] [7:           init:    1]  [Input Booster] ib_dt->label : multitouch
+[    1.417698] [7:           init:    1] resource,id 0's Type Value(0)
+[    1.417698] [7:           init:    1] Target_arr[0] : 0
+[    1.417699] [7:           init:    1]  [Input Booster]  res_id(0) result(1)
+[    1.417700] [7:           init:    1] resource,id 0's Type Value(1)
+[    1.417700] [7:           init:    1] Target_arr[0] : 1
+[    1.417701] [7:           1:669][2:637][3:633][4:645][5:740][6:712][7:609][8:609][9:609][1 [7:           init:    1] resource,id 0's Type Value(2)
+[    1.8:594][19:610][20:550][21:546][22:502][23:514][24:586][25:618][24] [7:           init:    1]  [Input Booster]  res_id(2) result(1)
+[    1.417704] [7:           init:    1] resource,i
+UFS Spec Version: 4.0
+UFS Manf info: CE0424
+UFS INQUIRY ID: SAMSUNG KLUEG4RHHD-B0G1 0011
+UFS Boot LUN: 1
+UFS Total Size: 256 GB
+PM: Driver Init # SPMI Transn: 916
+ufs_dbginfo_get_length: The directory length is 0x610
+ufs_dbginfo_get_length: The count of error directory entry is 0xc2
+ufs_dbginfo_get_length: buffer id(0x10), length = 0x804000
+ufs_dbginfo_get_length: buffer id(0x20), length = 0xf00000
+
+
+
+
+@ Ramdump Auto Summary
+@ General Info (RWC=83)
+PRODUCT NAME = DM1Q_EUR_OPENX
+SOC_HW_REVISION = v2-AC
+PMIC_HW_REVISION = A:2.1 B:2.0 C:2.0 D:2.0 E:2.0 F:2.0 G:2.0 K:2.0
+SYSTEM_REV = 0xd
+QB link = https://android.qb.sec.samsung.net/build/100732761
+
+@ Upload Cause = 0x0 / User press reset keys for 7 sec
+        
+@ Reset Reason
+KP:0 / WP:0 / DP:0 / TP:0 / SP:0 / PP:0 / CP:0
+
+@ DDR STATUS
+Vendor:Samsung / Revision ID:9 / DSF:29.0.3050
+
+@ DDR Freq
+1.470030:    2736 MHz
+6.300083:    3686 MHz
+
+@ DDR PowerCollapse[3284534980] / Restore[3016006502]
+@ AOP State: No valid core dump detected!
+
+@ AOP error logs:
+
+
+@ TZ Reset Info
+OEM_RESET_REASON: check rpm or kernel (magic_val:0x25704112)
+
+@ TZ Boot / Error Info
+         Warmboot        /     Reason    /         ESR        / FAR
+CPU0: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU1: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU2: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU3: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU4: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU5: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU6: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+CPU7: [Running]          / 0x0, 0x0 / 0x0, 0x0 / 0x0, 0x0
+
+@ AP DCC Status
+L3: [Freq: 1804 MHZ] / [DVCS: 14->14]
+SILVER: [Freq: 2016 MHZ] / [DVCS: 0->15]
+GOLD: [Freq: 2188 MHZ] / [DVCS: 14->14]
+GOLD_PLUS: [Freq: 2726 MHZ] / [DVCS: 17->17]
+
+@LCP-DARE Info
+LLCC0_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC1_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC2_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+LLCC3_SECURE/NSECURE_STATUS : 0xffffffff / 0xffffffff
+
+First Hang status: 0x00
+CPU0: [C0] / [Stuck: 0 msecs]
+CPU1: [C0] / [Stuck: 0 msecs]
+CPU2: [C0] / [Stuck: 0 msecs]
+CPU3: [C0] / [Stuck: 0 msecs]
+CPU4: [C0] / [Stuck: 0 msecs]
+CPU5: [C0] / [Stuck: 0 msecs]
+CPU6: [C0] / [Stuck: 0 msecs]
+CPU7: [C0] / [Stuck: 0 msecs]
+
+@ Kernel Crash Infos
+
+
+@ Last Kmsg
+[  468(1800) CHARGING(2100)
+[    1.371944] [7:           init:    1] sec_bat_parse_dt : CABLE_NUM(19) INPUT(500) CHARGING(500)
+[    1.(1), HV(NONE), flash(0) mst(0)
+[  468.416557] [4:  kworker/u16:5:  209] sec_bat_monitor_work: lcd(1), slate(0), store(0), siop_l    1] sec_bat_parse_dt : CABLE_NUM(21) INPUT(500) CHARGING(500)6:5:  209] sec-battery samsung_mobile_device:battery: sec_bat_seLE_NUM(22) INPUT(500) CHARGING(500)
+[    1.371947] [7:          4:12:  184] max77705_fg_read_current: current=-1041mA
+[  468.417602] [4:   kworker/4:12:  184] max77705_fg_read_avg_current: avg : CABLE_NUM(24) INPUT(1000) CHARGING(450)
+[    1.371949] [7:           init:    1] sec_bat_parse_dt : CABLE_NUM(25) INPUT(1000) CHARGING(1000)
+[    1.371950] [7:           init:    1] sec_bat9646] [4:  kworker/u16:5:  209] max77705_fg_read_avg_current: avg_current=-1030mA
+[  468.419835] [4:   kworker/4:12:  184] max77NPUT(800) CHARGING(2700)
+[    1.371952] [7:           init:    1] sec_bat_parse_dt : CABLE_NUM(28) INPUT(750) CHARGING(2700)
+[ 
+UFS Spec Version: 4.0
+UFS Manf info: CE0424
+UFS INQUIRY ID: SAMSUNG KLUEG4RHHD-B0G1 0011
+UFS Boot LUN: 1
+UFS Total Size: 256 GB
+PM: Driver Init # SPMI Transn: 916
+ufs_dbginfo_get_length: The directory length is 0x610
+ufs_dbginfo_get_length: The count of error directory entry is 0xc2
+ufs_dbginfo_get_length: buffer id(0x10), length = 0x804000
+ufs_dbginfo_get_length: buffer id(0x20), length = 0xf00000
+
+
+
