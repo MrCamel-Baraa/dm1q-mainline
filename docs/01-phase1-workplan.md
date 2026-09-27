@@ -613,3 +613,128 @@ not current layout.**
   **Next:** boot v10 and look for: no oops at ~10.47 s; a CDC-ACM device on the host (`/dev/ttyACM0` → initramfs shell →
   `dmesg`); UFS `sda*` (or a now-visible error). If USB works, stop photographing and read dmesg over ACM. Still **no
   pmOS/Alpine userspace work** until the kernel stays up.
+
+- 2026-09-25/26 (**MILESTONE -- v10 confirmed booting to a userspace shell,
+  NO crash; two new findings, one fixed in v11**): user photographed all 189
+  pages of v10's on-screen dmesg replay and transcribed them by hand (OCR
+  proved unreliable on the dense text -- confirmed independently this
+  session too, see below). Full report:
+  `notes/2026-09-25-v10-boot-log-analysis/findings.md` (verbatim upload +
+  follow-up). **Headline: the 2026-09-24 xo_board/sleep_clk fix worked as
+  predicted -- no oops, no panic, kernel reaches a shell.** This is the
+  first mainline boot on dm1q that gets this far.
+  Two independent problems remained, both about things that never finish
+  probing rather than anything crashing:
+  1. **SPMI USID 7 (PM8550B) fails an identification read** (-EIO,
+     `pmic_arb_check_chnl_status_v1` WARN). Cross-checked against real
+     hardware (`../_scratch/crdroid-dm1q-dts/samsung/
+     dm1q_eur_openx_w00_r13.dts`: `qcom,pm8550b@7`) and mainline's own
+     `pm8550b.dtsi` (`reg = <0x7 SPMI_USID>`, not board-specific) -- **USID 7
+     is confirmed correct**, so this isn't a wrong-SID devicetree bug. Real
+     cause not yet found (possibly a board-specific power-sequencing
+     prerequisite like several other chips on this board have needed;
+     possibly intermittent -- only one boot's worth of evidence). Doesn't
+     block anything else (PM8550B's regulators are reached through the
+     separate RPMH path below, not this SPMI read). **Left open.**
+  2. **UFS (`vcc-supply`) and the eUSB2 repeater (`vdd3-supply`) permanently
+     deferred**, both waiting on `/soc@0/rsc@17a00000/regulators-0/ldo{17,5}`.
+     **Root cause found and fixed**: `dm1q.dts`'s PM8550B RPMH-regulators
+     node used `compatible = "qcom,pm8550b-rpmh-regulators"` -- a string
+     that doesn't exist anywhere in mainline. Confirmed against both
+     `Documentation/devicetree/bindings/regulator/qcom,rpmh-regulator.yaml`'s
+     compatible enum and the real driver's own `of_device_id` table
+     (`drivers/regulator/qcom-rpmh-regulator.c`): only
+     `"qcom,pm8550-rpmh-regulators"` exists for this chip family, with
+     `qcom,pmic-id = "b"` doing the actual PM8550B disambiguation -- exactly
+     the pattern this same file already uses correctly for PM8550VS's "e"/"g"
+     instances one node down. Because nothing matched, the regulator driver's
+     probe() never ran at all for this node, so `ldo15`/`ldo17`/`ldo5` never
+     became real regulators -- fully explains both UFS and the repeater
+     being stuck. One-line fix (compatible string only; `qcom,pmic-id`
+     property unchanged). A plain `dtc` compile can't catch a wrong-but-
+     syntactically-valid compatible string; would need `dtbs_check` against
+     the real schema, which this project doesn't run yet.
+  Also confirmed (not new): no WCN/WLAN driver activity in the log (still
+  not wired up, matches the known project risk) and display still only
+  reaches `simpledrm` (bootloader framebuffer passthrough, no native
+  SM8550 DSI/DPU driver yet) -- both expected, not regressions.
+  **Why the flash-log came back empty this boot**: it writes through a UFS
+  block device, and UFS never got one this boot either (finding 2, above) --
+  same root cause as the UFS deferral, not a third bug. Confirmed by direct
+  `adb dd` pull from recovery immediately after the reboot: 0 non-NUL bytes.
+  **v11 = v10 + the regulators-0 compatible-string fix**, same kernel tree
+  (Image byte-identical to v10's, sha256 `51dd5c09...`; only the compiled
+  dtb differs, confirmed via decompiled-dtb diff to be exactly the one
+  `compatible` line). `init_boot` (v9) and `dtbo` (v5) unchanged; vendor
+  cmdline unchanged from v10. **Files:**
+  `../_scratch/boot-backup-20260920/v11-rpmh-fix/{boot_v11.img,
+  vendor_boot_v11.img,Image.gz,Image.gz-dtb}`. sha256: boot_v11
+  `aeec5b27...`, vendor_boot_v11 `84ecd1a0...`. Verified the same way as
+  v10 (payload/decompress/ramdisk-fragment/bootconfig checks, AVB
+  `verify_image` on both). **Flashed from recovery**: pre-flash readback ==
+  v10 set (as expected); push -> device sha256 == host; `dd conv=fsync` to
+  boot/sda25 + vendor_boot/sda28; readback verified and re-verified after
+  `drop_caches`; `init_boot` still `207474c1...`, `dtbo` still `63852b23...`.
+  Rollback = v10 set in `v10-xo-geni/` (boot `022b3688...`, vendor_boot
+  `2db4170f...`).
+  **Build-environment gotcha hit this session** (see the findings.md
+  follow-up for full detail): one edit to the build tree's copy of
+  `dm1q.dts` silently reverted between a verified `cp` and the next
+  command, for a reason not identified. Redoing copy+rebuild as a single
+  shell invocation (rather than spread across separate steps) resolved it
+  and was independently re-verified end to end -- v11's actual flashed
+  content is confirmed correct. Worth keeping in mind for future sessions:
+  don't trust an earlier "verified identical" copy without re-checking
+  immediately before a rebuild that depends on it.
+  **Next:** boot v11 and check: SPMI USID-7 warning (expected to still
+  appear -- item 1 above isn't fixed yet); UFS `sda*` (should appear now);
+  flash-log (should start working on its own once UFS does); the eUSB2
+  repeater / USB HS PHY chain (should get further, whether that's enough
+  for a bound UDC is unknown). PCIe's dummy-regulator fallback
+  (`vdda`/`vddpe-3v3`) is untouched by this fix and should still appear.
+  Still **no pmOS/Alpine userspace work** until this settles further.
+
+- 2026-09-26 (continued -- v11 confirmed via flash-log, UFS fully fixed;
+  v12 built+flashed+CONFIRMED LIVE over USB): pulled v11's dmesg straight
+  from the dtbo flash-log (4749 lines, clean, no photos needed) -- proof by
+  itself that UFS now works end to end. No crash. SPMI USID-7 (PM8550B)
+  fails identically to v10 -- confirmed stable/reproducible, still open.
+  UFS: real SCSI host, all six LUNs, full partition tables (sda1-sda41 etc).
+  regulators-0 (PM8550B) probes clean. USB got one step further -- repeater
+  + HS PHY both probe clean now -- but hit a NEW wall: dwc3-qcom's own soft
+  reset timed out (-ETIMEDOUT). Traced via drivers/usb/dwc3/dwc3-qcom.c
+  source: with the SS PHY deliberately disabled for this HS-only bring-up
+  (2026-09-21 decision), there's no real PIPE clock, and the missing
+  `qcom,select-utmi-as-pipe-clk` property means DWC3 never gets told to
+  substitute UTMI instead -- exactly what that property exists for, per the
+  driver's own comment ("Configure dwc3 to use UTMI clock as PIPE clock
+  not present"). **v12 = v11 + that one property** (dts/dm1q/dm1q.dts,
+  `&usb_1`). Same kernel Image (sha256 `51dd5c09...`), only the dtb
+  differs. Files: `../_scratch/boot-backup-20260920/v12-utmi-pipe-clk/
+  {boot_v12.img,vendor_boot_v12.img}`, sha256 boot_v12 `c2976091...`,
+  vendor_boot_v12 `f0a76cf1...`. Verified the same way as v10/v11; flashed
+  from recovery with the usual pre-flash-readback/push/dd/readback
+  discipline (init_boot still v9's `207474c1...`; `dtbo`'s hash has
+  legitimately changed to `a459f416...` -- that's the flash-log's own
+  scratch writes from the v11 session, not a regression). Rollback = v11 set.
+
+  **v12 CONFIRMED, live, over USB** -- a first for this project. `lsusb -v`
+  showed a real bound gadget carrying our own strings (`dm1q mainline` /
+  `dm1q initramfs console`); after loading `cdc_acm` and opening
+  `/dev/ttyACM0`'s permissions on the host, connected with
+  `socat - /dev/ttyACM0,raw,echo=0,b115200` straight into a live busybox
+  shell in the initramfs. Confirmed directly (not just from a log
+  snapshot): `probe of a600000.usb with driver dwc3-qcom returned 0` (no
+  soft-reset failure anywhere in dmesg), UDC state `configured`, **uptime
+  17502s (~4h51m) with no crash**, full UFS block layout intact, SPMI USID-7
+  still fails exactly once (Finding 1, confirmed reproducible, still open).
+  Full write-up: `notes/2026-09-25-v10-boot-log-analysis/findings.md`.
+
+  **Where this leaves Phase 1**: kernel boots clean, stays up for hours,
+  has working storage and a working interactive console over USB. Open:
+  SPMI USID-7/PM8550B (Finding 1); PCIe (deferred, PHY `=m`, unrelated);
+  WLAN/display (not wired up yet, out of scope so far). This is the first
+  point in the project where the kernel looks stable enough that starting
+  actual pmOS/Alpine userspace work is worth considering as the next phase
+  -- not started in this session; that's a call for the user to make.
+

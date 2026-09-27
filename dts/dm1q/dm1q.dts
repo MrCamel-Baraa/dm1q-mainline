@@ -355,7 +355,25 @@
  */
 &apps_rsc {
 	regulators-0 {
-		compatible = "qcom,pm8550b-rpmh-regulators";
+		/* FIXED 2026-09-25: this was "qcom,pm8550b-rpmh-regulators" --
+		 * a string that does not exist anywhere in mainline. Checked
+		 * both Documentation/devicetree/bindings/regulator/
+		 * qcom,rpmh-regulator.yaml's compatible enum and the real
+		 * driver's own of_device_id table (drivers/regulator/
+		 * qcom-rpmh-regulator.c): only "qcom,pm8550-rpmh-regulators"
+		 * exists for this whole chip family; qcom,pmic-id="b" is what
+		 * actually selects the PM8550B instance, exactly like
+		 * regulators-1/2 below already do for PM8550VS's "e"/"g"
+		 * instances via one shared "qcom,pm8550vs-rpmh-regulators".
+		 * Effect of the bug: no of_device_id ever matched this node,
+		 * so rpmh_regulator_probe() never ran, so ldo15/ldo17/ldo5
+		 * below never became real regulators -- root cause of the
+		 * 2026-09-25 v10-boot findings (UFS vcc-supply=ldo17 and the
+		 * eUSB2 repeater's vdd3-supply=ldo5 both stuck forever on
+		 * "wait for supplier .../regulators-0/ldo1{7,5}"). See
+		 * notes/2026-09-23-pcie-opp-crash/findings.md (2026-09-25
+		 * follow-up) for the full trace. */
+		compatible = "qcom,pm8550-rpmh-regulators";
 		qcom,pmic-id = "b";
 
 		vreg_l15b_1p8: ldo15 {
@@ -655,6 +673,20 @@
 	/delete-property/ usb-role-switch;
 	phys = <&usb_1_hsphy>;
 	phy-names = "usb2-phy";
+	/*
+	 * ADDED 2026-09-26: with &usb_dp_qmpphy disabled (HS-only bring-up,
+	 * see the comment above), there is no real SS PHY, so DWC3 has no
+	 * PIPE clock source. drivers/usb/dwc3/dwc3-qcom.c's own comment on
+	 * dwc3_qcom_select_utmi_clk() says exactly this: "Configure dwc3 to
+	 * use UTMI clock as PIPE clock not present" -- this property is what
+	 * makes dwc3_qcom_probe() call that function. Without it, v11's real
+	 * boot log showed the eUSB2 repeater and HS PHY both probing fine but
+	 * dwc3-qcom's own soft reset then timing out (-ETIMEDOUT) -- root
+	 * cause traced to this missing quirk property, not a clock/regulator
+	 * bug like the last two fixes. See notes/2026-09-25-v10-boot-log-analysis/
+	 * findings.md (2026-09-26 follow-up) for the full v11 boot trace.
+	 */
+	qcom,select-utmi-as-pipe-clk;
 	status = "okay";
 };
 

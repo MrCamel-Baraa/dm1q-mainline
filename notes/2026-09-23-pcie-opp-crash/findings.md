@@ -247,3 +247,14 @@ wrapper probes); repeater + HS PHY + dwc3 probe → a UDC exists → host sees a
 initramfs shell; UFS either probes (→ `sda*`, and the flash-log channel finally works) or fails with a *visible* error;
 pcie0 no longer oopses but should still fail to finish probing (QMP PCIe PHY is `=m`). If any of that is wrong, the
 comparison list above (qupv3, PHY `=m`, remaining q5q-only nodes) is the next place to look.
+
+---
+
+### 2026-09-25 -- CONFIRMED: v10 boots with no crash. Investigation continues in a new file.
+
+v10 booted for real on 2026-09-25 (189-page on-screen dmesg capture, user-transcribed by hand). **No oops,
+no panic anywhere in the log -- the predicted fix worked.** The kernel reaches a userspace shell. Two new,
+unrelated findings from that same boot (an SPMI PMIC read failure, and a wrong `regulator` compatible string
+blocking UFS/USB) are written up, and one of them fixed in v11, in
+`../2026-09-25-v10-boot-log-analysis/findings.md` -- that file is now where this investigation continues.
+This file (the OPP/clock crash itself) is closed.
