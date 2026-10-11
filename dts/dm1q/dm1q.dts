@@ -424,7 +424,15 @@
 		 * value (952000, single fixed) fell inside this real range. */
 		vreg_s4e_0p952: smps4 {
 			regulator-name = "vreg_s4e_0p952";
-			regulator-min-microvolt = <904000>;
+			/*
+			 * Min raised 904000 -> 966000 (2026-10-04, docs/07 section 13).
+			 * WLAN digital / PMU_MX domain (this rail also feeds PM8550 L1-L3).
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 0.966 V via
+			 * qcom,vdd-wlan-dig-config = <0xebd70 ...>.
+			 */
+			regulator-min-microvolt = <966000>;
 			regulator-max-microvolt = <984000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -467,7 +475,15 @@
 		 * one. */
 		vreg_s2g_0p98: smps2 {
 			regulator-name = "vreg_s2g_0p98";
-			regulator-min-microvolt = <500000>;
+			/*
+			 * Min raised 500000 -> 1012000 (2026-10-04, docs/07 section 13).
+			 * WLAN VDD_AON / PMU_CX / RFA0P95 domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.012 V via
+			 * qcom,vdd-wlan-aon-config = <0xf7120 ...>.
+			 */
+			regulator-min-microvolt = <1012000>;
 			regulator-max-microvolt = <1036000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -477,7 +493,15 @@
 		 * value (1352000) matched the real maximum exactly. */
 		vreg_s4g_1p352: smps4 {
 			regulator-name = "vreg_s4g_1p352";
-			regulator-min-microvolt = <1200000>;
+			/*
+			 * Min raised 1200000 -> 1350000 (2026-10-04, docs/07 section 13).
+			 * WLAN RFA 1.3 V / PMU / PCIe 1.3 V domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.350 V via
+			 * qcom,vdd-wlan-rfa2-config = <0x149970 ...>.
+			 */
+			regulator-min-microvolt = <1350000>;
 			regulator-max-microvolt = <1352000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -487,7 +511,15 @@
 		 * value (1904000, single fixed) fell inside this real range. */
 		vreg_s6g_1p904: smps6 {
 			regulator-name = "vreg_s6g_1p904";
-			regulator-min-microvolt = <1800000>;
+			/*
+			 * Min raised 1800000 -> 1900000 (2026-10-04, docs/07 section 13).
+			 * WLAN RFA 1.9 V / PCIe 1.9 V domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.900 V via
+			 * qcom,vdd-wlan-rfa1-config = <0x1cfde0 ...>.
+			 */
+			regulator-min-microvolt = <1900000>;
 			regulator-max-microvolt = <2000000>;
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
@@ -730,6 +762,58 @@
 	pinctrl-0 = <&pcie0_default_state>;
 	pinctrl-names = "default";
 	status = "okay";
+
+	/* wifi@0 (the WLAN pwrctrl consumer) lives under &pcie0_port0, below. */
+};
+
+/*
+ * WLAN power-control consumer node (the pwrseq "wlan" target consumer).
+ * REWORKED 2026-10-01 -- evidence and full story in docs/07-wlan-bringup.md,
+ * section "ROOT CAUSE FOUND 2026-10-01".
+ *
+ * Why this node exists (unchanged, 2026-09-28 "Finding 2"): mainline pwrseq
+ * is consumer-driven. wcn6855-pmu's "wlan" target is only powered up when a
+ * PCI pwrctrl consumer asks for it; with no such node nothing ever asserts
+ * WLAN_EN (GPIO80), the chip stays off, and PCIe link training ends in
+ * "Device not found".
+ *
+ * What was wrong with the first version, found by reading the real 7.3-rc3
+ * sources (drivers/pci/pwrctrl/pci-pwrctrl-pwrseq.c,
+ * drivers/power/sequencing/pwrseq-qcom-wcn.c, qcom,ath11k-pci.yaml,
+ * qcom,qca6390-pmu.yaml) and the same-chip reference sm8450-hdk.dts:
+ *  - The supplies must be the PMU's OWN output regulators (the
+ *    "regulators { ldoN }" children of wcn6855-pmu), not board rails.
+ *    pwrseq_qcom_wcn_match() only accepts a consumer whose vddaon-supply
+ *    phandle resolves to <pmu>/regulators/<ldo>. Pointing it at PM8550VS
+ *    S2G (the old value) makes pwrseq_get() return -EPROBE_DEFER forever,
+ *    pci-pwrctrl-pwrseq never binds, and &pcie0 itself defers forever.
+ *    The physical board rails feeding the PMU are described by the PMU
+ *    node's own vdd*-supply inputs, not here.
+ *  - compatible is pci17cb,1103 (WCN6855/QCA6490 family -- docs/05 records
+ *    the live device enumerating as 17cb:1103), with the 1103 flavour of
+ *    the supply list (vddrfa1p8, not vddrfa1p7). The earlier "1101"
+ *    reasoning contradicted that live observation. pwrctrl matches both
+ *    IDs, so this was wrong rather than causal.
+ *  - The node belongs under the root port (pcie@0, label pcie0_port0), not
+ *    directly under the host bridge, so the PCI core can attach it to the
+ *    01:00.0 endpoint (ath11k wants the OF node; the pwrctrl core itself
+ *    finds it at either depth).
+ */
+&pcie0_port0 {
+	wifi@0 {
+		compatible = "pci17cb,1103";
+		reg = <0x10000 0x0 0x0 0x0 0x0>;
+
+		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
+		vddaon-supply = <&vreg_pmu_aon_0p8>;
+		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
+		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
+		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
+		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
+	};
 };
 
 &pcie0_phy {
@@ -835,11 +919,28 @@
 		vddpcie1p9-supply = <&vreg_s6g_1p904>;
 
 		/*
-		 * WLAN PDC calibration table. This IS dm1q's own real
-		 * board-specific calibration data (CONFIRMED -- read directly
-		 * from dm1q's downstream source, NOT copied from gts9uwifi's
-		 * different calibration values). The stock cnss2 driver sends
-		 * this via the AOP QMP mailbox before first WLAN power-on.
+		 * WLAN PDC calibration table. dm1q's downstream source has TWO
+		 * qcom,pdc_init_table properties; this file originally copied the
+		 * one from the BT-only node (ends "dwnval: 515"). The WLAN-specific
+		 * one inside qcom,cnss-qca6490 (line 17224 of
+		 * _scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts,
+		 * same in r01-r13) ends "dwnval: 800" plus a final "bb, res: pdc,
+		 * enable: 0" entry -- that is the content below.
+		 *
+		 * History: corrected 2026-09-28; briefly reverted 2026-09-30 while
+		 * chasing a pcie0 regression that was blamed on it. That regression
+		 * was NOT caused by this property (nor by wifi@0): every rebuilt
+		 * kernel carried a fresh module-signing key that the pmOS rootfs's
+		 * modules were not signed with, so no module (PCIe PHY included)
+		 * loaded -- docs/07 "ROOT CAUSE FOUND 2026-10-01". Restored
+		 * 2026-10-01.
+		 *
+		 * Neither qcom,qmp nor qcom,wlan-pdc-init is read by any mainline
+		 * driver (pwrseq-qcom-wcn.c ignores both) and neither is in the
+		 * qcom,qca6390-pmu.yaml binding (additionalProperties: false), so
+		 * both would fail dtbs_check. Kept as verified downstream data for
+		 * a possible future AOSS/QMP consumer; drop before any upstream
+		 * submission.
 		 */
 		qcom,qmp = <&aoss_qmp>;
 		qcom,wlan-pdc-init =
@@ -852,7 +953,59 @@
 			"{class: wlan_pdc, ss: rf, res: s2g.m, enable: 1}",
 			"{class: wlan_pdc, ss: rf, res: s2g.v, enable: 1}",
 			"{class: wlan_pdc, ss: rf, res: s2g.v, upval: 1012}",
-			"{class: wlan_pdc, ss: rf, res: s2g.v, dwnval: 515}";
+			"{class: wlan_pdc, ss: rf, res: s2g.v, dwnval: 800}",
+			"{class: wlan_pdc, ss: bb, res: pdc, enable: 0}";
+
+		/*
+		 * PMU output regulators. REQUIRED by the binding
+		 * (qcom,qca6390-pmu.yaml: "required: regulators") and by the
+		 * pwrseq match logic -- wifi@0's supplies must point at these.
+		 * Not real regulators: pwrseq-qcom-wcn registers no regulator
+		 * devices for them; they are DT anchors tying a consumer node to
+		 * this PMU. Same ten as sm8450-hdk.dts (WCN6855). ADDED
+		 * 2026-10-01; they were missing before.
+		 */
+		regulators {
+			vreg_pmu_rfa_cmn_0p8: ldo0 {
+				regulator-name = "vreg_pmu_rfa_cmn_0p8";
+			};
+
+			vreg_pmu_aon_0p8: ldo1 {
+				regulator-name = "vreg_pmu_aon_0p8";
+			};
+
+			vreg_pmu_wlcx_0p8: ldo2 {
+				regulator-name = "vreg_pmu_wlcx_0p8";
+			};
+
+			vreg_pmu_wlmx_0p8: ldo3 {
+				regulator-name = "vreg_pmu_wlmx_0p8";
+			};
+
+			vreg_pmu_btcmx_0p8: ldo4 {
+				regulator-name = "vreg_pmu_btcmx_0p8";
+			};
+
+			vreg_pmu_pcie_1p8: ldo5 {
+				regulator-name = "vreg_pmu_pcie_1p8";
+			};
+
+			vreg_pmu_pcie_0p9: ldo6 {
+				regulator-name = "vreg_pmu_pcie_0p9";
+			};
+
+			vreg_pmu_rfa_0p8: ldo7 {
+				regulator-name = "vreg_pmu_rfa_0p8";
+			};
+
+			vreg_pmu_rfa_1p2: ldo8 {
+				regulator-name = "vreg_pmu_rfa_1p2";
+			};
+
+			vreg_pmu_rfa_1p7: ldo9 {
+				regulator-name = "vreg_pmu_rfa_1p7";
+			};
+		};
 	};
 
 	/*
