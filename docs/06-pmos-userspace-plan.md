@@ -525,3 +525,12 @@ these as ready to `pmbootstrap build` without running that first.
   #iommu-cells" patch) + the canonical DTS + a refreshed module tree: `wlan0` up with no devicetree
   workaround (docs/07 15.13). The v9 `iommu-map` override is retired. Baseline from here:
   `_scratch/pmos-v10-r5-pcifix/` and the r5 module tree on the rootfs.
+- 2026-10-11 (process rule 7, privacy of raw captures): the repo is public and the phone's own logs carry
+  the home network's SSID, the access point's BSSID, the phone's and the USB gadget's MAC addresses (and
+  scan results list neighbours). The six WLAN commits of 2026-10-11 were pushed with them, then redacted and
+  force-pushed (31 distinct MACs -> `xx:xx:xx:xx:xx:NN`, same width, one number per address; SSID ->
+  `<home-ssid>`; module-signing key serials and SKIDs are longer colon chains and are left alone; every
+  redacted file un-redacts back to its original, checked). The private map and a backup bundle live in
+  `_scratch/redact/`, never in the repo. Rule: raw captures (`notes/`, `collect-phone-state.sh` output) are
+  redacted BEFORE they are committed. To do: fold the redaction into `collect-phone-state.sh` so it
+  happens at capture time.
