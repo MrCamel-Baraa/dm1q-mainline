@@ -1,0 +1,87 @@
+#!/bin/busybox sh
+# init-v13 -- derived from v9 (recovered from the init_boot that was flashed
+# on the phone, sha256 207474c1..). Only change vs v9: NO foreground on-screen
+# dmesg replay (v9-v12 waited 15 s then paged the whole log at 25 lines per
+# 8 s, which with initcall_debug takes many minutes before the shell). The
+# background flash-log job and the USB ACM shell are unchanged.
+/bin/busybox mount -t proc proc /proc
+/bin/busybox mount -t sysfs sysfs /sys
+/bin/busybox mount -t devtmpfs devtmpfs /dev 2>/dev/null
+/bin/busybox mkdir -p /dev/pts
+/bin/busybox mount -t devpts devpts /dev/pts 2>/dev/null
+/bin/busybox mount -t configfs configfs /sys/kernel/config 2>/dev/null
+/bin/busybox mount -t debugfs debugfs /sys/kernel/debug 2>/dev/null
+
+# ---- Flush THIS boot's own kernel log to flash continuously, no console
+# involved: dmesg is rewritten into the dtbo partition at a 1 MiB offset
+# every 3 s (dtbo is deliberately an invalid image, so this is free space).
+# Read it from recovery with:
+#   dd if=/dev/block/by-name/dtbo bs=1M skip=1 count=4 | strings
+# Started BEFORE anything that writes to the console, so it survives a
+# console hang. See docs/01-phase1-workplan.md 2026-09-22/23 entries.
+(
+  D=""
+  while true; do
+    if [ -z "$D" ]; then
+      for u in /sys/class/block/*/uevent; do
+        /bin/busybox grep -q '^PARTNAME=dtbo$' "$u" 2>/dev/null || continue
+        NAME=$(/bin/busybox grep '^DEVNAME=' "$u" | /bin/busybox cut -d= -f2)
+        [ -n "$NAME" ] && D="/dev/$NAME"
+      done
+    fi
+    /bin/busybox dmesg > /tmp/klog.txt 2>&1
+    SZ=$(/bin/busybox wc -c < /tmp/klog.txt)
+    if [ -n "$D" ] && [ "$SZ" -gt 0 ] && [ "$SZ" -lt 4194304 ]; then
+      /bin/busybox dd if=/tmp/klog.txt of=$D bs=1M seek=1 conv=notrunc 2>/dev/null
+    fi
+    /bin/busybox sleep 3
+  done
+) &
+
+# ---- USB peripheral gadget: CDC-ACM serial, then a shell on ttyGS0 ----
+(
+  G=/sys/kernel/config/usb_gadget/dm1q
+  /bin/busybox mkdir -p $G/strings/0x409 $G/configs/c.1/strings/0x409 $G/functions/acm.usb0
+  echo 0x1d6b > $G/idVendor
+  echo 0x0104 > $G/idProduct
+  echo "dm1q-mainline" > $G/strings/0x409/serialnumber
+  echo "dm1q mainline" > $G/strings/0x409/manufacturer
+  echo "dm1q initramfs console" > $G/strings/0x409/product
+  echo "ACM" > $G/configs/c.1/strings/0x409/configuration
+  /bin/busybox ln -s $G/functions/acm.usb0 $G/configs/c.1/ 2>/dev/null
+  n=0
+  U=""
+  while [ $n -lt 300 ]; do
+    for u in /sys/class/udc/*; do [ -e "$u" ] && U=${u##*/} && break; done
+    [ -n "$U" ] && break
+    n=$((n+1))
+    /bin/busybox sleep 1
+  done
+  if [ -n "$U" ]; then
+    echo "$U" > $G/UDC
+    while [ ! -c /dev/ttyGS0 ]; do /bin/busybox sleep 1; done
+    while true; do
+      /bin/busybox setsid /bin/busybox sh -c 'exec /bin/busybox sh </dev/ttyGS0 >/dev/ttyGS0 2>&1'
+      /bin/busybox sleep 1
+    done
+  fi
+) &
+
+echo ""
+echo "======================================================"
+echo " dm1q mainline v13 -- initramfs is running"
+echo "======================================================"
+/bin/busybox uname -a
+echo "======================================================"
+echo "[diag] /proc/partitions:"
+/bin/busybox cat /proc/partitions 2>&1
+echo "======================================================"
+echo "[boot] last 20 kernel log lines (full log: run 'dmesg' in the USB ACM"
+echo "[boot] shell; it is also flushed to dtbo@1MiB every 3 s -- read it"
+echo "[boot] from recovery)."
+/bin/busybox dmesg | /bin/busybox tail -n 20
+echo "======================================================"
+echo "[boot] ready. USB ACM shell on ttyGS0 (host: /dev/ttyACM*)."
+echo "======================================================"
+
+exec /bin/busybox sh
