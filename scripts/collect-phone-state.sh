@@ -1,0 +1,152 @@
+#!/usr/bin/env bash
+# Collect the phone's WLAN/PCIe state + full kernel logs over the phone's USB network and save
+# them into the repo, so nothing has to go through the chat while the PC is on the phone's network.
+#
+# Why: the PC is either on the phone's USB network or on the internet, never both -- and a chat
+# session that runs on the PC drops (taking any in-flight output with it) when the network
+# switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
+# "done", reconnect to the internet and tell Claude, who reads the files from disk.
+#
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh]
+#   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
+#                label on the same day overwrites files with the same name
+#   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
+#   --reload     also run scripts/phone-ath11k-reload.sh (reload ath11k_pci, sample the PCIe link for ~30 s)
+#   --regdump    also run scripts/phone-mhi-regdump.sh in the given mode (default load): sample the chip's
+#                MHI/BHI registers (and the interrupt counters, the endpoint's MSI state and the PCIe controller's
+#                BDF-to-SID table) while ath11k's power-up runs (adds regdump.txt). It reads MMIO through the static
+#                helper scripts/bin/mmio-read-aarch64, which this script copies to the phone (build it once with
+#                `bash scripts/build-mmio-read.sh`; docs/07 section 14 says why dd on /dev/mem cannot do it).
+#   --fresh      the representative experiment, in one go: blacklist ath11k_pci, reboot the phone over ssh,
+#                log in again (second password prompt), then on the freshly powered, untouched chip run the
+#                probe, the register sampler in idle mode (chip in PBL, nobody talking to it) and then in
+#                load mode (a clean ath11k attempt), and collect everything. The blacklist file is removed
+#                again right after the reboot, so later boots are normal.
+# Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
+#
+# What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
+# under /tmp/dm1q-collect (probe.txt from scripts/phone-wlan-probe.sh, dmesg.txt, journal-kernel.txt,
+# regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
+# Everything shown on the terminal during the collection is also kept in session.log on the PC.
+set -u
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0
+for a in "$@"; do
+	case "$a" in
+	--reboot) REBOOT=1 ;;
+	--reload) RELOAD=1 ;;
+	--regdump) REGDUMP=load ;;
+	--regdump=idle|--regdump=load|--regdump=reload) REGDUMP="${a#--regdump=}" ;;
+	--fresh) FRESH=1 ;;
+	-*) echo "unknown option $a" >&2; exit 2 ;;
+	*) LABEL="$a" ;;
+	esac
+done
+[ -n "$LABEL" ] || { sed -n '2,/^[^#]/p' "$0" | sed '$d'; exit 2; }
+PHONE="${PHONE:-172.16.42.1}"
+PUSER="${PHONE_USER:-user}"
+WAIT_PING="${WAIT_PING:-240}"
+REPO="$(cd "$(dirname "$0")/.." && pwd)"
+MMIO_BIN="$REPO/scripts/bin/mmio-read-aarch64"
+if [ "$FRESH" = 1 ] || [ -n "$REGDUMP" ]; then
+	[ -f "$MMIO_BIN" ] || { echo "no $MMIO_BIN -- run: bash scripts/build-mmio-read.sh   (needs clang + lld)"; exit 1; }
+fi
+DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
+CP="/tmp/dm1q-ssh-$$"
+SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR
+          -o ControlPath="$CP" -o ConnectTimeout=10)
+mkdir -p "$DEST"
+
+push_scripts() {
+	scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-wlan-probe.sh" "$REPO/scripts/phone-ath11k-reload.sh" "$REPO/scripts/phone-mhi-regdump.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the scripts failed"; exit 1; }
+	if [ -f "$MMIO_BIN" ]; then
+		scp "${SSH_OPTS[@]}" -q "$MMIO_BIN" "$PUSER@$PHONE:/tmp/mmio-read" || { echo "scp of the MMIO helper failed"; exit 1; }
+	fi
+}
+wait_up() {
+	local t=0
+	echo "waiting up to ${WAIT_PING}s for the phone at $PHONE (connect the PC to the phone's USB network if it does not switch by itself) ..."
+	until ping -c1 -W1 "$PHONE" >/dev/null 2>&1; do
+		sleep 2; t=$((t + 3)); [ $((t % 30)) -lt 3 ] && echo "  ... ${t}s"
+		if [ "$t" -ge "$WAIT_PING" ]; then
+			echo "no answer from $PHONE after ${WAIT_PING}s: the phone did not reach userspace (or the USB network is not up)."
+			echo "Reboot it to recovery and ask Claude to pull the stage-1 log from the dtbo partition."
+			exit 1
+		fi
+	done
+	echo "phone answers after ~${t}s -- userspace is up"
+	t=0; until timeout 3 bash -c "exec 3<>/dev/tcp/$PHONE/22" 2>/dev/null; do
+		sleep 2; t=$((t + 3)); [ "$t" -ge 90 ] && { echo "ssh port 22 never opened"; exit 1; }
+	done
+}
+login() {
+	echo "== log in (password prompt; the connection is reused afterwards) =="
+	ssh "${SSH_OPTS[@]}" -o ControlMaster=yes -o ControlPersist=900 -fN "$PUSER@$PHONE" || { echo "ssh login failed"; exit 1; }
+}
+trap 'ssh "${SSH_OPTS[@]}" -O exit "$PUSER@$PHONE" 2>/dev/null' EXIT
+
+if [ "$REBOOT" = 1 ]; then
+	[ "$(adb get-state 2>/dev/null || true)" = recovery ] || echo "note: adb does not see the phone in recovery; trying the reboot anyway"
+	echo "adb reboot ..."; adb reboot || true
+	sleep 5
+fi
+
+wait_up
+login
+push_scripts
+
+if [ "$FRESH" = 1 ]; then
+	echo "== phase 1: blacklist ath11k_pci for the next boot and reboot the phone (sudo asks for the password) =="
+	ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"echo 'blacklist ath11k_pci' > /etc/modprobe.d/zz-dm1q-test.conf; sync; nohup sh -c 'sleep 2; reboot' >/dev/null 2>&1 &\"" 2>&1 | tee "$DEST/session-phase1.log"
+	ssh "${SSH_OPTS[@]}" -O exit "$PUSER@$PHONE" 2>/dev/null
+	echo "waiting for the phone to go down ..."
+	t=0; while ping -c1 -W1 "$PHONE" >/dev/null 2>&1; do sleep 1; t=$((t + 1)); [ "$t" -ge 90 ] && { echo "the phone did not go down"; exit 1; }; done
+	echo "down after ~${t}s; waiting for it to come back (a normal boot reaches userspace in ~15 s)"
+	wait_up
+	login
+	push_scripts
+fi
+
+BODY='rm -f /etc/modprobe.d/zz-dm1q-test.conf
+chmod +x /tmp/mmio-read 2>/dev/null
+rm -rf /tmp/dm1q-collect; mkdir -p /tmp/dm1q-collect
+mount | grep -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug'
+if [ "$FRESH" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-wlan-probe.sh 2>&1 | tee /tmp/dm1q-collect/probe-idle.txt
+sh /tmp/phone-mhi-regdump.sh idle 2>&1 | tee /tmp/dm1q-collect/regdump-idle.txt
+sh /tmp/phone-mhi-regdump.sh load 2>&1 | tee /tmp/dm1q-collect/regdump-load.txt"
+elif [ -n "$REGDUMP" ]; then
+	BODY="$BODY
+sh /tmp/phone-mhi-regdump.sh $REGDUMP 2>&1 | tee /tmp/dm1q-collect/regdump.txt"
+fi
+BODY="$BODY
+sh /tmp/phone-wlan-probe.sh 2>&1 | tee /tmp/dm1q-collect/probe.txt
+dmesg > /tmp/dm1q-collect/dmesg.txt 2>&1
+journalctl -k -b --no-pager > /tmp/dm1q-collect/journal-kernel.txt 2>&1
+cat /sys/kernel/debug/regulator/regulator_summary > /tmp/dm1q-collect/regulator_summary.txt 2>&1
+cat /sys/kernel/debug/gpio > /tmp/dm1q-collect/gpio.txt 2>&1"
+if [ "$RELOAD" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-ath11k-reload.sh 2>&1 | tee /tmp/dm1q-collect/reload.txt
+dmesg > /tmp/dm1q-collect/dmesg-after-reload.txt 2>&1"
+fi
+BODY="$BODY
+chmod -R a+rX /tmp/dm1q-collect
+ls -la /tmp/dm1q-collect"
+
+RMSG=""
+[ "$RELOAD" = 1 ] && RMSG="; the reload step takes ~30 s"
+[ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
+[ "$FRESH" = 1 ] && RMSG="; the idle + load steps take ~1.5 min"
+echo "== collecting on the phone (sudo asks for the password once$RMSG) =="
+# everything shown is also kept in session.log, so a hang on the phone does not lose the partial output
+ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST/session.log"
+
+echo "== pulling the files =="
+scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read' 2>/dev/null || true
+for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
+ls -la "$DEST"
+echo
+echo "done. Saved in $DEST"
+echo "You can reconnect the PC to the internet now and tell Claude."
