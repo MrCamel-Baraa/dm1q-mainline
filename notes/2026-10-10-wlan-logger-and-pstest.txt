@@ -1,0 +1,85 @@
+WLAN logger and power-save A/B, pasted by the user from the phone (2026-10-10 evening / 2026-10-11 ~05:25 Africa/Cairo).
+Phone clock is UTC (17:58 = 20:58 local). Same v9 test image, user next to the router. Scripts: scripts/phone-wlan-log.sh,
+scripts/phone-wlan-pstest.sh. Analysis: docs/07 section 15.10.
+
+---- `tail -n 60 /tmp/wlanlog.txt` (power save OFF the whole time; one line per ~25 s: tx packets / tx failed / rx rate Mbit/s | 10-ping burst)
+17:58:24 ps=off tx 1398 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+17:58:48 ps=off tx 1409 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+17:59:13 ps=off tx 1422 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+17:59:37 ps=off tx 1432 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:00:02 ps=off tx 1443 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:00:26 ps=off tx 1454 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:00:51 ps=off tx 1470 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:01:15 ps=off tx 1481 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:01:40 ps=off tx 1491 failed 10 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:02:04 ps=off tx 1503 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:02:29 ps=off tx 1513 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:02:54 ps=off tx 1527 failed 10 rx 65.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:03:18 ps=off tx 1538 failed 10 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:03:43 ps=off tx 1550 failed 10 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:04:07 ps=off tx 1562 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:04:32 ps=off tx 1574 failed 10 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:04:56 ps=off tx 1585 failed 10 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:05:21 ps=off tx 1597 failed 10 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:05:46 ps=off tx 1615 failed 10 rx 52.0 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:06:11 ps=off tx 1625 failed 11 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:06:35 ps=off tx 1636 failed 11 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:07:00 ps=off tx 1648 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:07:24 ps=off tx 1659 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:07:49 ps=off tx 1671 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:08:13 ps=off tx 1684 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:08:38 ps=off tx 1696 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:09:02 ps=off tx 1707 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:09:27 ps=off tx 1719 failed 11 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:09:52 ps=off tx 1730 failed 11 rx 39.0 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:10:17 ps=off tx 1742 failed 12 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:10:41 ps=off tx 1760 failed 12 rx 52.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:11:07 ps=off tx 1771 failed 12 rx 39.0 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:11:32 ps=off tx 1782 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:11:56 ps=off tx 1794 failed 13 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:12:21 ps=off tx 1805 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:12:45 ps=off tx 1818 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:13:10 ps=off tx 1829 failed 13 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:13:34 ps=off tx 1840 failed 13 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:13:59 ps=off tx 1851 failed 13 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:14:23 ps=off tx 1863 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:14:48 ps=off tx 1874 failed 13 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:15:12 ps=off tx 1885 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:15:37 ps=off tx 1897 failed 13 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:16:01 ps=off tx 1916 failed 14 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:16:26 ps=off tx 1927 failed 14 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:16:50 ps=off tx 1939 failed 14 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:17:16 ps=off tx 1950 failed 14 rx 39.0 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:17:41 ps=off tx 1962 failed 15 rx 58.5 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:18:06 ps=off tx 1973 failed 16 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:18:31 ps=off tx 1985 failed 16 rx 58.5 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:18:56 ps=off tx 1996 failed 17 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:19:20 ps=off tx 2009 failed 17 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:19:45 ps=off tx 2020 failed 17 rx 58.5 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:20:09 ps=off tx 2031 failed 17 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:20:34 ps=off tx 2045 failed 17 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:20:59 ps=off tx 2061 failed 17 rx 39.0 | 10 packets transmitted, 9 packets received, 10% packet loss
+18:21:24 ps=off tx 2072 failed 18 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:21:49 ps=off tx 2083 failed 18 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:22:13 ps=off tx 2094 failed 18 rx 26.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+18:22:38 ps=off tx 2105 failed 18 rx 39.0 | 10 packets transmitted, 10 packets received, 0% packet loss
+
+---- `sudo sh /tmp/pstest.sh` (later; power save was found ON at the start)
+power save now: Power save: on
+== power_save on  before: tx 205 failed 0
+40 packets transmitted, 40 packets received, 0% packet loss
+round-trip min/avg/max = 14.686/20.796/27.918 ms
+   after: tx 246 failed 0
+== power_save off  before: tx 246 failed 0
+40 packets transmitted, 40 packets received, 0% packet loss
+round-trip min/avg/max = 2.822/7.926/16.578 ms
+   after: tx 287 failed 0
+== power_save on  before: tx 287 failed 0
+40 packets transmitted, 40 packets received, 0% packet loss
+round-trip min/avg/max = 14.413/20.267/28.759 ms
+   after: tx 327 failed 0
+== power_save off  before: tx 327 failed 0
+40 packets transmitted, 40 packets received, 0% packet loss
+round-trip min/avg/max = 2.865/7.648/16.344 ms
+   after: tx 370 failed 0
+(the DNS commands that followed in the same paste, `ping -c 3 google.com; resolvectl status`, produced no output in what was pasted)

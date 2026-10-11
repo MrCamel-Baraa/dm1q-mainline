@@ -1,0 +1,36 @@
+Second look at the WLAN link, 2026-10-10 ~16:15 (Africa/Cairo), pasted by the user from the phone's shell.
+Conditions: same v9 test image; the user is sitting next to the router with the PC (distance to the router at the time of
+the FIRST look, notes/2026-10-10-wlan-link-first-look.txt, is unknown); power save had been switched off by `sudo iw dev wlan0
+set power_save off` in the first look (not re-checked here); the station counters had restarted (tx packets 104 instead of
+2225), i.e. the association was a new one. The block was the one proposed after the first look. Raw output, unedited:
+
+samsung-dm1q:~$ sudo sh -c '
+> iw dev wlan0 info | grep -E "txpower|channel"
+> iw phy phy0 info | grep -i antenna
+> for m in "0x3 0x3" "0x2 0x2" "0x1 0x1" "0x3 0x3"; do
+>   iw phy phy0 set antenna $m; sleep 2
+>   b=$(iw dev wlan0 station dump | awk "/tx packets/ {p=\$3} /tx failed/ {f=\$3} END {print p, f}")
+>   ping -c 20 -i 0.3 192.168.1.1 | tail -n 2 | head -n 1
+>   a=$(iw dev wlan0 station dump | awk "/tx packets/ {p=\$3} /tx failed/ {f=\$3} END {print p, f}")
+>   echo "antenna $m: tx packets/failed before: $b  after: $a"
+> done'
+resolvectl status | head -n 25; resolvectl query google.com
+        channel 8 (2447 MHz), width: 20 MHz, center1: 2447 MHz
+        txpower 16.00 dBm
+        Available Antennas: TX 0x3 RX 0x3
+        Configured Antennas: TX 0x3 RX 0x3
+                        RX antenna pattern consistency
+                        TX antenna pattern consistency
+command failed: Not supported (-95)
+20 packets transmitted, 20 packets received, 0% packet loss
+antenna 0x3 0x3: tx packets/failed before: 104 0  after: 125 0
+command failed: Not supported (-95)
+20 packets transmitted, 20 packets received, 0% packet loss
+antenna 0x2 0x2: tx packets/failed before: 125 0  after: 145 0
+command failed: Not supported (-95)
+20 packets transmitted, 20 packets received, 0% packet loss
+antenna 0x1 0x1: tx packets/failed before: 145 0  after: 165 0
+command failed: Not supported (-95)
+20 packets transmitted, 20 packets received, 0% packet loss
+antenna 0x3 0x3: tx packets/failed before: 165 0  after: 185 0
+(the two resolvectl commands printed nothing in the paste)

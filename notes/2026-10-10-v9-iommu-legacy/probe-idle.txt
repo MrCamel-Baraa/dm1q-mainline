@@ -1,0 +1,299 @@
+
+##### identity
+$ date -u; uname -a
+Tue Jan 13 00:12:42 UTC 1970
+Linux samsung-dm1q 7.3.0-rc3 #5-samsung-dm1q-mainline SMP PREEMPT Fri Oct  2 07:12:25 UTC 202 aarch64 Linux
+$ cat /sys/kernel/security/lockdown
+[none] integrity confidentiality
+$ cat /proc/sys/kernel/tainted
+8708
+$ tr ' ' '\n' < /proc/cmdline | grep -E 'lockdown|module|loop|iommu|pci|aspm|dyndbg'
+sec_vibrator_inputff_module.vib_le_est=2815
+pdic_notifier_module.pdic_param_lpcharge=0
+
+##### modules
+$ lsmod | grep -E 'pwrseq|pwrctrl|ath11k|cfg80211|mac80211|qrtr|mhi|rfkill|qmp_pcie'
+rfkill                 36864  1
+pci_pwrctrl_pwrseq     12288  0
+pwrseq_qcom_wcn        16384  1
+phy_qcom_qmp_pcie     188416  1
+
+##### packages and firmware on the phone
+$ apk info -v 2>/dev/null | grep -E 'firmware|ath11k|wpa_supplicant|iwd|networkmanager-wifi|wireless-regdb|^iw-|pciutils'
+iw-6.17-r0
+linux-firmware-ath11k-20260810-r0
+networkmanager-wifi-99991.58.0-r1
+postmarketos-base-ui-wifi-wpa_supplicant-61-r0
+wireless-regdb-2025.10.07-r0
+wpa_supplicant-2.11-r4
+wpa_supplicant-systemd-2.11-r4
+$ ls -la /usr/lib/firmware/ath11k/WCN6855/hw2.1 /usr/lib/firmware/ath11k/WCN6855/hw2.0
+/usr/lib/firmware/ath11k/WCN6855/hw2.0:
+total 2068
+drwxr-xr-x    3 root     root          4096 Jan  6 13:04 .
+drwxr-xr-x    4 root     root          4096 Jan  6 13:04 ..
+lrwxrwxrwx    1 root     root            34 Jan  6 13:04 Notice.txt.zst -> ../../QCA2066/hw2.1/Notice.txt.zst
+-rw-r--r--    1 root     root       1924360 Aug 31  2026 amss.bin.zst
+-rw-r--r--    1 root     root         56326 Aug 31  2026 board-2.bin.zst
+-rw-r--r--    1 root     root        116744 Aug 31  2026 m3.bin.zst
+drwxr-xr-x    2 root     root          4096 Jan  6 13:04 nfa765
+-rw-r--r--    1 root     root          2424 Aug 31  2026 regdb.bin.zst
+
+/usr/lib/firmware/ath11k/WCN6855/hw2.1:
+total 12
+drwxr-xr-x    3 root     root          4096 Jan  6 13:04 .
+drwxr-xr-x    4 root     root          4096 Jan  6 13:04 ..
+lrwxrwxrwx    1 root     root            21 Jan  6 13:04 amss.bin.zst -> ../hw2.0/amss.bin.zst
+lrwxrwxrwx    1 root     root            24 Jan  6 13:04 board-2.bin.zst -> ../hw2.0/board-2.bin.zst
+lrwxrwxrwx    1 root     root            19 Jan  6 13:04 m3.bin.zst -> ../hw2.0/m3.bin.zst
+drwxr-xr-x    2 root     root          4096 Jan  6 13:04 nfa765
+lrwxrwxrwx    1 root     root            22 Jan  6 13:04 regdb.bin.zst -> ../hw2.0/regdb.bin.zst
+
+##### power sequencing / pwrctrl devices and drivers
+$ ls /sys/bus/platform/devices | grep -i -E 'wifi|pwrctrl|pmu|wcn'
+1c00000.pcie:pcie@0:wifi@0
+24091000.pmu
+240b6400.pmu
+pmu-a510
+pmu-a710
+pmu-a715
+pmu-x3
+soc@0:wcn6855-pmu
+$ ls -l /sys/bus/platform/drivers/pci-pwrctrl-pwrseq/ /sys/bus/platform/drivers/pwrseq-qcom_wcn/ | grep -v '^total'
+/sys/bus/platform/drivers/pci-pwrctrl-pwrseq/:
+lrwxrwxrwx    1 root     root             0 Jan 13 00:13 1c00000.pcie:pcie@0:wifi@0 -> ../../../../devices/platform/soc@0/1c00000.pcie/1c00000.pcie:pcie@0:wifi@0
+--w-------    1 root     root          4096 Jan 13 00:13 bind
+lrwxrwxrwx    1 root     root             0 Jan 13 00:13 module -> ../../../../module/pci_pwrctrl_pwrseq
+--w-------    1 root     root          4096 Jan 13 00:12 uevent
+--w-------    1 root     root          4096 Jan 13 00:13 unbind
+
+/sys/bus/platform/drivers/pwrseq-qcom_wcn/:
+--w-------    1 root     root          4096 Jan 13 00:13 bind
+lrwxrwxrwx    1 root     root             0 Jan 13 00:13 module -> ../../../../module/pwrseq_qcom_wcn
+lrwxrwxrwx    1 root     root             0 Jan 13 00:13 soc@0:wcn6855-pmu -> ../../../../devices/platform/soc@0/soc@0:wcn6855-pmu
+--w-------    1 root     root          4096 Sep 26  2026 uevent
+--w-------    1 root     root          4096 Jan 13 00:13 unbind
+
+##### PCI devices (the QCA6490 should be 0000:01:00.0, 17cb:1103)
+$ for d in /sys/bus/pci/devices/*; do [ -e "$d" ] || continue; printf '%s vendor=%s device=%s subsys=%s:%s class=%s driver=%s\n' "$(basename $d)" "$(cat $d/vendor)" "$(cat $d/device)" "$(cat $d/subsystem_vendor 2>/dev/null)" "$(cat $d/subsystem_device 2>/dev/null)" "$(cat $d/class)" "$(basename "$(readlink $d/driver 2>/dev/null)" 2>/dev/null)"; done
+0000:00:00.0 vendor=0x17cb device=0x0113 subsys=0x0000:0x0000 class=0x060400 driver=pcieport
+0000:01:00.0 vendor=0x17cb device=0x1103 subsys=0x17cb:0x0108 class=0x028000 driver=
+
+##### PCIe link: LIVE config-space reads (all-ff = link or device gone) and sysfs link attributes
+0000:00:00.0 first 64 bytes: cb17130107051000000004060000010000003060000000000001ff001010000040605060616071600000000000000000000000004000000000000000ab010200
+  0000:00:00.0/current_link_speed: 8.0 GT/s PCIe
+  0000:00:00.0/current_link_width: 1
+  0000:00:00.0/max_link_speed: 8.0 GT/s PCIe
+  0000:00:00.0/max_link_width: 2
+  0000:00:00.0/enable: 1
+  0000:00:00.0/power/runtime_status: active
+0000:01:00.0 first 64 bytes: cb17031100001000010080020000000004004060000000000000000000000000000000000000000000000000cb17080100000000400000000000000000000000
+  0000:01:00.0/current_link_speed: 8.0 GT/s PCIe
+  0000:01:00.0/current_link_width: 1
+  0000:01:00.0/max_link_speed: 8.0 GT/s PCIe
+  0000:01:00.0/max_link_width: 1
+  0000:01:00.0/enable: 0
+  0000:01:00.0/power/runtime_status: active
+root port bytes 0x70-0x9f (PCIe capability: LnkCap/LnkCtl/LnkSta live): 10004201008000001f28100023ec79004b0c13307e000600c003000018000100000000001f1c0000000400000e000000
+
+##### deferred probes (debugfs)
+$ cat /sys/kernel/debug/devices_deferred
+6ae0000.codec	platform: supplier 6d44000.codec not ready
+6b00000.codec	platform: supplier 6d44000.codec not ready
+6ac0000.codec	platform: supplier 6d44000.codec not ready
+6d44000.codec	va_macro: unable to get macro clock
+6e80000.pinctrl	
+6aa0000.codec	platform: supplier 6d44000.codec not ready
+
+##### IOMMU / DMA path of the endpoint (the BHI image transfer is the chip DMA-reading host memory)
+$ ls -l /sys/bus/pci/devices/0000:01:00.0/iommu_group; cat /sys/bus/pci/devices/0000:01:00.0/iommu_group/type; ls /sys/bus/pci/devices/0000:01:00.0/iommu_group/devices
+lrwxrwxrwx    1 root     root             0 Jan 13 00:13 /sys/bus/pci/devices/0000:01:00.0/iommu_group -> ../../../../../../../kernel/iommu_groups/5
+DMA
+0000:00:00.0
+0000:01:00.0
+$ dmesg | grep -i -E 'iommu: Default domain|Adding to iommu group 5|arm-smmu 15000000|apps_smmu'
+[    0.081040] iommu: Default domain type: Translated
+[    0.272064] arm-smmu 15000000.iommu: probing hardware configuration...
+[    0.273331] arm-smmu 15000000.iommu: SMMUv2 with:
+[    0.273909] arm-smmu 15000000.iommu: 	stage 1 translation
+[    0.274485] arm-smmu 15000000.iommu: 	coherent table walk
+[    0.275042] arm-smmu 15000000.iommu: 	stream matching with 105 register groups
+[    0.276111] arm-smmu 15000000.iommu: 	70 context banks (0 stage-2 only)
+[    0.277803] arm-smmu 15000000.iommu: 	Supported page sizes: 0x61311000
+[    0.278909] arm-smmu 15000000.iommu: 	Stage-1: 36-bit VA -> 36-bit IPA
+[    0.280101] arm-smmu 15000000.iommu: 	preserved 0 boot mappings
+[    8.051369] pci 0000:00:00.0: Adding to iommu group 5
+[    8.054607] pci 0000:01:00.0: Adding to iommu group 5
+$ cat /proc/sys/kernel/dmesg_restrict; grep -E 'MemTotal|CmaTotal' /proc/meminfo
+1
+MemTotal:        6762388 kB
+CmaTotal:          32768 kB
+live DT of the PCIe controller, one 8-digit group per cell (docs/07 section 14: 4 cells per iommu-map entry = legacy form, 5 = the form 7.3-rc3 mis-parses):
+  iommu-map: 00000000 0000003b 00001400 00000001 00000100 0000003b 00001401 00000001 
+  msi-map: 00000000 00000083 00001400 00000001 00000100 00000083 00001401 00000001 
+
+##### GPIO consumers (every line with a consumer label) and the WLAN/BT pin ownership
+$ grep -E '^gpiochip|\|[A-Za-z0-9_@:.-]' /sys/kernel/debug/gpio
+gpiochip0: 12 GPIOs, parent: platform/c400000.spmi:pmic@1:gpio@8800, c400000.spmi:pmic@1:gpio@8800:
+gpiochip1: 8 GPIOs, parent: platform/c400000.spmi:pmic@5:gpio@8800, c400000.spmi:pmic@5:gpio@8800:
+gpiochip2: 6 GPIOs, parent: platform/c400000.spmi:pmic@0:gpio@b800, c400000.spmi:pmic@0:gpio@b800:
+gpiochip3: 211 GPIOs, parent: platform/f100000.pinctrl, f100000.pinctrl:
+$ grep -h -E 'pin (80|81|82|94|95|96|204) ' /sys/kernel/debug/pinctrl/*/pinmux-pins
+pin 80 (GPIO_80): device soc@0:wcn6855-pmu function gpio group gpio80
+pin 81 (GPIO_81): device soc@0:wcn6855-pmu function gpio group gpio81
+pin 82 (GPIO_82): device soc@0:wcn6855-pmu function gpio group gpio82
+pin 94 (GPIO_94): device 1c00000.pcie function gpio group gpio94
+pin 95 (GPIO_95): device 1c00000.pcie function pcie0_clk_req_n group gpio95
+pin 96 (GPIO_96): device 1c00000.pcie function gpio group gpio96
+pin 204 (GPIO_204): device soc@0:wcn6855-pmu function gpio group gpio204
+
+##### regulators the PMU asked for (debugfs regulator_summary excerpt; columns: use open bypass mode voltage current min max)
+$ grep -i -E 'wcn|pmu|wifi|wlan|pwrseq|s2g|s4e|s4g|s6g|l15b' /sys/kernel/debug/regulator/regulator_summary
+    vreg_l15b_1p8                 2    2      0  normal  1800mV     0mA  1800mV  1800mV 
+       soc@0:wcn6855-pmu-vddio    1                                 0mA     0mV     0mV
+    vreg_s4e_0p952                1    2      0    fast   968mV     0mA   968mV   984mV 
+       soc@0:wcn6855-pmu-vddpmumx   1                                 0mA     0mV     0mV
+    vreg_s2g_0p98                 3    3      0    fast  1012mV     0mA  1012mV  1036mV 
+       soc@0:wcn6855-pmu-vddrfa0p95   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddpmucx   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddaon   1                                 0mA     0mV     0mV
+    vreg_s4g_1p352                3    3      0    fast  1352mV     0mA  1352mV  1352mV 
+       soc@0:wcn6855-pmu-vddpcie1p3   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddrfa1p3   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddpmu   1                                 0mA     0mV     0mV
+    vreg_s6g_1p904                2    2      0    fast  1904mV     0mA  1904mV  2000mV 
+       soc@0:wcn6855-pmu-vddpcie1p9   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddrfa1p9   1                                 0mA     0mV     0mV
+$ dmesg | grep -E 'vreg_(s2g|s4e|s4g|s6g|l15b).*(Setting|supply)'
+[    0.115622] vreg_l15b_1p8: Setting 1800000-1800000uV
+[    0.115909] vreg_s4e_0p952: Setting 968000-984000uV
+[    0.116107] vreg_s2g_0p98: Setting 1012000-1036000uV
+[    0.116749] vreg_s4g_1p352: Setting 1352000-1352000uV
+[    0.117263] vreg_s6g_1p904: Setting 1904000-2000000uV
+
+##### kernel log, WLAN-relevant lines only (full logs: scripts/collect-phone-state.sh saves them)
+$ dmesg | grep -i -E 'pwrseq|pwrctrl|wcn6855|wifi|ath11k|qca6490|17cb|0000:01|qcom-pcie|link (up|not|down)|Device not found|mhi|qrtr|firmware|board|qmi|cfg80211|regdb|nl80211' | grep -v -E 'calling  |initcall '
+[    0.000000] [Firmware Bug]: Kernel image misaligned at boot, please fix your bootloader!
+[    0.000000] OF: reserved mem: 0x0000000081f00000..0x0000000081f1ffff (128 KiB) nomap non-reusable adsp-mhi-region@81f00000
+[    0.000000] psci: PSCIv1.1 detected in firmware.
+[    0.085693] probe of firmware:scm with driver qcom_scm returned -517 after 0 usecs
+[    0.106352] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 17 usecs
+[    0.259982] qcom_scm firmware:scm: qseecom: found qseecom with version 0x1402000
+[    0.261158] qcom_scm firmware:scm: qseecom: untested machine, skipping
+[    0.262543] probe of firmware:scm with driver qcom_scm returned 0 after 9247 usecs
+[    0.264645] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 5 usecs
+[    0.298771] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 4 usecs
+[    0.374780] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 5 usecs
+[    0.406476] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 5 usecs
+[    0.481458] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 5 usecs
+[    0.499174] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 5 usecs
+[    0.519534] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 1 usecs
+[    0.530253] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 6 usecs
+[    0.569243] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 4 usecs
+[    0.848336] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 1 usecs
+[    6.025804] systemd[1]: Clear SysFail Entry If The Boot Is Successful skipped, unmet condition check ConditionPathExists=/sys/firmware/efi/efivars/LoaderEntrySysFail-4a67b082-0a4c-41cf-b6c7-440b29bb8c4f
+[    7.328594] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 7 usecs
+[    7.366568] probe of 1c00000.pcie with driver qcom-pcie returned -517 after 4 usecs
+[    7.402939] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.406906] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.422033] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.422083] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.422099] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.446782] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 57617 usecs
+[    7.511908] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.521050] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.524168] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.524182] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.524187] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.557010] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 49030 usecs
+[    7.566516] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.568064] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.571369] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.571412] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.571428] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.572008] probe of soc@0:wcn6855-pmu with driver pwrseq-qcom_wcn returned 0 after 48909 usecs
+[    7.593628] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 27720 usecs
+[    7.600317] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.600812] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.600954] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.600964] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.600969] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.612452] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 13029 usecs
+[    7.623560] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.630264] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.643010] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.643030] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.643035] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.653550] probe of 1c00000.pcie:pcie@0:wifi@0 with driver pci-pwrctrl-pwrseq returned 0 after 272 usecs
+[    7.654215] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 36585 usecs
+[    7.658793] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    7.660139] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    7.663426] qcom-pcie 1c00000.pcie: host bridge /soc@0/pcie@1c00000 ranges:
+[    7.663442] qcom-pcie 1c00000.pcie:       IO 0x0060200000..0x00602fffff -> 0x0000000000
+[    7.663447] qcom-pcie 1c00000.pcie:      MEM 0x0060300000..0x0063ffffff -> 0x0060300000
+[    7.844390] qcom-pcie 1c00000.pcie: iATU: unroll T, 8 ob, 8 ib, align 4K, limit 1024G
+[    8.050746] qcom-pcie 1c00000.pcie: PCIe Gen.3 x1 link up
+[    8.050942] qcom-pcie 1c00000.pcie: PCI host bridge to bus 0000:00
+[    8.051001] pci 0000:00:00.0: [17cb:0113] type 01 class 0x060400 PCIe Root Port
+[    8.052884] pci 0000:01:00.0: [17cb:1103] type 00 class 0x028000 PCIe Endpoint
+[    8.053207] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x001fffff 64bit]
+[    8.053463] pci 0000:01:00.0: quirk_no_bus_reset+0x0/0x1c took 0 usecs
+[    8.053902] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    8.054607] pci 0000:01:00.0: Adding to iommu group 5
+[    8.058848] pci 0000:01:00.0: ASPM: default states L0s L1
+[    8.059039] pci 0000:01:00.0: BAR 0 [mem 0x60400000-0x605fffff 64bit]: assigned
+[    8.059147] pci_bus 0000:01: resource 0 [io  0x1000-0x1fff]
+[    8.059149] pci_bus 0000:01: resource 1 [mem 0x60400000-0x605fffff]
+[    8.059150] pci_bus 0000:01: resource 2 [mem 0x60600000-0x607fffff 64bit pref]
+[    8.066406] probe of 1c00000.pcie with driver qcom-pcie returned 0 after 408481 usecs
+$ dmesg | grep -i -E 'smmu|iommu.*fault|context fault|iommu-map|1-cell entries|Malformed|AER|pcieport|SError|Unhandled fault|rpmh|synchronous external abort'
+[    0.029601] calling  clk_rpmh_init+0x0/0x44 @ 1
+[    0.029609] initcall clk_rpmh_init+0x0/0x44 returned 0 after 0 usecs
+[    0.030374] calling  rpmh_driver_init+0x0/0x44 @ 1
+[    0.030382] initcall rpmh_driver_init+0x0/0x44 returned 0 after 0 usecs
+[    0.030418] calling  rpmhpd_init+0x0/0x44 @ 1
+[    0.030426] initcall rpmhpd_init+0x0/0x44 returned 0 after 0 usecs
+[    0.074162] probe of 17a00000.rsc:clock-controller with driver clk-rpmh returned 0 after 0 usecs
+[    0.075775] probe of 17a00000.rsc:power-controller with driver qcom-rpmhpd returned 0 after 0 usecs
+[    0.075979] probe of 17a00000.rsc with driver rpmh returned 0 after 0 usecs
+[    0.081040] iommu: Default domain type: Translated
+[    0.086923] calling  fserror_init+0x0/0x50 @ 1
+[    0.086926] initcall fserror_init+0x0/0x50 returned 0 after 1 usecs
+[    0.115394] calling  rpmh_regulator_driver_init+0x0/0x44 @ 1
+[    0.115523] initcall rpmh_regulator_driver_init+0x0/0x44 returned 0 after 126 usecs
+[    0.115998] probe of 17a00000.rsc:regulators-3 with driver qcom-rpmh-regulator returned -517 after 3 usecs
+[    0.116489] probe of 17a00000.rsc:regulators-0 with driver qcom-rpmh-regulator returned 0 after 984 usecs
+[    0.117592] probe of 17a00000.rsc:regulators-1 with driver qcom-rpmh-regulator returned 0 after 1890 usecs
+[    0.118857] probe of 17a00000.rsc:regulators-2 with driver qcom-rpmh-regulator returned 0 after 2974 usecs
+[    0.121554] calling  arm_smmu_init+0x0/0x74 @ 1
+[    0.121579] probe of 3da0000.iommu with driver arm-smmu returned -517 after 1 usecs
+[    0.121621] probe of 15000000.iommu with driver arm-smmu returned 517 after 32 usecs
+[    0.121665] initcall arm_smmu_init+0x0/0x74 returned 0 after 108 usecs
+[    0.121668] calling  arm_smmu_driver_init+0x0/0x44 @ 1
+[    0.121693] initcall arm_smmu_driver_init+0x0/0x44 returned 0 after 22 usecs
+[    0.270611] probe of 3da0000.iommu with driver arm-smmu returned -517 after 3 usecs
+[    0.271782] probe of 17a00000.rsc:regulators-3 with driver qcom-rpmh-regulator returned 0 after 448 usecs
+[    0.272064] arm-smmu 15000000.iommu: probing hardware configuration...
+[    0.273331] arm-smmu 15000000.iommu: SMMUv2 with:
+[    0.273909] arm-smmu 15000000.iommu: 	stage 1 translation
+[    0.274485] arm-smmu 15000000.iommu: 	coherent table walk
+[    0.275042] arm-smmu 15000000.iommu: 	stream matching with 105 register groups
+[    0.276111] arm-smmu 15000000.iommu: 	70 context banks (0 stage-2 only)
+[    0.277803] arm-smmu 15000000.iommu: 	Supported page sizes: 0x61311000
+[    0.278909] arm-smmu 15000000.iommu: 	Stage-1: 36-bit VA -> 36-bit IPA
+[    0.280101] arm-smmu 15000000.iommu: 	preserved 0 boot mappings
+[    0.286931] probe of 15000000.iommu with driver arm-smmu returned 0 after 15725 usecs
+[    0.298752] probe of 3da0000.iommu with driver arm-smmu returned -517 after 2 usecs
+[    0.373759] probe of 3da0000.iommu with driver arm-smmu returned -517 after 2 usecs
+[    0.405580] probe of 3da0000.iommu with driver arm-smmu returned -517 after 2 usecs
+[    0.407123] probe of 3da0000.iommu with driver arm-smmu returned -517 after 1 usecs
+
+##### network side
+$ ip -br link
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+usb0             UP             5a:55:e0:4c:bd:5d <BROADCAST,MULTICAST,UP,LOWER_UP> 
+$ rfkill list 2>&1
+$ nmcli -t device 2>&1
+lo:loopback:connected (externally):lo
+usb0:ethernet:unmanaged:
+$ iw dev 2>&1; iw phy 2>&1 | head -n 12
