@@ -24,6 +24,20 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
   Tab S9 Ultra reference devicetree against plain upstream mainline
 - `docs/05-dm1q-real-hardware-values.md` — real regulator/GPIO/pinctrl
   values extracted directly from dm1q's own downstream devicetree source
+- `docs/06-pmos-userspace-plan.md` — Phase 2 plan: postmarketOS userspace
+  (pmaports device/kernel package skeleton, what's left before a real
+  Alpine rootfs boots)
+- `docs/07-wlan-bringup.md` — WLAN (QCA6490/ath11k) bring-up: the full
+  investigation trail, including the 2026-10-01 root cause of the "pcie0
+  regression" (kernel module-signing key mismatch, not the devicetree) and
+  the 2026-10-09 finding that 7.3-rc3 mis-programs the PCIe controller's
+  BDF-to-SID table (upstream regression; fix carried as a patch, section 14), confirmed on
+  hardware 2026-10-10 with a DTS workaround and 2026-10-11 with the patched kernel (r5) and the
+  canonical DTS: `wlan0` is up (section 15; 15.12 is the module-tree pitfall of kernel rebuilds)
+- `pmaports/` — local pmaports-style device (`device-samsung-dm1q`) and
+  kernel (`linux-samsung-dm1q-mainline`) packages, structurally templated
+  on the gts9uwifi reference; see docs/06 for status (unbuilt skeleton,
+  not yet validated with pmbootstrap/abuild)
 - `dts/` — devicetree work (diffs, drafts, extracted downstream references)
 - `notes/` — scratch notes, kernel config diffs, log dumps
 - `kernel/` — kernel patches and config fragments applied on top of upstream
@@ -68,3 +82,11 @@ images were built and verified against the originals. See
 `docs/01-phase1-workplan.md`'s 2026-09-20 entry for the full process,
 including the safety planning that preceded it (this is the user's daily
 phone). All materials are in `../_scratch/boot-backup-<date>/`.
+
+**Update 2026-09-26: first mainline boot confirmed stable on real hardware**
+(kernel 7.3.0-rc3, v12) — UART7 console, USB CDC-ACM shell, and UFS
+storage all working; uptime tested to ~4h51m with no crash. Display is
+still bootloader-splash-passthrough only (no native panel driver) and
+WLAN is not yet exercised. **Phase 2 (postmarketOS userspace) has started**
+— see `docs/06-pmos-userspace-plan.md` for the current plan and the new
+`pmaports/` package skeleton.

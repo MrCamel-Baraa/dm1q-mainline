@@ -206,3 +206,111 @@ here with their answer and source, and are also reflected in 00-overview.md.
    this upstream gap closed first (not resolvable within this repo). If
    heimdall-bootimg (the no-intermediate-bootloader approach) works instead,
    this gap likely doesn't apply. See 03-references.md for detail.
+
+## Newly raised and resolved -- 2026-10-01
+
+12. **Kernel rebuilds vs. the pmOS rootfs' modules (module-signing key) --
+   fixed in the kernel config 2026-10-01; confirmed on hardware 2026-10-02.**
+   pmaports' `config-mainline.aarch64` signs modules with a per-build random
+   key and forces kernel lockdown (integrity). The rootfs (and the
+   `/lib/modules` in it) is built once, so every rebuilt kernel refused every
+   module -- which presented as "`&pcie0` never probes whenever the devicetree
+   changes" (full evidence: docs/07 "ROOT CAUSE FOUND 2026-10-01").
+   Fix: `CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y` in the dm1q config fragment.
+   Residual risk: no `MODVERSIONS` here, so a rootfs whose modules came from a
+   materially different kernel *config* is no longer refused at load time --
+   refresh the rootfs' modules after config changes
+   (`scripts/check-kernel-module-key.py` shows the mismatch).
+   **UPDATE 2026-10-11 (docs/07 15.12): the guard that does exist is BTF -- and it bit.** Any kernel
+   *code* change (not only config) makes the old module tree fail BTF validation and the kernel refuses
+   all of it (r5: 23 modules, no PCIe PHY, no wlan0). Rule extended in docs/06; tool:
+   `scripts/refresh-phone-modules.sh`. Undecided: `CONFIG_MODULE_ALLOW_BTF_MISMATCH=y` in the fragment.
+
+13. **WLAN pwrseq consumer wiring -- reworked in the DTS 2026-10-01;
+   confirmed on hardware 2026-10-04 (pwrctrl binds, PCIe link up, endpoint
+   17cb:1103 enumerates); chip boot still blocked -- suspect: the PMU input rails sit at
+   their DT minimum (docs/07 section 13), fix prepared as the v8 image set.** The first `wifi@0` (r2/r3) could never have bound
+   `pci-pwrctrl-pwrseq` even with modules loading: its supplies pointed at board
+   rails instead of the PMU's own `regulators { ldoN }` outputs, the PMU node
+   had no `regulators` node (binding: required), the compatible was 1101 (the
+   live device is 17cb:1103), and it sat under the host bridge instead of
+   `&pcie0_port0`. Now fixed and statically checked
+   (`scripts/check-wlan-dtb.py`). Still unknown: whether ath11k finds usable
+   firmware + board data for the S23's QCA6490 (linux-firmware `ath11k/WCN6855`
+   files, `board-2.bin` variant / `qcom,calibration-variant`), and whether the
+   shared Bluetooth half of the PMU needs anything on top. See docs/07 sections
+   6-9.
+
+   **UPDATE 2026-10-09:** the rails suspect above did not cure the stall (v8, flashed 2026-10-05) and
+   is not supported as its cause -- see item 14 and docs/07 section 14. The wiring/pwrctrl/link
+   findings in this item stand.
+
+## Newly raised -- 2026-10-09
+
+14. **PCIe BDF-to-SID table mis-programmed by 7.3-rc3 (upstream regression) -- fix carried as a
+   patch (kernel r5) plus a DT-only test image (v9); NOT yet verified on hardware.**
+   `qcom_pcie_config_sid_1_9_0()` (pcie-qcom.c) parses the DT `iommu-map` as four-cell entries;
+   `sm8550.dtsi` has had five-cell entries since the 2026-07-30 DT series (the SMMU has
+   `#iommu-cells = <2>`), so for dm1q's two-entry map the controller's BDF-to-SID table gets one
+   garbage slot and **no entry for the QCA6490 (RID 0x0100)**. Its stream ID / ITS DeviceID are then
+   wrong, which fits the 20 s MHI stall with zero interrupts on the endpoint's MSI vectors while the
+   root port's own vector counted. Fixed upstream 2026-09-17 ("PCI: qcom: Honor IOMMU provider's
+   #iommu-cells in qcom_pcie_config_sid_1_9_0()", tested on an ATH11k board); not in 7.3-rc3.
+   Evidence, the model of the table, test plan and what would falsify it: docs/07 section 14 and
+   `notes/2026-10-08-pcie-bdf-sid-regression/`. Open until the v9 collection (table dump +
+   endpoint interrupt counts + ath11k getting past MHI) is in. If the table is right and the stall
+   remains, the register sampler (rewritten 2026-10-08) is the next measurement; the unchecked
+   AOSS/PDC and power-up-sequence hypotheses (docs/07 14.6) come after that.
+   Still unknown after MHI works: firmware/board-data lookups for this QCA6490 (item 13).
+
+   **UPDATE 2026-10-10: CONFIRMED on hardware (v9).** Same kernel and images as v8, only the DTB's
+   `iommu-map` in the legacy 4-cell form: the chip boots in 0.7 s, ath11k probes, `wlan0` associates
+   and gets DHCP; the controller's table read back from the phone is `slot 0x15 = 0x01000100`, as
+   modelled. This also closes item 13's "chip boot still blocked". Still open here: kernel **r5**
+   (the upstream patch; DTS back to canonical; the same collection must show the same table and no
+   `1-cell entries` warning) and the optional control read of the table in the failing state.
+   docs/07 section 15.
+   **UPDATE 2026-10-11:** r5 is built (patches applied, kernel verified to contain the fix) and its
+   image set with the canonical DTS is ready in `_scratch/pmos-v10-r5-pcifix/`; waiting for the
+   flash + first-boot check (docs/07 15.11). Once that passes, the v9 workaround is retired.
+   **UPDATE 2026-10-11 (docs/07 15.12): first boot of r5 had no wlan0 -- not the fix, the module tree:**
+   the kernel refused every old module (BTF mismatch). Next: `scripts/refresh-phone-modules.sh --reboot`
+   (modules from the r5 APK), then re-check; the PCIe fix itself is still unjudged.
+   **CLOSED 2026-10-11 (docs/07 15.13): confirmed on hardware.** Canonical DTS + r5: no warning, table
+   identical to v9's, chip up in 0.77 s, `wlan0` associated with an IP. v9 workaround retired.
+
+15. **WLAN link quality and DNS -- open (first association 2026-10-10).** `wlan0` joins the AP and
+   DHCP works, but ping loss is 69 % (gateway) / 80 % (1.1.1.1) with 19-59 ms RTT to a local hop, and
+   DNS lookups fail. Hypotheses, none checked: power save / DTIM, generic board data (`board_id 0xff`:
+   no Samsung calibration or antenna configuration), band/channel, resolver configuration. Data:
+   `scripts/phone-wlan-probe.sh` now records capabilities, regdomain, scan, link, station dump,
+   power save, `ip -s link`, resolver and a gateway ping. docs/07 15.5.
+   **UPDATE 2026-10-10 14:00 (first measurements, docs/07 15.8):** signal -46 dBm (strong) but per
+   chain [-80, -46]; `tx failed` 1558 of 2225 frames (70 %) -- the loss is on the transmit side;
+   power save off fixes latency (RTT 158 -> 54 ms) but not the loss (65 % -> 55 %). Suspects: generic
+   board data / antenna path, 2.4 GHz interference, DMA coherency (`dma-coherent` on pcie0). Next:
+   distance, 5 GHz and chain-mask experiments; Samsung's own board data if the RF suspect holds.
+   **UPDATE 2026-10-10 16:15 (docs/07 15.9):** the loss did NOT reproduce: 80/80 pings, `tx failed`
+   0, fresh association, power save off (since the first look), user next to the router. The
+   chain-mask experiment is void (`iw ... set antenna` -> `Not supported`). Cause of the morning's
+   loss open: power save vs distance vs association age. Next: power-save A/B, then a long logger.
+   **UPDATE 2026-10-11 (docs/07 15.10): WLAN is usable; the morning episode is unexplained.** 25 min
+   logger: 1.2 % ping loss, `tx failed` 1.1 %; power-save A/B: 160/160 pings, 0 failed, power save only
+   costs ~13 ms. Power save is excluded as the cause. Left: DNS check; if the loss returns, run
+   `scripts/phone-wlan-log.sh` and note the phone's position. Board-data / DMA-coherency suspects
+   stay parked.
+   Also seen 2026-10-11 (15.13): the first 20 gateway pings ~3 s after association averaged 422 ms
+   (max 1.6 s, 0 % loss, rx rate still 1 Mbit/s, power save on); later logs clean.
+   **DNS works (2026-10-11 ~17:55, user's paste): `ping google.com` 3/3, ~66 ms.** WLAN is functionally done;
+   what remains is the unexplained morning loss (parked) and the board data question.
+
+16. **No input devices -- open.** No touch, no power/volume keys. Touch sits on `i2c@a90000`
+   (docs/05) but the serial engine comes up with protocol 1 (SPI) and `i2c-qcom-geni` refuses
+   (`Invalid proto 1`); the keys need PMIC pwrkey/resin and gpio-keys nodes. docs/07 15.6.
+
+17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
+   audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.
+
+18. **Display is still only the bootloader framebuffer (item 3b).** A mobile desktop is deliberately
+   not the next step: on `simpledrm` it tests nothing about the display and there is no input.
+   docs/07 15.7.
