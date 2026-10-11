@@ -1,0 +1,124 @@
+# ath11k WCN6855 board-2.bin (linux-firmware-ath11k 20260810-r0), unique board names for device=1103
+# (hw2.0 and hw2.1 board-2.bin are the same file: 7237392 bytes). Parsed with strings; the trailing letters some
+# lines show come from the next TLV header, ignore them. Columns: subsystem-vendor:subsystem-device chip-id board-id [variant]
+# unique entries: 120
+105b:e0b6 chip=2 board=255 
+105b:e0b8 chip=2 board=255 
+105b:e0b9 chip=2 board=255 
+105b:e0ba chip=2 board=255 
+105b:e0bb chip=2 board=255 
+105b:e0bb chip=2 board=255 HP_G8_Dongqianmmm
+105b:e0bb chip=2 board=255 HP_G8_Lancia13mmm
+105b:e0bb chip=2 board=255 HP_G8_Lancia14mmm
+105b:e0bb chip=2 board=255 HP_G8_Lancia15mmm
+105b:e0bb chip=2 board=255 HP_G8_Peconic
+105b:e0bb chip=2 board=255 HP_G8_Petrofm
+105b:e0bb chip=2 board=255 h_p943cmm
+105b:e0bd chip=2 board=255 
+105b:e0c4 chip=2 board=255 
+105b:e0c4 chip=2 board=255 HP_G8_Dongqianmmm
+105b:e0c4 chip=2 board=255 HP_G8_Lancia13mmm
+105b:e0c4 chip=2 board=255 HP_G8_Lancia14mmm
+105b:e0c4 chip=2 board=255 HP_G8_Lancia15mmm
+105b:e0c4 chip=2 board=255 HP_G8_Peconic
+105b:e0c4 chip=2 board=255 HP_G8_Petrofm
+105b:e0c4 chip=2 board=255 h_p943cmm
+105b:e0c4 chip=18 board=255 
+105b:e0c4 chip=18 board=255 HP_G8_Dongqianmm
+105b:e0c4 chip=18 board=255 HP_G8_Lancia13mm
+105b:e0c4 chip=18 board=255 HP_G8_Lancia14mm
+105b:e0c4 chip=18 board=255 HP_G8_Lancia15mm
+105b:e0c4 chip=18 board=255 HP_G8_Peconicmmm
+105b:e0c4 chip=18 board=255 HP_G8_Petrof
+105b:e0c4 chip=18 board=255 h_p943cm
+105b:e0ca chip=2 board=255 
+105b:e0ca chip=2 board=255 HO_BNMmmm
+105b:e0ca chip=2 board=255 HO_HalleyM_CN
+105b:e0cc chip=2 board=255 
+105b:e0cc chip=2 board=255 HO_BNMmmm
+105b:e0cc chip=2 board=255 HO_HalleyM_CN
+105b:e0cc chip=2 board=255 ho_gllmmm
+105b:e0cc chip=18 board=255 
+105b:e0cc chip=18 board=255 HO_BNMmm
+105b:e0cc chip=18 board=255 HO_HalleyM_CNmmm
+105b:e0cc chip=18 board=255 ho_gllmm
+105b:e0ce chip=2 board=255 
+105b:e0ce chip=2 board=255 DE_A15mmm
+105b:e0ce chip=18 board=255 
+105b:e0ce chip=18 board=255 DE_A15mm
+105b:e0d5 chip=2 board=255 
+105b:e0d5 chip=18 board=255 
+105b:e0d7 chip=2 board=255 
+105b:e0d7 chip=18 board=255 
+105b:e105 chip=2 board=268 
+105b:e105 chip=2 board=268 QC_Hamoa_IOT_EVKm
+105b:e105 chip=2 board=268 QC_SA8775P_Ridemm
+105b:e105 chip=18 board=255 
+105b:e105 chip=18 board=255 QC_Hamoa_IOT_EVK
+105b:e105 chip=18 board=268 
+105b:e105 chip=18 board=268 QC_Hamoa_IOT_EVK
+11ad:080d chip=2 board=255 
+11ad:081d chip=2 board=255 
+11ad:082d chip=2 board=255 
+11ad:a80d chip=2 board=255 
+11ad:a80d chip=18 board=255 
+11ad:a82d chip=2 board=255 
+11ad:a82d chip=18 board=255 
+11ad:a84d chip=2 board=255 
+11ad:a84d chip=2 board=255 AC_Jimnym
+11ad:a84d chip=18 board=255 
+11ad:a84d chip=18 board=255 AC_Jimny
+11ad:a85d chip=2 board=255 
+11ad:a85d chip=18 board=255 
+14cd:9108 chip=2 board=255 
+14cd:9109 chip=2 board=255 
+14cd:9109 chip=18 board=255 
+14cd:9208 chip=2 board=255 
+14cd:9209 chip=2 board=255 
+14cd:9209 chip=18 board=255 
+14cd:9308 chip=2 board=255 
+14cd:9408 chip=2 board=255 
+14cd:9409 chip=2 board=255 
+14cd:9409 chip=18 board=255 
+14cd:9508 chip=2 board=255 
+14cd:9509 chip=2 board=255 
+14cd:9509 chip=18 board=255 
+14cd:9608 chip=2 board=255 
+14cd:9609 chip=2 board=255 
+14cd:9609 chip=18 board=255 
+14cd:9f09 chip=2 board=255 
+14cd:9f09 chip=18 board=255 
+17aa:9308 chip=2 board=255 
+17aa:9308 chip=2 board=255 LE_NDA
+17aa:9309 chip=2 board=255 
+17aa:9309 chip=2 board=255 LE_NDA
+17aa:9309 chip=2 board=255 LEmmm
+17aa:9309 chip=2 board=255 le_lfr
+17aa:9309 chip=18 board=255 
+17aa:9309 chip=18 board=255 LE_NDA
+17aa:9309 chip=18 board=255 LEmm
+17aa:9309 chip=18 board=255 le_lfr
+17aa:e0be chip=2 board=255 
+17cb:0108 chip=2 board=140 LE_X13Smm
+17cb:0108 chip=2 board=255 
+17cb:0108 chip=2 board=255 HW_GK3mmm
+17cb:0108 chip=2 board=34618 
+17cb:0108 chip=2 board=34618 QC_QCS615_Ridem
+17cb:0108 chip=18 board=140 LE_X13Sm
+17cb:0108 chip=18 board=255 
+17cb:0108 chip=18 board=255 NTM_TW220mmm
+17cb:3374 chip=2 board=262 
+17cb:3374 chip=2 board=266 
+17cb:3374 chip=2 board=266 QC_Hamoa_IOT_EVKm
+17cb:3374 chip=2 board=771 
+17cb:3374 chip=18 board=266 
+17cb:3374 chip=18 board=266 QC_Hamoa_IOT_EVK
+17cb:3374 chip=18 board=771 
+17cb:337e chip=2 board=268 
+17cb:337e chip=2 board=268 QC_Hamoa_IOT_EVKm
+17cb:337e chip=18 board=268 
+17cb:337e chip=18 board=268 QC_Hamoa_IOT_EVK
+1dac:0268 chip=2 board=255 
+1dac:0268 chip=18 board=255 
+1dac:1268 chip=2 board=255 
+1dac:1268 chip=18 board=255 

@@ -1,0 +1,183 @@
+# phone-wlan-probe.sh output, run ON THE PHONE after the 2026-10-03 initramfs-extra repair
+# boot: v7 images (r4 kernel #5 + the rewired-wifi@0 DTB), pasted into the chat by the user on 2026-10-04.
+# Saved verbatim (the date/time shown is the phone's clock, which has no RTC: 1970-01-07).
+
+##### identity
+$ date -u; uname -a
+Wed Jan  7 02:12:22 UTC 1970
+Linux samsung-dm1q 7.3.0-rc3 #5-samsung-dm1q-mainline SMP PREEMPT Fri Oct  2 07:12:25 UTC 202 aarch64 Linux
+$ cat /sys/kernel/security/lockdown
+[none] integrity confidentiality
+$ cat /proc/sys/kernel/tainted
+8708
+$ tr ' ' '\n' < /proc/cmdline | grep -E 'lockdown|module|loop'
+sec_vibrator_inputff_module.vib_le_est=2815
+pdic_notifier_module.pdic_param_lpcharge=0
+
+##### modules
+$ lsmod | grep -E 'pwrseq|pwrctrl|ath11k|cfg80211|mac80211|qrtr|mhi|rfkill|qmp_pcie'
+qrtr                   53248  0
+ath11k_pci             32768  0
+ath11k                483328  1 ath11k_pci
+mac80211             1298432  1 ath11k
+cfg80211             1343488  2 ath11k,mac80211
+rfkill                 36864  2 cfg80211
+qmi_helpers            28672  1 ath11k
+mhi                   126976  1 ath11k_pci
+libarc4                12288  1 mac80211
+pci_pwrctrl_pwrseq     12288  0
+pwrseq_qcom_wcn        16384  1
+phy_qcom_qmp_pcie     188416  1
+
+##### packages and firmware on the phone
+$ apk info -v 2>/dev/null | grep -E 'firmware|ath11k|wpa_supplicant|iwd|networkmanager-wifi|wireless-regdb|^iw-|pciutils'
+iw-6.17-r0
+linux-firmware-ath11k-20260810-r0
+networkmanager-wifi-99991.58.0-r1
+postmarketos-base-ui-wifi-wpa_supplicant-61-r0
+wireless-regdb-2025.10.07-r0
+wpa_supplicant-2.11-r4
+wpa_supplicant-systemd-2.11-r4
+$ ls -la /usr/lib/firmware/ath11k/WCN6855/hw2.1 /usr/lib/firmware/ath11k/WCN6855/hw2.0
+/usr/lib/firmware/ath11k/WCN6855/hw2.0:
+total 2068
+drwxr-xr-x    3 root     root          4096 Jan  6 13:04 .
+drwxr-xr-x    4 root     root          4096 Jan  6 13:04 ..
+lrwxrwxrwx    1 root     root            34 Jan  6 13:04 Notice.txt.zst -> ../../QCA2066/hw2.1/Notice.txt.zst
+-rw-r--r--    1 root     root       1924360 Aug 31  2026 amss.bin.zst
+-rw-r--r--    1 root     root         56326 Aug 31  2026 board-2.bin.zst
+-rw-r--r--    1 root     root        116744 Aug 31  2026 m3.bin.zst
+drwxr-xr-x    2 root     root          4096 Jan  6 13:04 nfa765
+-rw-r--r--    1 root     root          2424 Aug 31  2026 regdb.bin.zst
+
+/usr/lib/firmware/ath11k/WCN6855/hw2.1:
+total 12
+drwxr-xr-x    3 root     root          4096 Jan  6 13:04 .
+drwxr-xr-x    4 root     root          4096 Jan  6 13:04 ..
+lrwxrwxrwx    1 root     root            21 Jan  6 13:04 amss.bin.zst -> ../hw2.0/amss.bin.zst
+lrwxrwxrwx    1 root     root            24 Jan  6 13:04 board-2.bin.zst -> ../hw2.0/board-2.bin.zst
+lrwxrwxrwx    1 root     root            19 Jan  6 13:04 m3.bin.zst -> ../hw2.0/m3.bin.zst
+drwxr-xr-x    2 root     root          4096 Jan  6 13:04 nfa765
+lrwxrwxrwx    1 root     root            22 Jan  6 13:04 regdb.bin.zst -> ../hw2.0/regdb.bin.zst
+
+##### power sequencing / pwrctrl devices and drivers
+$ ls /sys/bus/platform/devices | grep -i -E 'wifi|pwrctrl|pmu|wcn'
+1c00000.pcie:pcie@0:wifi@0
+24091000.pmu
+240b6400.pmu
+pmu-a510
+pmu-a710
+pmu-a715
+pmu-x3
+soc@0:wcn6855-pmu
+$ ls -l /sys/bus/platform/drivers/pci-pwrctrl-pwrseq/ /sys/bus/platform/drivers/pwrseq-qcom_wcn/ | grep -v '^total'
+/sys/bus/platform/drivers/pci-pwrctrl-pwrseq/:
+lrwxrwxrwx    1 root     root             0 Jan  7 02:12 1c00000.pcie:pcie@0:wifi@0 -> ../../../../devices/platform/soc@0/1c00000.pcie/1c00000.pcie:pcie@0:wifi@0
+--w-------    1 root     root          4096 Jan  7 02:12 bind
+lrwxrwxrwx    1 root     root             0 Jan  7 02:12 module -> ../../../../module/pci_pwrctrl_pwrseq
+--w-------    1 root     root          4096 Jan  7 02:08 uevent
+--w-------    1 root     root          4096 Jan  7 02:12 unbind
+
+/sys/bus/platform/drivers/pwrseq-qcom_wcn/:
+--w-------    1 root     root          4096 Jan  7 02:12 bind
+lrwxrwxrwx    1 root     root             0 Jan  7 02:12 module -> ../../../../module/pwrseq_qcom_wcn
+lrwxrwxrwx    1 root     root             0 Jan  7 02:12 soc@0:wcn6855-pmu -> ../../../../devices/platform/soc@0/soc@0:wcn6855-pmu
+--w-------    1 root     root          4096 Jan  7 02:12 unbind
+--w-------    1 root     root          4096 Sep 26  2026 uevent
+$ ls /sys/class/pwrseq 2>&1
+ls: /sys/class/pwrseq: No such file or directory
+
+##### PCI devices (the QCA6490 should be 0000:01:00.0, 17cb:1103)
+$ for d in /sys/bus/pci/devices/*; do ...; done
+0000:00:00.0 vendor=0x17cb device=0x0113 subsys=0x0000:0x0000 class=0x060400 driver=pcieport
+0000:01:00.0 vendor=0x17cb device=0x1103 subsys=0x17cb:0x0108 class=0x028000 driver=
+
+##### deferred probes (debugfs)
+$ cat /sys/kernel/debug/devices_deferred
+6e80000.pinctrl
+6d44000.codec   va_macro: unable to get macro clock
+6aa0000.codec   platform: supplier 6d44000.codec not ready
+6b00000.codec   platform: supplier 6d44000.codec not ready
+6ae0000.codec   platform: supplier 6d44000.codec not ready
+6ac0000.codec   platform: supplier 6d44000.codec not ready
+
+##### GPIO state: WLAN_EN / BT_EN / SW_CTRL / XO_CLK / PERST# / WAKE# / CLKREQ#
+$ grep -i -E 'wlan|bt-enable|swctrl|xo-clk|perst|wake|clkreq' /sys/kernel/debug/gpio
+(no output: no consumer label matched)
+$ grep -h -E 'pin (80|81|82|94|95|96|204) ' /sys/kernel/debug/pinctrl/*/pinmux-pins
+pin 80 (GPIO_80): device soc@0:wcn6855-pmu function gpio group gpio80
+pin 81 (GPIO_81): device soc@0:wcn6855-pmu function gpio group gpio81
+pin 82 (GPIO_82): device soc@0:wcn6855-pmu function gpio group gpio82
+pin 94 (GPIO_94): device 1c00000.pcie function gpio group gpio94
+pin 95 (GPIO_95): device 1c00000.pcie function pcie0_clk_req_n group gpio95
+pin 96 (GPIO_96): device 1c00000.pcie function gpio group gpio96
+pin 204 (GPIO_204): device soc@0:wcn6855-pmu function gpio group gpio204
+
+##### regulators the PMU asked for (debugfs regulator_summary excerpt)
+$ grep -i -E 'wcn|pmu|wifi|wlan|pwrseq|s2g|s4e|s4g|s6g|l15b' /sys/kernel/debug/regulator/regulator_summary
+    vreg_l15b_1p8                 2    2      0  normal  1800mV     0mA  1800mV  1800mV 
+       soc@0:wcn6855-pmu-vddio    1                                 0mA     0mV     0mV
+    vreg_s4e_0p952                1    2      0    fast   904mV     0mA   904mV   984mV 
+       soc@0:wcn6855-pmu-vddpmumx   1                                 0mA     0mV     0mV
+    vreg_s2g_0p98                 3    3      0    fast   500mV     0mA   500mV  1036mV 
+       soc@0:wcn6855-pmu-vddrfa0p95   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddpmucx   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddaon   1                                 0mA     0mV     0mV
+    vreg_s4g_1p352                3    3      0    fast  1200mV     0mA  1200mV  1352mV 
+       soc@0:wcn6855-pmu-vddpcie1p3   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddrfa1p3   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddpmu   1                                 0mA     0mV     0mV
+    vreg_s6g_1p904                2    2      0    fast  1800mV     0mA  1800mV  2000mV 
+       soc@0:wcn6855-pmu-vddpcie1p9   1                                 0mA     0mV     0mV
+       soc@0:wcn6855-pmu-vddrfa1p9   1                                 0mA     0mV     0mV
+
+##### kernel log, WLAN-relevant lines only (initcall noise removed; the full probe output also had them)
+[    6.972628] qcom-pcie 1c00000.pcie: supply vdda not found, using dummy regulator
+[    6.972691] qcom-pcie 1c00000.pcie: supply vddpe-3v3 not found, using dummy regulator
+[    6.986006] probe of 1c00000.pcie with driver qcom-pcie returned 517 after 14930 usecs
+[    7.002194] calling  init_module+0x0/0xfd8 [pwrseq_qcom_wcn] @ 1402
+[    7.014321] probe of soc@0:wcn6855-pmu with driver pwrseq-qcom_wcn returned 0 after 11978 usecs
+[    7.152683] calling  init_module+0x0/0xfd8 [pci_pwrctrl_pwrseq] @ 1090
+[    7.158600] probe of 1c00000.pcie:pcie@0:wifi@0 with driver pci-pwrctrl-pwrseq returned 0 after 5733 usecs
+[    7.348503] qcom-pcie 1c00000.pcie: iATU: unroll T, 8 ob, 8 ib, align 4K, limit 1024G
+[    7.546897] qcom-pcie 1c00000.pcie: PCIe Gen.3 x1 link up
+[    7.547076] qcom-pcie 1c00000.pcie: PCI host bridge to bus 0000:00
+[    7.547137] pci 0000:00:00.0: [17cb:0113] type 01 class 0x060400 PCIe Root Port
+[    7.549058] pci 0000:01:00.0: [17cb:1103] type 00 class 0x028000 PCIe Endpoint
+[    7.549381] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x001fffff 64bit]
+[    7.550086] pci 0000:01:00.0: PME# supported from D0 D3hot D3cold
+[    7.550804] pci 0000:01:00.0: Adding to iommu group 5
+[    7.558983] pci 0000:01:00.0: ASPM: default states L0s L1
+[    7.559174] pci 0000:01:00.0: BAR 0 [mem 0x60400000-0x605fffff 64bit]: assigned
+[    7.563443] probe of 1c00000.pcie with driver qcom-pcie returned 0 after 418489 usecs
+[    7.568173] calling  init_module+0x0/0xfd8 [mhi] @ 1404
+[    7.604326] calling  init_module+0x0/0x100 [cfg80211] @ 1404
+[    7.638855] calling  init_module+0x0/0x74 [ath11k_pci] @ 1404
+[    7.639365] ath11k_pci 0000:01:00.0: enabling device (0000 -> 0002)
+[    7.640352] ath11k_pci 0000:01:00.0: MSI vectors: 32
+[    7.640398] ath11k_pci 0000:01:00.0: wcn6855 hw2.1
+[    7.647400] calling  init_module+0x0/0xfa8 [qrtr] @ 2311
+[    7.803594] mhi mhi0: Requested to power ON
+[    7.803614] mhi mhi0: Power on setup success
+[   29.664041] mhi mhi0: Device link is not accessible
+[   29.664048] mhi mhi0: MHI did not enter READY state
+[   29.665104] ath11k_pci 0000:01:00.0: failed to power up mhi: -110
+[   29.670982] ath11k_pci 0000:01:00.0: failed to start mhi: -110
+[   29.671627] ath11k_pci 0000:01:00.0: failed to power up :-110
+[   29.694946] ath11k_pci 0000:01:00.0: failed to create soc core: -110
+[   29.694954] ath11k_pci 0000:01:00.0: failed to init core: -110
+[   29.992015] ath11k_pci 0000:01:00.0: probe with driver ath11k_pci failed with error -110
+[   29.992043] probe of 0000:01:00.0 with driver ath11k_pci returned 110 after 22353134 usecs
+(the repeated qcom-pcie retry blocks between 7.0 and 7.16 s -- supply warnings, host bridge ranges, "returned 517" -- are omitted here)
+
+##### network side
+$ ip -br link
+lo               UNKNOWN        00:00:00:00:00:00 <LOOPBACK,UP,LOWER_UP> 
+usb0             UP             xx:xx:xx:xx:xx:18 <BROADCAST,MULTICAST,UP,LOWER_UP> 
+$ rfkill list 2>&1
+(no output)
+$ nmcli -t device 2>&1
+lo:loopback:connected (externally):lo
+usb0:ethernet:unmanaged:
+$ iw dev 2>&1; iw phy 2>&1 | head -n 12
+(no output: no wlan phy)

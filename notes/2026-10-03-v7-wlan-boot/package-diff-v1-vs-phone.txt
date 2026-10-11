@@ -1,0 +1,6 @@
+# 2026-10-03: package-set difference, v1 rootfs image vs the phone's rootfs (read-only look from recovery)
+# packages: v1 image 343, phone 345
+## only on the phone
+iw-6.17-r0
+linux-firmware-ath11k-20260810-r0
+## only in the v1 image

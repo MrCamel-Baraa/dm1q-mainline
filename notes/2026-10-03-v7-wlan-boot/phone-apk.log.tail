@@ -1,0 +1,120 @@
+
+Running `/home/elgamal/.local/var/pmbootstrap/apk.static --progress-fd 3 --no-progress --root /home/elgamal/.local/var/pmbootstrap/chroot_rootfs_samsung-dm1q --arch aarch64 --cache-dir /home/elgamal/.local/var/pmbootstrap/cache_apk_aarch64 --repository /home/elgamal/.local/var/pmbootstrap/packages/edge --repository /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge add --no-interactive postmarketos-base-systemd` at 2026-09-28 01:25:51
+apk-tools 3.0.8-r0, compiled for x86_64.
+WARNING: opening /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge/aarch64/APKINDEX.tar.gz: No such file or directory
+OK: 670.0 MiB in 343 packages
+
+Running `/home/elgamal/.local/var/pmbootstrap/apk.static --progress-fd 3 --no-progress --root /home/elgamal/.local/var/pmbootstrap/chroot_rootfs_samsung-dm1q --arch aarch64 --cache-dir /home/elgamal/.local/var/pmbootstrap/cache_apk_aarch64 --repository /home/elgamal/.local/var/pmbootstrap/packages/edge --repository /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge add --no-interactive lang font-twemoji font-droid-nonlatin font-droid sudo-rs postmarketos-base-nofde postmarketos-ui-console device-samsung-dm1q postmarketos-base` at 2026-09-28 01:25:51
+apk-tools 3.0.8-r0, compiled for x86_64.
+WARNING: opening /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge/aarch64/APKINDEX.tar.gz: No such file or directory
+OK: 670.0 MiB in 343 packages
+
+Running `/home/elgamal/.local/var/pmbootstrap/apk.static --no-progress --root /home/elgamal/.local/var/pmbootstrap/chroot_rootfs_samsung-dm1q --arch aarch64 --cache-dir /home/elgamal/.local/var/pmbootstrap/cache_apk_aarch64 --repository /home/elgamal/.local/var/pmbootstrap/packages/edge --repository /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge add --no-interactive -u --virtual .pmbootstrap /home/elgamal/.local/var/pmbootstrap/packages/edge/aarch64/device-samsung-dm1q-1-r1.apk /home/elgamal/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r1.apk` at 2026-09-28 01:25:51
+apk-tools 3.0.8-r0, compiled for x86_64.
+WARNING: opening /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge/aarch64/APKINDEX.tar.gz: No such file or directory
+(1/1) Installing .pmbootstrap (20260928.012552)
+OK: 670.0 MiB in 344 packages
+
+Running `/home/elgamal/.local/var/pmbootstrap/apk.static --no-progress --root /home/elgamal/.local/var/pmbootstrap/chroot_rootfs_samsung-dm1q --arch aarch64 --cache-dir /home/elgamal/.local/var/pmbootstrap/cache_apk_aarch64 --repository /home/elgamal/.local/var/pmbootstrap/packages/edge --repository /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge del .pmbootstrap` at 2026-09-28 01:25:52
+apk-tools 3.0.8-r0, compiled for x86_64.
+WARNING: opening /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge/aarch64/APKINDEX.tar.gz: No such file or directory
+(1/1) Purging .pmbootstrap (20260928.012552)
+OK: 670.0 MiB in 343 packages
+
+Running `/home/elgamal/.local/var/pmbootstrap/apk.static --progress-fd 3 --no-progress --root /home/elgamal/.local/var/pmbootstrap/chroot_rootfs_samsung-dm1q --arch aarch64 --cache-dir /home/elgamal/.local/var/pmbootstrap/cache_apk_aarch64 --repository /home/elgamal/.local/var/pmbootstrap/packages/edge --repository /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge add --no-interactive postmarketos-mkinitfs` at 2026-09-28 01:25:52
+apk-tools 3.0.8-r0, compiled for x86_64.
+WARNING: opening /home/elgamal/.local/var/pmbootstrap/packages/systemd-edge/aarch64/APKINDEX.tar.gz: No such file or directory
+OK: 670.0 MiB in 343 packages
+
+Running `apk add /tmp/linux-firmware-ath11k-20260810-r0.apk /tmp/iw-6.17-r0.apk` at 1970-01-06 13:04:19
+apk-tools 3.0.8-r0, compiled for aarch64.
+WARNING: updating and opening http://mirror.postmarketos.org/postmarketos/extra-repos/systemd/main/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)
+WARNING: updating and opening http://mirror.postmarketos.org/postmarketos/main/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)
+WARNING: updating and opening http://dl-cdn.alpinelinux.org/alpine/edge/main/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)
+WARNING: updating and opening http://dl-cdn.alpinelinux.org/alpine/edge/community/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)
+WARNING: updating and opening http://dl-cdn.alpinelinux.org/alpine/edge/testing/aarch64/APKINDEX.tar.gz: DNS: transient error (try again later)
+NOTE: Consider running apk upgrade with --prune and/or --available.
+The following packages are no longer available from a repository:
+  abseil-cpp-raw-logging-internal abseil-cpp-strings abseil-cpp-strings-internal abseil-cpp-throw-delegate acl-libs agetty alpine-baselayout alpine-baselayout-data alpine-keys alpine-release alsa-lib apk-tools audit-libs avahi
+  avahi-lang avahi-libs avahi-systemd beebzzr blkid boot-deploy brotli-libs btrfs-progs btrfs-progs-udev buffyboard busybox busybox-binsh busybox-extras bzip2 c-ares ca-certificates-bundle cairo cfdisk chrony chrony-common cracklib
+  cracklib-words cryptsetup cryptsetup-libs dbus dbus-broker dbus-broker-systemd dbus-daemon-launch-helper dbus-libs dbus-systemd device-mapper device-mapper-libs device-mapper-udev device-samsung-dm1q devicepkg-utils dmesg dnsmasq
+  dnsmasq-common dnsmasq-systemd dosfstools duktape-libs e2fsprogs e2fsprogs-extra e2fsprogs-libs f2fs-tools f2fs-tools-libs file findmnt flock font-droid font-droid-nonlatin font-terminus font-twemoji fontconfig freetype fribidi
+  fstrim generate-kernel-cmdline glib glib-lang gmp gnutls graphite2 harfbuzz haveged hexdump hwdata-pci inih inotify-tools inotify-tools-libs iproute2 iproute2-minimal iproute2-ss iproute2-tc iskey iw jansson json-c kbd kbd-misc kmod
+  kmod-libs lang less libapk libapparmor libarchive libblkid libbpf libbsd libbz2 libcamera libcamera-ipa libcap-ng libcap2 libcbor libcom_err libcrypto3 libcurl libdaemon libdrm libdw libeconf libedit libelf libevdev libevent libexpat
+  libfdisk libffi libfido2 libfido2-udev libgcc libice libidn2 libinput-libs libinput-udev libintl libjpeg-turbo liblastlog2 libmagic libmd libmm-glib libmnl libmount libncursesw libndp libnftnl libnl3 libnm libpciaccess libpisp libpng
+  libpsl libpwquality libpwquality-lang libqrencode libseccomp libselinux libsm libsmartcols libssl3 libstdc++ libtasn1 libucontext libunistring libunwind libuuid libuv libx11 libxau libxcb libxdmcp libxext libxft libxkbcommon libxml2
+  libxmu libxrender libxshmfence libxt libxtables libyuv linux-firmware-ath11k linux-pam linux-pam-systemd linux-samsung-dm1q-mainline llvm23-libs logger losetup lsblk lscpu lua5.4-libs lz4 lz4-libs lzo mcookie merge-usr mesa
+  mesa-dri-gallium mesa-egl mesa-gbm mesa-gles mount mtdev musl musl-fts musl-locales musl-locales-lang musl-utils ncurses-terminfo-base nettle networkmanager networkmanager-cli networkmanager-lang networkmanager-systemd
+  networkmanager-tui networkmanager-wifi networkmanager-wwan newt newt-lang nftables nftables-systemd nghttp2-libs nspr nss openssh-keygen openssh-nftrules openssh-server-common openssh-server-pam openssh-server-pam-systemd p11-kit
+  pango parted partx pcre2 pcsc-lite-libs pipewire pipewire-lang pipewire-libs pipewire-spa-libcamera pipewire-systemd pipewire-udev pipewire-webrtc pixman plymouth plymouth-drm plymouth-lang plymouth-systemd polkit polkit-lang
+  polkit-libs polkit-systemd popt postmarketos-artwork-icons postmarketos-base postmarketos-base-apk postmarketos-base-apk-systemd postmarketos-base-mesa postmarketos-base-nftables postmarketos-base-nofde postmarketos-base-ssh
+  postmarketos-base-sudo-rs postmarketos-base-systemd postmarketos-base-systemd-resolved postmarketos-base-systemd-unudhcpd postmarketos-base-udev postmarketos-base-ui postmarketos-base-ui-networkmanager
+  postmarketos-base-ui-wifi-wpa_supplicant postmarketos-baselayout postmarketos-bootsplash postmarketos-buffybox-iskey postmarketos-config-nftables postmarketos-config-nftables-networkmanager postmarketos-initramfs postmarketos-keys
+  postmarketos-mkinitfs postmarketos-plymouth-themes postmarketos-release postmarketos-ui-console postmarketos-zram postmarketos-zram-systemd readline roc-toolkit-libs routewrangler routewrangler-systemd rtkit rtkit-systemd runuser
+  scanelf setarch setpriv sfdisk shadow skalibs-libs slang speexdsp spirv-tools sqlite-libs ssl_client sudo-rs systemd systemd-journald systemd-lang systemd-libs systemd-logind systemd-resolved systemd-services systemd-timesyncd
+  systemd-udevd tpm2-tss-esys tpm2-tss-mu tpm2-tss-rc tpm2-tss-sys tpm2-tss-tcti-device treescan tzdata umount unudhcpd unudhcpd-systemd userspace-rcu util-linux util-linux-login util-linux-misc utmps-libs uuidgen wayland-libs-client
+  webrtc-audio-processing-2 wipefs wireless-regdb wireless-tools wireless-tools-libs wireplumber wireplumber-lang wireplumber-libs wireplumber-systemd wpa_supplicant wpa_supplicant-systemd xdg-utils xfsprogs xfsprogs-extra
+  xkeyboard-config xkeyboard-config-lang xprop xset xz xz-libs yaml zlib zstd-libs
+The following NEW packages will be installed:
+  iw linux-firmware-ath11k
+Need to download 22.6 MiB of packages.
+After this operation, 22.8 MiB of additional disk space will be used.
+Downloading 2 packages...
+(1/2) Downloading iw-6.17-r0
+(2/2) Downloading linux-firmware-ath11k-20260810-r0
+Proceeding with upgrade...
+(1/2) Installing iw (6.17-r0)
+(2/2) Installing linux-firmware-ath11k (20260810-r0)
+Executing busybox-1.38.0-r7.trigger
+Executing postmarketos-mkinitfs-2.11.1-r0.trigger
+* 13:04:44.240212 Generating for kernel version: 7.3.0-rc3
+* 13:04:44.240975 Output directory: /boot
+* 13:04:44.240978 == Generating initramfs ==
+* 13:04:44.240980 - Using compression format gzip with level "default"
+* 13:04:44.240995 - Searching for directories specified in /usr/share/mkinitfs/dirs
+* 13:04:44.241376 -- Creating directories from: /usr/share/mkinitfs/dirs/00-initramfs-base.dirs
+* 13:04:44.241917 - Searching for directories specified in /etc/mkinitfs/dirs
+* 13:04:44.242269 - Searching for file lists from /usr/share/mkinitfs/files
+* 13:04:44.242443 -- Including files from: /usr/share/mkinitfs/files/00-initramfs-base.files
+* 13:04:44.242821 --- Unable to find optional path, skipping...
+* 13:04:44.242834 --- Unable to find optional path, skipping...
+* 13:04:44.246361 -- Including files from: /usr/share/mkinitfs/files/10-wireless-regdb.files
+* 13:04:44.246904 -- Including files from: /usr/share/mkinitfs/files/postmarketos-base.files
+* 13:04:44.247144 - Searching for file lists from /etc/mkinitfs/files
+* 13:04:44.247319 - Searching for hook scripts from /usr/share/mkinitfs/hooks
+* 13:04:44.247502 - Searching for hook scripts from /etc/mkinitfs/hooks
+* 13:04:44.247645 - Searching for hook scripts from /usr/share/mkinitfs/hooks-cleanup
+* 13:04:44.247652 -- Unable to find dir, skipping...
+* 13:04:44.247656 - Searching for hook scripts from /etc/mkinitfs/hooks-cleanup
+* 13:04:44.247660 -- Unable to find dir, skipping...
+* 13:04:44.247735 - Searching for kernel modules from /usr/share/mkinitfs/modules
+* 13:04:44.247907 -- Including modules from: /usr/share/mkinitfs/modules/00-default.modules
+* 13:04:44.278259 - Searching for kernel modules from /etc/mkinitfs/modules
+* 13:04:44.528249 initramfs completed in: 0.29s
+* 13:04:44.528276 Unknown or no compression format set, using gzip
+* 13:04:44.528282 == Generating initramfs-extra ==
+* 13:04:44.528284 - Using compression format gzip with level "default"
+* 13:04:44.528303 - Searching for file lists from /usr/share/mkinitfs/files-extra
+* 13:04:44.529692 -- Including files from: /usr/share/mkinitfs/files-extra/00-initramfs-extra-base.files
+* 13:04:44.554205 -- Including files from: /usr/share/mkinitfs/files-extra/01-initramfs-base-systemd.files
+* 13:04:44.554632 -- Including files from: /usr/share/mkinitfs/files-extra/30-postmarketos-bootsplash.files
+* 13:04:44.573897 - Searching for file lists from /etc/mkinitfs/files-extra
+* 13:04:44.574085 - Searching for hook scripts from /usr/share/mkinitfs/hooks-extra
+* 13:04:44.574287 - Searching for hook scripts from /etc/mkinitfs/hooks-extra
+* 13:04:44.574505 - Searching for kernel modules from /usr/share/mkinitfs/modules-extra
+* 13:04:44.574702 -- Including modules from: /usr/share/mkinitfs/modules-extra/00-default-extra.modules
+* 13:04:44.576385 - Searching for kernel modules from /etc/mkinitfs/modules-extra
+* 13:04:45.326610 initramfs-extra completed in: 0.80s
+* 13:04:45.326646 == Using boot-deploy to finalize/install files ==
+* ==> Running hooks
+* ==> kernel: device-tree blob operations
+* ==> kernel: appending device-tree qcom/sm8550-samsung-dm1q
+* systemd-boot: systemd-boot EFI app or powervm-boot not found, skipping
+* ==> Checking free space at /boot
+* ... OK!
+* ==> Installing: /boot/initramfs
+* ==> Installing: /boot/initramfs-extra
+* ==> Installing: /boot/sm8550-samsung-dm1q.dtb
+* 13:04:46.029618 boot-deploy completed in: 0.70s
+* 13:04:46.032300 mkinitfs completed in: 1.79s
+OK: 692.8 MiB in 345 packages

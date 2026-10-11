@@ -1,0 +1,273 @@
+Evidence for docs/07-wlan-bringup.md section 14 (generated 2026-10-09T18:51:15Z by make-evidence.sh)
+
+================================================================================
+== 1. 7.3-rc3 drivers/pci/controller/dwc/pcie-qcom.c: the iommu-map parser (blob b58a607b713f; upstream patch pre-image: b58a607b713f)
+================================================================================
+  1144	static int qcom_pcie_config_sid_1_9_0(struct qcom_pcie *pcie)
+  1145	{
+  1146		/* iommu map structure */
+  1147		struct {
+  1148			u32 bdf;
+  1149			u32 phandle;
+  1150			u32 smmu_sid;
+  1151			u32 smmu_sid_len;
+  1152		} *map;
+  1153		void __iomem *bdf_to_sid_base = pcie->parf + PARF_BDF_TO_SID_TABLE_N;
+  1154		struct device *dev = pcie->pci->dev;
+  1155		u8 qcom_pcie_crc8_table[CRC8_TABLE_SIZE];
+  1156		int i, nr_map, size = 0;
+  1157		u32 smmu_sid_base;
+  1158		u32 val;
+  1159	
+  1160		of_get_property(dev->of_node, "iommu-map", &size);
+  1161		if (!size)
+  1162			return 0;
+  1163	
+  1164		/* Enable BDF to SID translation by disabling bypass mode (default) */
+  1165		val = readl(pcie->parf + PARF_BDF_TO_SID_CFG);
+  1166		val &= ~BDF_TO_SID_BYPASS;
+  1167		writel(val, pcie->parf + PARF_BDF_TO_SID_CFG);
+  1168	
+  1169		map = kzalloc(size, GFP_KERNEL);
+  1170		if (!map)
+  1171			return -ENOMEM;
+  1172	
+  1173		of_property_read_u32_array(dev->of_node, "iommu-map", (u32 *)map,
+  1174					   size / sizeof(u32));
+  1175	
+  1176		nr_map = size / (sizeof(*map));
+  1177	
+  1178		crc8_populate_msb(qcom_pcie_crc8_table, QCOM_PCIE_CRC8_POLYNOMIAL);
+  1179	
+  1180		/* Registers need to be zero out first */
+  1181		memset_io(bdf_to_sid_base, 0, CRC8_TABLE_SIZE * sizeof(u32));
+  1182	
+  1183		/* Extract the SMMU SID base from the first entry of iommu-map */
+  1184		smmu_sid_base = map[0].smmu_sid;
+  1185	
+  1186		/* Look for an available entry to hold the mapping */
+  1187		for (i = 0; i < nr_map; i++) {
+  1188			__be16 bdf_be = cpu_to_be16(map[i].bdf);
+  1189			u32 val;
+  1190			u8 hash;
+  1191	
+  1192			hash = crc8(qcom_pcie_crc8_table, (u8 *)&bdf_be, sizeof(bdf_be), 0);
+  1193	
+  1194			val = readl(bdf_to_sid_base + hash * sizeof(u32));
+  1195	
+  1196			/* If the register is already populated, look for next available entry */
+  1197			while (val) {
+  1198				u8 current_hash = hash++;
+  1199				u8 next_mask = 0xff;
+  1200	
+  1201				/* If NEXT field is NULL then update it with next hash */
+  1202				if (!(val & next_mask)) {
+  1203					val |= (u32)hash;
+  1204					writel(val, bdf_to_sid_base + current_hash * sizeof(u32));
+  1205				}
+  1206	
+  1207				val = readl(bdf_to_sid_base + hash * sizeof(u32));
+  1208			}
+  1209	
+  1210			/* BDF [31:16] | SID [15:8] | NEXT [7:0] */
+  1211			val = map[i].bdf << 16 | (map[i].smmu_sid - smmu_sid_base) << 8 | 0;
+  1212			writel(val, bdf_to_sid_base + hash * sizeof(u32));
+  1213		}
+  1214	
+  1215		kfree(map);
+  1216	
+   ... call site, ops table, SoC match:
+  1425		qcom_pcie_perst_deassert(pcie);
+  1426	
+  1427		if (pcie->cfg->ops->config_sid) {
+  1428			ret = pcie->cfg->ops->config_sid(pcie);
+  1429			if (ret)
+  1430				goto err_assert_reset;
+  1431		}
+  1432	
+  1565	static const struct qcom_pcie_ops ops_1_9_0 = {
+  1566		.get_resources = qcom_pcie_get_resources_2_7_0,
+  1567		.init = qcom_pcie_init_2_7_0,
+  1568		.post_init = qcom_pcie_post_init_2_7_0,
+  1569		.host_post_init = qcom_pcie_host_post_init_2_7_0,
+  1570		.deinit = qcom_pcie_deinit_2_7_0,
+  1571		.ltssm_enable = qcom_pcie_2_3_2_ltssm_enable,
+  1572		.config_sid = qcom_pcie_config_sid_1_9_0,
+  1573	};
+  1598	static const struct qcom_pcie_cfg cfg_1_9_0 = {
+  1599		.ops = &ops_1_9_0,
+  1600	};
+  2492		{ .compatible = "qcom,pcie-sm8550", .data = &cfg_1_9_0 },
+
+================================================================================
+== 2. 7.3-rc3 sm8550.dtsi: the PCIe0 node (compatible, maps) and the SMMU's #iommu-cells
+================================================================================
+2318:		pcie0: pcie@1c00000 {
+2319-			device_type = "pci";
+2320-			compatible = "qcom,pcie-sm8550";
+2321-			reg = <0 0x01c00000 0 0x3000>,
+2390:			msi-map = <0x0 &gic_its 0x1400 0x1>,
+2391-				  <0x100 &gic_its 0x1401 0x1>;
+2392:			iommu-map = <0x0   &apps_smmu 0x1400 0x0 0x1>,
+2393-				    <0x100 &apps_smmu 0x1401 0x0 0x1>;
+--
+2575:			msi-map = <0x0 &gic_its 0x1480 0x1>,
+2576-				  <0x100 &gic_its 0x1481 0x1>;
+2577:			iommu-map = <0x0   &apps_smmu 0x1480 0x0 0x1>,
+5564:		apps_smmu: iommu@15000000 {
+5567-			#iommu-cells = <2>;
+
+================================================================================
+== 3. OF core: the legacy 4-cell shape it tolerates (drivers/of/base.c)
+================================================================================
+  2146	static bool of_check_bad_map(const __be32 *map, int len)
+  2147	{
+  2148		__be32 phandle = map[1];
+  2149	
+  2150		if (len % 4)
+  2151			return false;
+  2152		for (int i = 0; i < len; i += 4) {
+  2153			if (map[i + 1] != phandle || map[i + 3] != cpu_to_be32(1))
+  2154				return false;
+  2155		}
+  2156		return true;
+  2157	}
+2263:				pr_warn_once("%pOF: %s has 1-cell entries targeting 2-cell %s, treating as 1-cell output\n",
+
+================================================================================
+== 4. The DTBs actually flashed: v8 (5-cell, from sm8550.dtsi) and v9 (legacy 4-cell override)
+================================================================================
+-- pmos-v8-r4-rails  (vendor_boot DTB sha256 aa25ed33f09a5edb...)
+   pcie@1c00000           iommu-map     10 cells: 0x0 0x3b 0x1400 0x0 0x1 0x100 0x3b 0x1401 0x0 0x1
+   pcie@1c00000           msi-map        8 cells: 0x0 0x83 0x1400 0x1 0x100 0x83 0x1401 0x1
+   iommu@15000000         #iommu-cells   1 cells: 0x2
+-- pmos-v9-r4-iommu-legacy  (vendor_boot DTB sha256 57c5b348e90b5a3d...)
+   pcie@1c00000           iommu-map      8 cells: 0x0 0x3b 0x1400 0x1 0x100 0x3b 0x1401 0x1
+   pcie@1c00000           msi-map        8 cells: 0x0 0x83 0x1400 0x1 0x100 0x83 0x1401 0x1
+   iommu@15000000         #iommu-cells   1 cells: 0x2
+
+================================================================================
+== 5. What each parser programs into the controller's BDF-to-SID table (scripts/predict-qcom-bdf-sid-table.py)
+================================================================================
+######## pmos-v8-r4-rails
+DTB        : /tmp/tmp.YfDoNhpAMk/pmos-v8-r4-rails/dtb
+node       : /soc@0/pcie@1c00000
+iommu-map  : 0x0 0x3b 0x1400 0x0 0x1 0x100 0x3b 0x1401 0x0 0x1
+IOMMU      : phandle 0x3b = /soc@0/iommu@15000000, #iommu-cells = 2 -> well-formed, 5 cells per entry; the property has 10 cells
+
+7.3-rc3 parser (four-word units): 2 units
+   unit 0 = {bdf=0x0, phandle=0x3b, smmu_sid=0x1400, smmu_sid_len=0x0}
+   unit 1 = {bdf=0x1, phandle=0x100, smmu_sid=0x3b, smmu_sid_len=0x1401}
+-> table the 7.3-rc3 driver programs (smmu_sid_base = 0x1400):
+   slot 0x07 = 0xffed3b00   BDF field 0xffed (ff:1d.5)  SID offset 0x3b  NEXT 0x00
+   lookup root port 00:00.0 (RID 0x0000)  : entry in slot 0x00, SID offset 0x00  = SID 0x1400
+   lookup endpoint 01:00.0 (RID 0x0100)   : NO ENTRY (hashes to slot 0x15, unprogrammed) -> hardware default SID
+
+fixed parser (stride 3 + #iommu-cells): 2 entries
+   entry 0 = {rid=0x0, sid=0x1400}
+   entry 1 = {rid=0x100, sid=0x1401}
+-> table the fixed driver programs (smmu_sid_base = 0x1400):
+   slot 0x15 = 0x01000100   BDF field 0x0100 (01:00.0)  SID offset 0x01  NEXT 0x00
+   lookup root port 00:00.0 (RID 0x0000)  : entry in slot 0x00, SID offset 0x00  = SID 0x1400
+   lookup endpoint 01:00.0 (RID 0x0100)   : entry in slot 0x15, SID offset 0x01  = SID 0x1401
+
+######## pmos-v9-r4-iommu-legacy
+DTB        : /tmp/tmp.YfDoNhpAMk/pmos-v9-r4-iommu-legacy/dtb
+node       : /soc@0/pcie@1c00000
+iommu-map  : 0x0 0x3b 0x1400 0x1 0x100 0x3b 0x1401 0x1
+IOMMU      : phandle 0x3b = /soc@0/iommu@15000000, #iommu-cells = 2 -> legacy 4-cell entries (the shape drivers/of/base.c of_check_bad_map() tolerates); the property has 8 cells
+
+7.3-rc3 parser (four-word units): 2 units
+   unit 0 = {bdf=0x0, phandle=0x3b, smmu_sid=0x1400, smmu_sid_len=0x1}
+   unit 1 = {bdf=0x100, phandle=0x3b, smmu_sid=0x1401, smmu_sid_len=0x1}
+-> table the 7.3-rc3 driver programs (smmu_sid_base = 0x1400):
+   slot 0x15 = 0x01000100   BDF field 0x0100 (01:00.0)  SID offset 0x01  NEXT 0x00
+   lookup root port 00:00.0 (RID 0x0000)  : entry in slot 0x00, SID offset 0x00  = SID 0x1400
+   lookup endpoint 01:00.0 (RID 0x0100)   : entry in slot 0x15, SID offset 0x01  = SID 0x1401
+
+fixed parser (stride 3 + #iommu-cells) (legacy 4-cell entries recognised): 2 entries
+   entry 0 = {rid=0x0, sid=0x1400}
+   entry 1 = {rid=0x100, sid=0x1401}
+-> table the fixed driver programs (smmu_sid_base = 0x1400):
+   slot 0x15 = 0x01000100   BDF field 0x0100 (01:00.0)  SID offset 0x01  NEXT 0x00
+   lookup root port 00:00.0 (RID 0x0000)  : entry in slot 0x00, SID offset 0x00  = SID 0x1400
+   lookup endpoint 01:00.0 (RID 0x0100)   : entry in slot 0x15, SID offset 0x01  = SID 0x1401
+
+
+================================================================================
+== 6. The three failure signatures, verbatim from the saved logs (power-on -> failure)
+================================================================================
+-- notes/2026-10-03-v7-wlan-boot/phone-probe-v7.txt
+[    7.803594] mhi mhi0: Requested to power ON
+[    7.803614] mhi mhi0: Power on setup success
+[   29.664041] mhi mhi0: Device link is not accessible
+[   29.664048] mhi mhi0: MHI did not enter READY state
+[   29.665104] ath11k_pci 0000:01:00.0: failed to power up mhi: -110
+-- notes/2026-10-05-v8-wlan-rails/dmesg.txt
+[    8.901544] mhi mhi0: Requested to power ON
+[    8.901569] mhi mhi0: Power on setup success
+[   29.666984] mhi mhi0: MHI did not load image over BHI, ret: -5
+[   29.667094] ath11k_pci 0000:01:00.0: failed to power up mhi: -110
+-- notes/2026-10-07-v8-fresh/dmesg.txt
+[   56.688486] mhi mhi0: Requested to power ON
+[   56.688504] mhi mhi0: Power on setup success
+[   76.768865] mhi mhi0: Wait for device to enter SBL or Mission mode
+[   76.770774] ath11k_pci 0000:01:00.0: failed to power up mhi: -110
+
+================================================================================
+== 7. /proc/interrupts around the fresh attempt (notes/2026-10-07-v8-fresh/regdump-load.txt): root port line 0 -> 2, endpoint's 11 vectors stay 0
+================================================================================
+##### interrupts before
+ 172:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:00:00.0    0 Edge      PCIe PME, aerdrv, PCIe bwctrl
+   --- /proc/interrupts (mhi/ath11k/msi) at +4s:
+ 172:          2          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:00:00.0    0 Edge      PCIe PME, aerdrv, PCIe bwctrl
+ 174:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    0 Edge      bhi
+ 175:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    1 Edge      mhi
+ 176:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    2 Edge      mhi
+ 177:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    3 Edge      ce0
+ 178:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    4 Edge      ce1
+ 179:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    5 Edge      ce2
+ 180:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    6 Edge      ce3
+ 181:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    7 Edge      ce5
+ 182:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    8 Edge      ce7
+ 183:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    9 Edge      ce8
+ 188:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0   14 Edge      DP_EXT_IRQ
+   --- /proc/interrupts (mhi/ath11k/msi) at +14s:
+ 172:          2          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:00:00.0    0 Edge      PCIe PME, aerdrv, PCIe bwctrl
+ 174:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    0 Edge      bhi
+ 175:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    1 Edge      mhi
+ 176:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    2 Edge      mhi
+ 177:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    3 Edge      ce0
+ 178:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    4 Edge      ce1
+ 179:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    5 Edge      ce2
+ 180:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    6 Edge      ce3
+ 181:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    7 Edge      ce5
+ 182:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    8 Edge      ce7
+ 183:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0    9 Edge      ce8
+ 188:          0          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:01:00.0   14 Edge      DP_EXT_IRQ
+##### interrupts after
+ 172:          2          0          0          0          0          0          0          0  ITS-PCI-MSI-0000:00:00.0    0 Edge      PCIe PME, aerdrv, PCIe bwctrl
+##### kernel messages since the mark
+[   46.289859] REGDUMP-MARK start (idle)
+[   56.439329] REGDUMP-MARK start (load)
+[   56.471609] REGDUMP-MARK modprobe
+
+================================================================================
+== 8. The carried patch
+================================================================================
+5b67955c0cbba004de4547803764b2cc5bb3c56c... pci-qcom-honor-iommu-cells-in-config-sid.patch
+49:index b58a607..42cbeef 100644
+compile check (notes/2026-10-08-pcie-bdf-sid-regression/compile-check.sh, clang W=1, real dm1q config):
+compile exit code: 0
+tree pcie-qcom.c blob after revert: b58a607b713f (pristine is b58a607b713f)
+
+================================================================================
+== 9. Upstream (read 2026-10-08)
+================================================================================
+patch    "PCI: qcom: Honor IOMMU provider's #iommu-cells in qcom_pcie_config_sid_1_9_0()", Manivannan Sadhasivam,
+         posted 2026-09-07, Message-ID <20260907143349.317495-1-mani@kernel.org>; thread read at
+         https://ratatoskr.run/linux-pci/2026/09/17525884/t
+         Tested-by Loic Poulain (Arduino Monza: "ATH11k/WiFi was broken for me. This fixes the issue") and Neil Armstrong
+         (SM8650-HDK); applied 2026-09-17 to Mani's pci/controller/qcom tree, commit 626acf6efc69c666ffee50bf18e7b95e68670c6a
+DT       "arm64: dts: qcom: Fix the PCIe iommu-map entries" series, [PATCH 00/22], 2026-07-30 (4-cell -> 5-cell entries)
+OF core  commit ccb2fd725d41 "of: Respect #{iommu,msi}-cells in maps" (7.2-rc1) -- why the DTs had to change

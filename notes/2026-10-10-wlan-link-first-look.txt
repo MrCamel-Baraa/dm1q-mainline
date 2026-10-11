@@ -1,0 +1,90 @@
+First look at the WLAN link, 2026-10-10 ~14:00 (Africa/Cairo). Pasted by the user from the phone's shell.
+Conditions: test image v9 (r4 kernel #5, legacy 4-cell iommu-map), phone rebooted normally, joined "<home-ssid>" by NetworkManager
+(saved connection); the phone's distance to the router was not recorded. Commands run on the phone; raw output below, unedited except for this header.
+Analysis: docs/07-wlan-bringup.md section 15.8, docs/02 item 15.
+
+---- iw dev wlan0 link; iw dev wlan0 station dump; iw dev wlan0 get power_save; iw reg get
+Connected to xx:xx:xx:xx:xx:25 (on wlan0)
+        SSID: <home-ssid>
+        freq: 2447.0
+        RX: 487570 bytes (4077 packets)
+        TX: 219822 bytes (2225 packets)
+        signal: -46 dBm
+        rx bitrate: 26.0 MBit/s MCS 3
+        tx bitrate: 48.0 MBit/s
+        bss flags: CTS-protection short-slot-time
+        dtim period: 3
+        beacon int: 100
+Station xx:xx:xx:xx:xx:25 (on wlan0)
+        authorized:     yes
+        authenticated:  yes
+        associated:     yes
+        preamble:       long
+        WMM/WME:        yes
+        MFP:            no
+        TDLS peer:      no
+        inactive time:  456 ms
+        rx bytes:       487570
+        rx packets:     4077
+        tx bytes:       219822
+        tx packets:     2225
+        tx retries:     0
+        tx failed:      1558
+        beacon loss:    0
+                beacon rx:      1653
+        rx drop misc:   0
+        signal:         -46 [-80, -46] dBm
+        signal avg:     -49 dBm
+        beacon signal avg:      -48 dBm
+        tx bitrate:     48.0 MBit/s
+        tx duration:    0 us
+        rx bitrate:     26.0 MBit/s MCS 3
+        rx duration:    3598802 us
+        last ack signal:-47 dBm
+        avg ack signal: -47 dBm
+        expected throughput:    35.687Mbps
+        DTIM period:    3
+        beacon interval:100
+        CTS protection: yes
+        short slot time:yes
+        connected time: 7422 seconds
+        associated at [boottime]:       1303.366s
+        associated at:  1791605474363 ms
+        current time:   1791612896758 ms
+
+Power save: on
+global
+country 00: DFS-UNSET
+        (755 - 928 @ 2), (N/A, 20), (N/A), PASSIVE-SCAN
+        (2402 - 2472 @ 40), (N/A, 20), (N/A)
+        (2457 - 2482 @ 20), (N/A, 20), (N/A), AUTO-BW, PASSIVE-SCAN
+        (2474 - 2494 @ 20), (N/A, 20), (N/A), NO-OFDM, PASSIVE-SCAN
+        (5170 - 5250 @ 80), (N/A, 20), (N/A), AUTO-BW, PASSIVE-SCAN
+        (5250 - 5330 @ 80), (N/A, 20), (0 ms), DFS, AUTO-BW, PASSIVE-SCAN
+        (5490 - 5730 @ 160), (N/A, 20), (0 ms), DFS, PASSIVE-SCAN
+        (5735 - 5835 @ 80), (N/A, 20), (N/A), PASSIVE-SCAN
+        (57240 - 63720 @ 2160), (N/A, 0), (N/A)
+
+phy#0 (self-managed)
+country CN: DFS-FCC
+        (2402 - 2472 @ 40), (N/A, 20), (N/A)
+        (2457 - 2482 @ 20), (N/A, 20), (N/A), PASSIVE-SCAN
+        (5170 - 5250 @ 80), (N/A, 20), (N/A), NO-OUTDOOR, AUTO-BW, PASSIVE-SCAN
+        (5250 - 5330 @ 80), (N/A, 20), (0 ms), NO-OUTDOOR, DFS, AUTO-BW, PASSIVE-SCAN
+        (5735 - 5835 @ 80), (N/A, 20), (N/A), AUTO-BW, PASSIVE-SCAN
+
+---- ip route; cat /etc/resolv.conf; nmcli -f IN-USE,SSID,CHAN,FREQ,SIGNAL dev wifi
+default via 192.168.1.1 dev wlan0 proto dhcp src 192.168.1.11 metric 20600
+172.16.0.0/16 dev usb0 proto kernel scope link src 172.16.42.1
+192.168.1.0/24 dev wlan0 proto kernel scope link src 192.168.1.11 metric 600
+(/etc/resolv.conf = systemd-resolved stub file: nameserver 127.0.0.53, options edns0 trust-ad, search .)
+IN-USE  SSID     CHAN  FREQ      SIGNAL
+*       <home-ssid>  8     2447 MHz  70
+
+---- ping, power save on (the first `iw ... set power_save off` ran without sudo: "command failed: Operation not permitted (-1)")
+20 packets transmitted, 7 packets received, 65% packet loss
+round-trip min/avg/max = 35.992/157.926/602.682 ms
+
+---- sudo iw dev wlan0 set power_save off; ping -c 20 -i 0.3 192.168.1.1
+20 packets transmitted, 9 packets received, 55% packet loss
+round-trip min/avg/max = 11.171/54.220/174.387 ms
