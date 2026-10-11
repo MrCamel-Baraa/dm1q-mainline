@@ -1,0 +1,42 @@
+# Reference: <https://postmarketos.org/devicepkg>
+#
+# STATUS (2026-09-27): first draft, never built with pmbootstrap yet. No
+# device-specific userspace hooks exist so far (no display/sensor/audio
+# bring-up done -- see docs/06-pmos-userspace-plan.md) so this package is
+# deliberately minimal: postmarketos-base plus the current kernel, nothing
+# device-specific to install yet.
+maintainer="dm1q mainline port <baraa.amr.elgamal@gmail.com>"
+pkgname=device-samsung-dm1q
+pkgdesc="Samsung Galaxy S23"
+pkgver=1
+pkgrel=1
+url="https://postmarketos.org"
+license="MIT"
+arch="aarch64"
+options="!check !archcheck"
+depends="
+	e2fsprogs-extra
+	findmnt
+	kbd
+	linux-samsung-dm1q-mainline
+	lsblk
+	partx
+	postmarketos-base
+	sfdisk
+"
+makedepends="devicepkg-dev"
+source="deviceinfo"
+
+build() {
+	devicepkg_build "$startdir" "$pkgname"
+}
+
+package() {
+	devicepkg_package "$startdir" "$pkgname"
+}
+
+# PLACEHOLDER -- not a real checksum. Run `abuild checksum` in this
+# directory once this package is actually tested with pmbootstrap.
+sha512sums="
+b85c04740561a1c0d370929dd803b35aed19c532a72c9c11ed83572fcbfb37df1c1ed3f908676a6c87b1443ed77da46878b8a159f2a927e40bfce132b35b7b62  deviceinfo
+"

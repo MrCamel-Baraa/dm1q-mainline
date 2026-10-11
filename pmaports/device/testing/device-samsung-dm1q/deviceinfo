@@ -1,0 +1,74 @@
+# Reference: <https://postmarketos.org/deviceinfo>
+# Please use double quotes only. You can source this file in shell scripts.
+#
+# STATUS (2026-09-27): structural skeleton, not yet built/tested as an
+# actual pmOS image. Kernel side (linux-samsung-dm1q-mainline) matches the
+# real, hardware-verified v12 devicetree/config -- see docs/06-pmos-userspace-plan.md
+# and docs/01-phase1-workplan.md for what "verified" means here (UART7 +
+# USB CDC-ACM console, UFS storage, all confirmed live on hardware; no
+# native display/WLAN driver yet).
+
+deviceinfo_format_version="0"
+deviceinfo_name="Samsung Galaxy S23"
+deviceinfo_manufacturer="Samsung"
+deviceinfo_codename="samsung-dm1q"
+deviceinfo_year="2023"
+deviceinfo_arch="aarch64"
+
+# Device related
+deviceinfo_chassis="handset"
+# No microSD slot on this device -- confirmed by the device owner, see
+# docs/02-open-questions-and-risks.md item 3b / docs/01 2026-09-15 entry.
+deviceinfo_external_storage="false"
+# simple-framebuffer (ABL splash passthrough) + CONFIG_DRM_SIMPLEDRM is
+# confirmed working as a console (v4 onward). No native SM8550 DPU/DSI
+# panel driver exists yet -- see the "NOT STARTED" block at the end of
+# dts/dm1q/dm1q.dts. Leave "true" since simpledrm satisfies pmOS's actual
+# requirement (a DRM device Plymouth/greetd can draw to), but a real
+# graphical session needs the native panel driver first.
+deviceinfo_drm="true"
+deviceinfo_screen_width="1080"
+deviceinfo_screen_height="2340"
+deviceinfo_getty="ttyMSM0;115200"
+
+# Mainline DTB. Packaged the same way as the Tab S9 Ultra reference
+# (append_dtb) -- but unlike that device, dm1q's boot chain does NOT use
+# pmbootstrap/mkbootimg's normal path yet: ABL rejects a stock Samsung DTBO
+# overlay applied to a mainline DTB, so today's real flow is a hand-built
+# "invalid dtbo + DTB appended after gzip(Image)" image (see the
+# 2026-09-21/24 entries in docs/01-phase1-workplan.md). Kept as "true"
+# here to match eventual intent; deviceinfo_flash_method="none" below means
+# this field isn't actually exercised by pmbootstrap yet either way.
+deviceinfo_dtb="qcom/sm8550-samsung-dm1q"
+deviceinfo_append_dtb="true"
+
+# Samsung Download Mode/Odin is handled manually, outside pmbootstrap --
+# same as the gts9uwifi reference. Real flashing today is: build boot/
+# vendor_boot by hand (dtbo left as an invalid image, DTB appended to the
+# gzip'd kernel), flash from recovery via `adb`+`dd`+sha256 readback, or
+# Heimdall from Download Mode. See docs/01-phase1-workplan.md's per-version
+# log entries for the exact, currently-working procedure -- this deviceinfo
+# does not yet encode that procedure; automating it is a real open task
+# (see docs/06-pmos-userspace-plan.md).
+deviceinfo_flash_method="none"
+deviceinfo_generate_bootimg="false"
+deviceinfo_header_version="4"
+deviceinfo_flash_pagesize="4096"
+deviceinfo_initfs_compression="gzip:default"
+deviceinfo_create_initfs_extra="true"
+
+# USB is HS-only peripheral mode right now (no Type-C/PD role-switch driver
+# for the Samsung MAX77705/MUIC yet -- see dts/dm1q/dm1q.dts, &usb_1).
+# A configfs ACM gadget is confirmed working (v12, live shell over
+# /dev/ttyACM0). No network gadget function has been tried yet -- leaving
+# this unset rather than claiming rndis/ncm works when it hasn't been
+# tested on this device.
+#deviceinfo_usb_network_function=""
+
+# UFS LUs present 4096-byte logical sectors (sda: 4 KiB blocks). The pmOS
+# initramfs loop-mounts the disk image flashed to userdata with
+# losetup --sector-size <this>, and counts its partitions with fdisk, which
+# reads the partition table at the DEVICE sector size -- so the image must be
+# built with a 4096-byte-sector MBR (scripts/make-pmos-disk.sh does that).
+# Found 2026-09-28: a 512-byte-sector/GPT image made mount_subpartitions fail.
+deviceinfo_rootfs_image_sector_size="4096"

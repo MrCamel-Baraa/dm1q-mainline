@@ -1,0 +1,1094 @@
+// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * Initial mainline device tree for the Samsung Galaxy S23 (SM-S911B, dm1q).
+ *
+ * STATUS: first draft, not yet tested on hardware. This is a starting point
+ * built from real evidence, not a finished/verified devicetree. See the
+ * per-block comments below for exactly what's confirmed vs. inferred vs.
+ * still TODO, and see docs/05-dm1q-real-hardware-values.md and
+ * docs/01-phase1-workplan.md for the full research trail behind each value.
+ *
+ * Structural template: agcarbajo's Tab S9 Ultra mainline port
+ * (_scratch/gts9u-pmos-ref) and the real Qualcomm SM8450-HDK reference board
+ * (_scratch/linux-mainline/.../sm8450-hdk.dts) -- both real, verified
+ * sources, not guessed at. Board-specific values (GPIOs, regulator channel
+ * identities, WLAN PDC calibration) are from dm1q's own real downstream
+ * devicetree source (_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts)
+ * wherever marked CONFIRMED below.
+ *
+ * NOT yet attempted in this file: display/panel driver, camera.
+ * Display needs real driver work (see docs/05-dm1q-real-hardware-values.md
+ * for the investigation into Samsung's real GPL panel driver source).
+ * UFS, USB, WLAN/BT, and PCIe0 are wired up. See docs/02-open-questions-and-risks.md.
+ *
+ * _scratch/ is a sibling directory to the repo root (../../../_scratch/
+ * from this file's own location), not tracked in git -- see
+ * docs/01-phase1-workplan.md's log for why.
+ * To recompile this file for a syntax check:
+ *   cpp -nostdinc -I ../../../_scratch/linux-mainline/arch/arm64/boot/dts/qcom \
+ *       -I ../../../_scratch/linux-mainline/include -undef \
+ *       -x assembler-with-cpp dm1q.dts | dtc -@ -I dts -O dtb -o /tmp/out.dtb -
+ */
+
+/dts-v1/;
+
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/interrupt-controller/irq.h>
+#include <dt-bindings/regulator/qcom,rpmh-regulator.h>
+#include "sm8550.dtsi"
+#include "pm8550.dtsi"
+#include "pm8550b.dtsi"
+#include "pm8550vs.dtsi"
+/* PMK8550VE_SID CONFIRMED 2026-09-15 via live devicetree: the real SPMI
+ * slave address is qcom,pm8550ve_f@5 -- SID = 5. */
+#define PMK8550VE_SID 5
+#include "pm8550ve.dtsi"
+#include "pmk8550.dtsi"
+
+/* dm1q's actual PMIC set is PM8550/PM8550B/PM8550VE/PM8550VS/PM8010/PM8350C,
+ * confirmed directly from real downstream devicetree source -- see
+ * docs/02-open-questions-and-risks.md item 2. PM8010 and PM8350C aren't
+ * included yet since nothing in this file needs them so far -- add each
+ * .dtsi include when a consumer requiring it gets written. PM8550VE is
+ * now included (2026-09-15) -- its real SID (5) was confirmed via live
+ * devicetree, needed for the USB SS PHY's vdda-pll-supply below. */
+
+/*
+ * Samsung's ADSP/SLPI carveout is larger than the SM8550 reference value.
+ * Live dm1q value (recovery's booted tree, 2026-09-21): adspslpi_region at
+ * 0x9ea00000, size 0x59b4000 -- identical to the gts9uwifi override.
+ */
+/delete-node/ &adspslpi_mem;
+
+/ {
+	model = "Samsung Galaxy S23";
+	/*
+	 * qcom,msm-id and the first three compatible strings are identical to
+	 * the real values found in dm1q's own downstream devicetree source
+	 * (CONFIRMED) -- these are SoC-family-level IDs, not board-specific;
+	 * also identical in agcarbajo's gts9uwifi reference, cross-confirming
+	 * they're platform-constant, not device-specific guesses.
+	 */
+	compatible = "qcom,kalama-mtp", "qcom,kalama", "qcom,mtp",
+		     "samsung,dm1q", "qcom,sm8550";
+	qcom,msm-id = <0x218 0x20000 0x207 0x20000
+		       0x207 0x10000 0x218 0x10000>;
+	/* board-id CONFIRMED from dm1q's real source, revision r13 (0x0d) */
+	qcom,board-id = <0x10008 0x0d>;
+	chassis-type = "handset";
+
+	aliases {
+		/*
+		 * serial0 = &uart7 -- CONFIRMED 2026-09-15. dm1q's real downstream
+		 * source has no explicit console/stdout-path node (Samsung
+		 * disables debug console in retail firmware, as usual), so this
+		 * couldn't be confirmed the direct way. Instead cross-checked by
+		 * GPIO: dm1q's real source has a node literally named
+		 * "qupv3_se7_2hsuart_pins" using GPIO26 (function qup1_se7_l2) and
+		 * GPIO27 (qup1_se7_l3) -- exact match, same GPIOs and same
+		 * function family, as mainline's own &uart7 pinctrl
+		 * (qup_uart7_default: GPIO26 TX, GPIO27 RX, function qup1_se7).
+		 * High confidence.
+		 *
+		 * mmc1 = &sdhc_2 -- REMOVED 2026-09-15, corrected by the user
+		 * (who physically holds the device): the Galaxy S23 has no
+		 * microSD slot. The real card-detect GPIO12 (sd_card_det_default)
+		 * found in dm1q's downstream source does NOT mean SD support
+		 * exists -- it's evidently a leftover/shared definition from
+		 * Samsung's common devicetree base across SKUs/regions, not
+		 * populated hardware on this device. This corrects an earlier
+		 * wrong conclusion in this same file that took the pinctrl
+		 * entry's existence as sufficient evidence -- it wasn't. Real
+		 * hardware ground truth (the person who owns the actual phone)
+		 * overrides the devicetree-archaeology inference here.
+		 */
+		serial0 = &uart7;
+	};
+
+	chosen {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		stdout-path = "serial0:115200n8";
+
+		/*
+		 * ABL's preserved splash framebuffer (splash_region below,
+		 * 0xb8000000). No native display driver yet, so this is the only
+		 * way to see the kernel console. 1080x2340 = the S6E3FAC/LX83118
+		 * FHD+ panel (live downstream log: hactive=1080 vactive=2340).
+		 * UNVERIFIED: stride 4320 (=1080*4) and a8r8g8b8 are assumptions;
+		 * a skewed or colour-wrong console means adjust these two lines.
+		 */
+		framebuffer0: framebuffer@b8000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0xb8000000 0x0 0x9a3f80>;
+			width = <1080>;
+			height = <2340>;
+			stride = <4320>;
+			format = "a8r8g8b8";
+		};
+	};
+
+	/*
+	 * Board carveouts that Samsung's stock DTBO normally adds. We make ABL
+	 * skip the stock DTBO (invalid dtbo image, see docs/01 2026-09-21), so
+	 * ABL no longer reconstructs them. Without them Linux treats protected
+	 * ranges as ordinary RAM; on gts9uwifi touching them can make secure
+	 * firmware reset the SoC (TZBSP_ERR_FATAL_NOC_ERROR). All values below
+	 * are read from dm1q's LIVE booted tree (recovery, 2026-09-21), see
+	 * notes/2026-09-21-v2-bootloop/live-reserved-memory.txt.
+	 */
+	reserved-memory {
+		kaslr_mem: kaslr@b01ff000 {
+			reg = <0x0 0xb01ff000 0x0 0x1000>;
+			no-map;
+		};
+
+		uh_heap_mem: uh-heap@b0200000 {
+			reg = <0x0 0xb0200000 0x0 0x40000>;
+			no-map;
+		};
+
+		/* dm1q live size 0x3000000 (gts9uwifi's is larger) */
+		uh_guest_mem: uh-guest@b1000000 {
+			reg = <0x0 0xb1000000 0x0 0x3000000>;
+			no-map;
+		};
+
+		chipinfo_mem: chipinfo@81cf4000 {
+			reg = <0x0 0x81cf4000 0x0 0x1000>;
+			no-map;
+		};
+
+		sec_xbl_ramdump_mem: sec-xbl-ramdump@a7d00000 {
+			reg = <0x0 0xa7d00000 0x0 0x300000>;
+			no-map;
+		};
+
+		adspslpi_mem: adspslpi@9ea00000 {
+			reg = <0x0 0x9ea00000 0x0 0x59b4000>;
+			no-map;
+		};
+
+		llcc_lpi_mem: llcc-lpi@ff800000 {
+			reg = <0x0 0xff800000 0x0 0x600000>;
+			no-map;
+		};
+
+		/*
+		 * ABL patches this region by its exact downstream node name and
+		 * label (live dm1q: node "splash_region", label
+		 * "cont_splash_region", reg 0xb8000000 size 0x2b00000).
+		 */
+		splash_region {
+			reg = <0x0 0xb8000000 0x0 0x2b00000>;
+			label = "cont_splash_region";
+			no-map;
+		};
+
+		sec_debug_pool_mem: sec-debug-pool@880100000 {
+			reg = <0x8 0x80100000 0x0 0xff000>;
+			no-map;
+		};
+
+		sec_reset_info_mem: sec-reset-info@8801ff000 {
+			reg = <0x8 0x801ff000 0x0 0x1000>;
+			no-map;
+		};
+
+		/*
+		 * Ring shared with Samsung's bootloader and recovery: recovery
+		 * exposes its previous contents as /proc/last_kmsg (used by the
+		 * persistent console driver below).
+		 */
+		sec_log_buf_mem: sec-log@880200000 {
+			reg = <0x8 0x80200000 0x0 0x200000>;
+		};
+
+		sec_debug_bl_mem: sec-debug-bl@880400000 {
+			reg = <0x8 0x80400000 0x0 0x500000>;
+			no-map;
+		};
+
+		sec_pmsg_mem: sec-pmsg@880900000 {
+			reg = <0x8 0x80900000 0x0 0x200000>;
+			no-map;
+		};
+
+		google_debug_kinfo_mem: google-debug-kinfo@880b00000 {
+			reg = <0x8 0x80b00000 0x0 0x1000>;
+			no-map;
+		};
+
+		hdm_mem: hdm@880b01000 {
+			reg = <0x8 0x80b01000 0x0 0x1000>;
+			no-map;
+		};
+
+		sec_qcom_rdx_mem: sec-qcom-rdx@880c00000 {
+			reg = <0x8 0x80c00000 0x0 0xad00000>;
+			no-map;
+		};
+
+		/*
+		 * Bring-up aid, not a Samsung carveout. 4 MiB in the free gap
+		 * between uh_guest_mem (ends 0xb4000000) and splash_region
+		 * (starts 0xb8000000) -- confirmed empty in the live
+		 * reserved-memory map, 2026-09-21. Survives a plain reset back
+		 * into THIS kernel (no other OS knows about this region), so a
+		 * crash/hang can be read from the very next mainline boot via
+		 * /sys/fs/pstore -- without detouring through recovery, whose
+		 * own downstream kernel reuses (and overwrites) Samsung's
+		 * sec_log_buf ring on every entry.
+		 */
+		ramoops: ramoops@b4000000 {
+			compatible = "ramoops";
+			reg = <0x0 0xb4000000 0x0 0x400000>;
+			record-size = <0x40000>;
+			console-size = <0x40000>;
+			pmsg-size = <0x20000>;
+			ecc-size = <16>;
+		};
+	};
+
+	/* Persistent early console -> sec_log_buf (kernel patch in kernel/patches/). */
+	sec-kernel-log {
+		compatible = "samsung,sec-kernel-log";
+		memory-region = <&sec_log_buf_mem>;
+	};
+};
+
+/*
+ * TLMM GPIOs reserved for TrustZone. FIRST-BOOT BLOCKER: Linux's tlmm
+ * probe touching these makes secure firmware reset the SoC with
+ * TZBSP_ERR_FATAL_NOC_ERROR -- exactly the reset dm1q showed after the v2
+ * flash (recovery /proc/last_kmsg: upload_cause = TZBSP_ERR_FATAL_NOC_ERROR,
+ * 2026-09-21). Values: dm1q's downstream r13 overlay fragment sets
+ * qcom,gpios-reserved = <0x24 0x25 0x26 0x27 0x32 0x33> (= GPIO 36-39 and
+ * 50-51), identical to the already-upstream sm8550-samsung-q5q.dts
+ * (`<36 4>, <50 2>`); on gts9uwifi the same fix (36-39) removed the fatal
+ * NoC. None of our wired GPIOs (4, 24, 25, 26, 27, 80-82, 94, 96, 125, 204,
+ * 210) fall in these ranges.
+ */
+&tlmm {
+	gpio-reserved-ranges = <36 4>, <50 2>;
+};
+
+/*
+ * Board-level clock roots and the GENI wrapper enable -- ADDED 2026-09-24.
+ *
+ * Found by diffing this file against the upstream sibling
+ * sm8550-samsung-q5q.dts (every sm8550 board file -- hdk, mtp, qrd, q5q,
+ * pdx234 -- does the same two clock overrides): sm8550.dtsi declares
+ * xo_board and sleep_clk as "fixed-clock" nodes WITHOUT a frequency and
+ * expects each board to supply it. Without clock-frequency,
+ * of_fixed_clk_setup() returns -EIO and the clock is never registered, so
+ * the RPMh XO (RPMH_CXO_CLK) -> bi_tcxo_div2 -> every GCC PLL/RCG ran at
+ * 0 Hz. Two consequences, both seen on hardware before this fix:
+ *  - any clk_set_rate() that reaches the XO subtree recurses through ALL of
+ *    its children; a disabled floor-policy RCG (gcc_sdcc2/4_apps_clk_src)
+ *    then got new_rate = 0 -> qcom_find_freq_floor() == NULL -> NULL deref
+ *    in __clk_rcg2_shared_set_rate() (the "PCIe0 OPP" oops at ~10.47 s;
+ *    see notes/2026-09-23-pcie-opp-crash/findings.md);
+ *  - every PLL-derived rate stayed 0 for UFS/USB/PCIe consumers.
+ *
+ * qupv3_id_0 (geniqup@ac0000) is the wrapper for i2c4 (touch), i2c6 (the
+ * eUSB2 repeater) and uart7. It is status = "disabled" in sm8550.dtsi and
+ * q5q.dts enables it; this file never did, so none of those three children
+ * could ever probe => no repeater => USB HS PHY deferred forever => no UDC.
+ */
+&xo_board {
+	clock-frequency = <76800000>;
+};
+
+&sleep_clk {
+	clock-frequency = <32764>;
+};
+
+&qupv3_id_0 {
+	status = "okay";
+};
+
+/*
+ * uart7 is "disabled" by default in sm8550.dtsi (as most peripherals are --
+ * SoC dtsi defines the hardware, board files enable what's actually wired
+ * up). Without this, there would be zero boot console output regardless of
+ * the aliases/chosen node above -- this is a real first-boot blocker, not
+ * cosmetic. compatible = "qcom,geni-debug-uart" in the SoC definition
+ * itself further confirms this is meant as the debug console UART.
+ */
+&uart7 {
+	status = "okay";
+};
+
+/*
+ * sdhc_2 (microSD) -- CONFIRMED 2026-09-15 (corrected): the Galaxy S23 has
+ * no microSD slot at all. Left disabled permanently, not just deferred --
+ * this isn't a "revisit later" item, it's real hardware that doesn't
+ * exist on this device. The real card-detect GPIO12 in dm1q's downstream
+ * source is a leftover/shared platform definition, not populated hardware
+ * -- ground truth from the person who owns the actual phone, overriding
+ * the earlier devicetree-archaeology inference in this file.
+ */
+
+/*
+ * WLAN/BT power rails, using the real mainline qcom,pm8550*-rpmh-regulators
+ * binding (regulators live under &apps_rsc, grouped by PMIC instance letter
+ * via qcom,pmic-id -- confirmed by checking the real gts9uwifi reference's
+ * actual structure, correcting an earlier draft of this file that used a
+ * fabricated, syntactically-invalid override pattern instead).
+ *
+ * A note on the "e" vs "f" letters, since it's an easy mix-up: PM8550VS-E
+ * and PM8550VS-G below are two SPMI-addressed *instances* of the same
+ * PM8550VS chip type (same compatible, different qcom,pmic-id) -- not two
+ * different chip variants. PM8550VE ("f" in gts9uwifi's numbering) is a
+ * genuinely different chip and isn't used by anything in this file yet.
+ *
+ * Channel identities (L15B/S2G/S4G/S4E/S6G) are CONFIRMED directly from
+ * dm1q's own downstream DTB+DTBO overlay fixup tables (see
+ * docs/05-dm1q-real-hardware-values.md). Voltage values are INFERRED from
+ * agcarbajo's gts9uwifi reference, which votes the identical RPMh resource
+ * IDs (S2G/S4E/S4G/S6G) -- these are platform-level fixed voltages, not
+ * board-tunable, so this is a well-justified inference, not a guess, but
+ * hasn't been separately confirmed against dm1q's own board specifically.
+ */
+&apps_rsc {
+	regulators-0 {
+		/* FIXED 2026-09-25: this was "qcom,pm8550b-rpmh-regulators" --
+		 * a string that does not exist anywhere in mainline. Checked
+		 * both Documentation/devicetree/bindings/regulator/
+		 * qcom,rpmh-regulator.yaml's compatible enum and the real
+		 * driver's own of_device_id table (drivers/regulator/
+		 * qcom-rpmh-regulator.c): only "qcom,pm8550-rpmh-regulators"
+		 * exists for this whole chip family; qcom,pmic-id="b" is what
+		 * actually selects the PM8550B instance, exactly like
+		 * regulators-1/2 below already do for PM8550VS's "e"/"g"
+		 * instances via one shared "qcom,pm8550vs-rpmh-regulators".
+		 * Effect of the bug: no of_device_id ever matched this node,
+		 * so rpmh_regulator_probe() never ran, so ldo15/ldo17/ldo5
+		 * below never became real regulators -- root cause of the
+		 * 2026-09-25 v10-boot findings (UFS vcc-supply=ldo17 and the
+		 * eUSB2 repeater's vdd3-supply=ldo5 both stuck forever on
+		 * "wait for supplier .../regulators-0/ldo1{7,5}"). See
+		 * notes/2026-09-23-pcie-opp-crash/findings.md (2026-09-25
+		 * follow-up) for the full trace. */
+		compatible = "qcom,pm8550-rpmh-regulators";
+		qcom,pmic-id = "b";
+
+		vreg_l15b_1p8: ldo15 {
+			regulator-name = "vreg_l15b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-16, resolving an earlier architectural gap:
+		 * the real UFS vcc-supply channel. Live measurement (see
+		 * &ufs_mem_hc below) already showed this exact channel is
+		 * "pm_humu_l17", 2504000uV fixed, state=enabled -- but at the
+		 * time we couldn't identify which chip "humu" was, so it was
+		 * modeled as a workaround fixed-regulator instead of a real
+		 * PM8550B subnode. Cross-checking against sm8550-samsung-q5q.dts
+		 * (Z Fold5, real already-upstream mainline) resolved it: q5q's
+		 * real UFS vcc-supply is vreg_l17b_2p5 -- exact same physical
+		 * channel as our live measurement (L17 on PM8550B). This also
+		 * confirms "humu" is PM8550B's internal RPMh codename, matching
+		 * the L5B/L15B findings from the USB work. */
+		vreg_l17b_2p5: ldo17 {
+			regulator-name = "vreg_l17b_2p5";
+			regulator-min-microvolt = <2504000>;
+			regulator-max-microvolt = <2504000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: fixed
+		 * 3104000 (regulator.24, pm_humu_l5). Feeds the eUSB2
+		 * repeater's vdd3-supply -- see the &i2c6 block below. */
+		vreg_l5b_3p104: ldo5 {
+			regulator-name = "vreg_l5b_3p104";
+			regulator-min-microvolt = <3104000>;
+			regulator-max-microvolt = <3104000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	regulators-1 {
+		compatible = "qcom,pm8550vs-rpmh-regulators";
+		qcom,pmic-id = "e";
+		vdd-s4-supply = <&vph_pwr>;
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement (adb,
+		 * root via KernelSU) -- real range 904000-984000, matching
+		 * regulator.53 on the physical device. Original inferred
+		 * value (952000, single fixed) fell inside this real range. */
+		vreg_s4e_0p952: smps4 {
+			regulator-name = "vreg_s4e_0p952";
+			/*
+			 * Min raised 904000 -> 966000 (2026-10-04, docs/07 section 13).
+			 * WLAN digital / PMU_MX domain (this rail also feeds PM8550 L1-L3).
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 0.966 V via
+			 * qcom,vdd-wlan-dig-config = <0xebd70 ...>.
+			 */
+			regulator-min-microvolt = <966000>;
+			regulator-max-microvolt = <984000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * range 880000-912000 (regulator.57). Original inferred
+		 * value (880000) matched the real minimum exactly. */
+		vreg_l1e_0p88: ldo1 {
+			regulator-name = "vreg_l1e_0p88";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <912000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: fixed
+		 * 1200000 (regulator.63, min=max on the real device). Exact
+		 * match with the original inferred value. */
+		vreg_l3e_1p2: ldo3 {
+			regulator-name = "vreg_l3e_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	regulators-2 {
+		compatible = "qcom,pm8550vs-rpmh-regulators";
+		qcom,pmic-id = "g";
+		vdd-s2-supply = <&vph_pwr>;
+		vdd-s4-supply = <&vph_pwr>;
+		vdd-s6-supply = <&vph_pwr>;
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * range 500000-1036000 (regulator.75). Original inferred
+		 * value (980000, single fixed) fell inside this real range,
+		 * but the live instantaneous reading (500000, WLAN idle/
+		 * low-power corner) was notably lower -- using the real full
+		 * range here rather than a single guessed point, since this
+		 * is genuinely a multi-corner ARC-voted rail, not a fixed
+		 * one. */
+		vreg_s2g_0p98: smps2 {
+			regulator-name = "vreg_s2g_0p98";
+			/*
+			 * Min raised 500000 -> 1012000 (2026-10-04, docs/07 section 13).
+			 * WLAN VDD_AON / PMU_CX / RFA0P95 domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.012 V via
+			 * qcom,vdd-wlan-aon-config = <0xf7120 ...>.
+			 */
+			regulator-min-microvolt = <1012000>;
+			regulator-max-microvolt = <1036000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * range 1200000-1352000 (regulator.78). Original inferred
+		 * value (1352000) matched the real maximum exactly. */
+		vreg_s4g_1p352: smps4 {
+			regulator-name = "vreg_s4g_1p352";
+			/*
+			 * Min raised 1200000 -> 1350000 (2026-10-04, docs/07 section 13).
+			 * WLAN RFA 1.3 V / PMU / PCIe 1.3 V domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.350 V via
+			 * qcom,vdd-wlan-rfa2-config = <0x149970 ...>.
+			 */
+			regulator-min-microvolt = <1350000>;
+			regulator-max-microvolt = <1352000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * range 1800000-2000000 (regulator.81). Original inferred
+		 * value (1904000, single fixed) fell inside this real range. */
+		vreg_s6g_1p904: smps6 {
+			regulator-name = "vreg_s6g_1p904";
+			/*
+			 * Min raised 1800000 -> 1900000 (2026-10-04, docs/07 section 13).
+			 * WLAN RFA 1.9 V / PCIe 1.9 V domain.
+			 * pwrseq-qcom-wcn only enables this rail and never requests a voltage, so the
+			 * regulator core leaves it at its MINIMUM (measured on the phone in
+			 * regulator_summary). Downstream CNSS requests 1.900 V via
+			 * qcom,vdd-wlan-rfa1-config = <0x1cfde0 ...>.
+			 */
+			regulator-min-microvolt = <1900000>;
+			regulator-max-microvolt = <2000000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * range 1144000-1256000 (regulator.82). Original inferred
+		 * value (1200000, single fixed) sat right at the midpoint. */
+		vreg_l1g_1p2: ldo1 {
+			regulator-name = "vreg_l1g_1p2";
+			regulator-min-microvolt = <1144000>;
+			regulator-max-microvolt = <1256000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* CONFIRMED 2026-09-16, cross-checking against sm8550-samsung-q5q.dts
+		 * (Z Fold5, real already-upstream mainline): q5q's UFS
+		 * vdd-hba-supply is vreg_l3g_1p2. Channel identity (PM8550VS-G
+		 * L3) already independently confirmed for dm1q via its own
+		 * fixup table ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply, see the
+		 * &ufs_mem_hc block below) -- q5q's value fills in the actual
+		 * mainline property name (vdd-hba-supply) this channel maps to,
+		 * which we hadn't wired up yet. Voltage independently
+		 * live-verified on dm1q directly: regulator.86, confirmed via
+		 * devlink as the real consumer of 1d84000.ufshc, reads
+		 * 1200000uV fixed (min=max) -- exact match with q5q. */
+		vreg_l3g_1p2: ldo3 {
+			regulator-name = "vreg_l3g_1p2";
+			regulator-min-microvolt = <1200000>;
+			regulator-max-microvolt = <1200000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+
+	/*
+	 * PM8550VE ("f"). CONFIRMED channel identity (L3F) via live devlink
+	 * evidence (regulator.72, pm_v8_l3 -- "v8" is PM8550VE's internal
+	 * RPMh codename). Feeds the USB SS PHY's vdda-pll-supply -- see the
+	 * &usb_dp_qmpphy block below.
+	 */
+	regulators-3 {
+		compatible = "qcom,pm8550ve-rpmh-regulators";
+		qcom,pmic-id = "f";
+		vdd-l1-supply = <&vreg_s4e_0p952>;
+		vdd-l2-supply = <&vreg_s4e_0p952>;
+		vdd-l3-supply = <&vreg_s4e_0p952>;
+
+		/* CONFIRMED 2026-09-15 via live hardware measurement: real
+		 * live reading 912000, matching the top of gts9uwifi's real
+		 * documented range (880000-912000) exactly. */
+		vreg_l3f_0p912: ldo3 {
+			regulator-name = "vreg_l3f_0p912";
+			regulator-min-microvolt = <880000>;
+			regulator-max-microvolt = <912000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+	};
+};
+
+/*
+ * vph_pwr (battery rail) -- required as the vdd-sN-supply parent for the
+ * regulators above. CONFIRMED this exact node exists and is needed: the
+ * real gts9uwifi reference defines it identically. Not yet confirmed this
+ * is dm1q's own real battery-voltage node name, but it's a very standard,
+ * low-risk convention (fixed always-on regulator representing the battery
+ * rail itself) used across essentially all Qualcomm mainline boards.
+ */
+/ {
+	vph_pwr: vph-pwr-regulator {
+		compatible = "regulator-fixed";
+		regulator-name = "vph_pwr";
+		regulator-min-microvolt = <3700000>;
+		regulator-max-microvolt = <3700000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+};
+
+/*
+ * UFS -- the actual boot/root storage, unlike sdhc_2 above. Far more
+ * important for first boot than the SD card. Regulator channel identities
+ * confirmed the same way as the QCA6490 mapping earlier: real fixup tables
+ * in dm1q's own downstream source.
+ */
+&ufs_mem_hc {
+	/* CONFIRMED 2026-09-15: exact GPIO match (0xd2 = 210) between dm1q's
+	 * real source and the gts9uwifi reference -- same platform-fixed pin,
+	 * high confidence, same pattern as the QCA6490 GPIOs earlier. */
+	reset-gpios = <&tlmm 210 GPIO_ACTIVE_LOW>;
+
+	/* CONFIRMED 2026-09-15 via dm1q's own fixup table: vccq-supply is fed
+	 * by PM8550VS-G L1 (fixup key "pm_v6g_l1"). Exact same channel
+	 * (G/L1) as gts9uwifi's vccq-supply = vreg_l1g_1p2 -- cross-confirms
+	 * the platform-fixed-channel pattern holds for UFS too, not just
+	 * WLAN. Voltage (1.2V) is INFERRED from gts9uwifi by the same
+	 * platform-constant reasoning used for the WLAN rails, not
+	 * independently confirmed for dm1q. */
+	vccq-supply = <&vreg_l1g_1p2>;
+	vccq-max-microamp = <1200000>;
+
+	/* CONFIRMED 2026-09-16, cross-checked against sm8550-samsung-q5q.dts
+	 * (Z Fold5, real already-upstream mainline): vdd-hba-supply is
+	 * vreg_l3g_1p2. Channel identity (PM8550VS-G L3) already
+	 * independently confirmed for dm1q via its own fixup table
+	 * ("pm_v6g_l3" -> qcom,vddp-ref-clk-supply on the PHY, same physical
+	 * rail). This was a real gap in the original resolution -- the
+	 * channel identity was known but never wired to this actual mainline
+	 * property name until this cross-check. Voltage independently
+	 * live-verified on dm1q directly (not just borrowed from q5q):
+	 * regulator.86, confirmed via devlink as the real consumer of
+	 * 1d84000.ufshc, reads 1200000uV fixed (min=max), state=enabled --
+	 * exact match. */
+	vdd-hba-supply = <&vreg_l3g_1p2>;
+
+	/*
+	 * vcc-supply -- fully RESOLVED 2026-09-16 (properly this time).
+	 * Original resolution (2026-09-15) used live hardware measurement:
+	 * regulator.44 ("pm_humu_l17") confirmed via a symlink literally
+	 * named "1d84000.ufshc-vcc" with consumer "platform:1d84000.ufshc"
+	 * -- 1d84000 is the exact UFS host controller address. Live values:
+	 * state=enabled, microvolts=2504000 (2.504V, fixed), num_users=1,
+	 * opmode=fast. At the time, the real "humu" PMIC chain couldn't be
+	 * identified, so this was modeled as a workaround fixed regulator.
+	 * Cross-checking against sm8550-samsung-q5q.dts resolved that gap:
+	 * q5q's real vcc-supply is vreg_l17b_2p5 -- exact same physical
+	 * channel as the live measurement above (L17 on PM8550B), and
+	 * confirms "humu" is PM8550B's internal RPMh codename. Now wired to
+	 * the real regulator subnode (see regulators-0 above) instead of a
+	 * standalone workaround. */
+	vcc-supply = <&vreg_l17b_2p5>;
+	vcc-max-microamp = <1300000>; /* placeholder, matching gts9uwifi's
+					  value -- not independently confirmed
+					  for dm1q, low first-boot risk since
+					  it's a ceiling, not a set-point */
+
+	status = "okay"; /* CONFIRMED 2026-09-15, was "disabled" pending
+			     vcc-supply resolution above */
+};
+
+&ufs_mem_phy {
+	/* CONFIRMED 2026-09-15 via dm1q's own fixup table, same method as
+	 * above: vdda-pll-supply fed by PM8550VS-E L3 (fixup key
+	 * "pm_v6e_l3") -- exact channel match with gts9uwifi's
+	 * vdda-pll-supply = vreg_l3e_1p2. vdda-phy-supply fed by PM8550VS-E
+	 * L1 (fixup key "pm_v6e_l1", downstream property name
+	 * "vdda-qref-supply" -- different name, same physical rail, same
+	 * pattern as the QCA6490 downstream/mainline naming difference
+	 * found earlier) -- exact channel match with gts9uwifi's
+	 * vdda-phy-supply = vreg_l1e_0p88. Voltages inferred from
+	 * gts9uwifi by platform-constant reasoning, not independently
+	 * confirmed for dm1q. */
+	vdda-phy-supply = <&vreg_l1e_0p88>;
+	vdda-pll-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+};
+
+/*
+ * USB. Both the HS (eUSB2) and SS (USB3/DP-alt-mode) PHYs, plus the real
+ * eUSB2 repeater chip. All channel identities CONFIRMED 2026-09-15 via
+ * live devlink evidence (same method as UFS/WLAN above), not inferred.
+ */
+&usb_1_hsphy {
+	/* vdd-supply/vdda12-supply CONFIRMED via devlink: regulator.57 (L1E)
+	 * and regulator.63 (L3E) -- both already defined above for UFS PHY,
+	 * exact same physical rails shared between the two PHYs. Matches
+	 * gts9uwifi's identical sharing pattern. */
+	vdd-supply = <&vreg_l1e_0p88>;
+	vdda12-supply = <&vreg_l3e_1p2>;
+	phys = <&eusb2_repeater>;
+	status = "okay";
+};
+
+&usb_1 {
+	/*
+	 * Forced USB2 peripheral, no role switch: there is no Type-C/PD
+	 * driver for the Samsung MAX77705/MUIC yet, and sm8550.dtsi's default
+	 * (usb-role-switch, dr_mode otg) would wait forever for a role.
+	 * HS-only: the SS PHY (&usb_dp_qmpphy) is left disabled for now to keep
+	 * the first USB bring-up minimal. Used for a configfs ACM gadget shell
+	 * from the initramfs.
+	 */
+	dr_mode = "peripheral";
+	maximum-speed = "high-speed";
+	/delete-property/ usb-role-switch;
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
+	/*
+	 * ADDED 2026-09-26: with &usb_dp_qmpphy disabled (HS-only bring-up,
+	 * see the comment above), there is no real SS PHY, so DWC3 has no
+	 * PIPE clock source. drivers/usb/dwc3/dwc3-qcom.c's own comment on
+	 * dwc3_qcom_select_utmi_clk() says exactly this: "Configure dwc3 to
+	 * use UTMI clock as PIPE clock not present" -- this property is what
+	 * makes dwc3_qcom_probe() call that function. Without it, v11's real
+	 * boot log showed the eUSB2 repeater and HS PHY both probing fine but
+	 * dwc3-qcom's own soft reset then timing out (-ETIMEDOUT) -- root
+	 * cause traced to this missing quirk property, not a clock/regulator
+	 * bug like the last two fixes. See notes/2026-09-25-v10-boot-log-analysis/
+	 * findings.md (2026-09-26 follow-up) for the full v11 boot trace.
+	 */
+	qcom,select-utmi-as-pipe-clk;
+	status = "okay";
+};
+
+&usb_dp_qmpphy {
+	/* vdda-phy-supply CONFIRMED via devlink: regulator.63 (L3E, shared
+	 * with UFS PHY/HS PHY again). vdda-pll-supply CONFIRMED: regulator.72
+	 * (L3F, PM8550VE -- newly added above specifically for this). */
+	vdda-phy-supply = <&vreg_l3e_1p2>;
+	vdda-pll-supply = <&vreg_l3f_0p912>;
+	/* disabled for the HS-only peripheral bring-up above; re-enable for SS */
+	status = "disabled";
+};
+
+/*
+ * PCIe0 -- the actual bus QCA6490 (WLAN/BT) attaches over. CONFIRMED
+ * 2026-09-15 to be genuinely needed: dm1q's real downstream source votes
+ * qcom,wlan-rc-num = <0x00> ("rc-num" = PCIe Root Complex number), and the
+ * live device's own /sys/bus/pci/devices/ shows exactly one populated
+ * domain -- 1c00000.qcom,pcie (pcie0) -- with the QCA6490 endpoint
+ * (vendor 0x17cb Qualcomm Atheros, device 0x1103, matching QCA6490's real
+ * PCI ID) at 0000:01:00.0. pcie1 (the other SM8550 controller) is present
+ * in the tree but has no device on this board.
+ *
+ * All values here are an EXACT match with sm8550-samsung-q5q.dts (Z
+ * Fold5, real already-upstream mainline work by Linaro/community
+ * contributors) -- same GPIOs, same regulators, remarkable independent
+ * cross-validation: q5q's real mainline values match dm1q's live-measured
+ * values exactly, confirming this GPIO/regulator assignment is a
+ * Samsung-SM8550-platform-wide constant, not device-specific guesswork.
+ * perst-gpios/wake-gpios CONFIRMED directly from dm1q's own live
+ * devicetree (GPIO94 PERST, GPIO96 WAKE -- exact match with q5q).
+ * pcie0_phy supplies reuse the same L1E/L3E channels already defined
+ * above (shared with USB/UFS PHYs, same as q5q).
+ * pcie0_default_state is a generic SoC-level pinctrl state already
+ * defined in sm8550.dtsi -- no board-specific pinctrl needed, same as
+ * q5q's approach.
+ */
+&pcie0 {
+	wake-gpios = <&tlmm 96 GPIO_ACTIVE_HIGH>;
+	perst-gpios = <&tlmm 94 GPIO_ACTIVE_LOW>;
+	pinctrl-0 = <&pcie0_default_state>;
+	pinctrl-names = "default";
+	status = "okay";
+
+	/* wifi@0 (the WLAN pwrctrl consumer) lives under &pcie0_port0, below. */
+};
+
+/*
+ * WLAN power-control consumer node (the pwrseq "wlan" target consumer).
+ * REWORKED 2026-10-01 -- evidence and full story in docs/07-wlan-bringup.md,
+ * section "ROOT CAUSE FOUND 2026-10-01".
+ *
+ * Why this node exists (unchanged, 2026-09-28 "Finding 2"): mainline pwrseq
+ * is consumer-driven. wcn6855-pmu's "wlan" target is only powered up when a
+ * PCI pwrctrl consumer asks for it; with no such node nothing ever asserts
+ * WLAN_EN (GPIO80), the chip stays off, and PCIe link training ends in
+ * "Device not found".
+ *
+ * What was wrong with the first version, found by reading the real 7.3-rc3
+ * sources (drivers/pci/pwrctrl/pci-pwrctrl-pwrseq.c,
+ * drivers/power/sequencing/pwrseq-qcom-wcn.c, qcom,ath11k-pci.yaml,
+ * qcom,qca6390-pmu.yaml) and the same-chip reference sm8450-hdk.dts:
+ *  - The supplies must be the PMU's OWN output regulators (the
+ *    "regulators { ldoN }" children of wcn6855-pmu), not board rails.
+ *    pwrseq_qcom_wcn_match() only accepts a consumer whose vddaon-supply
+ *    phandle resolves to <pmu>/regulators/<ldo>. Pointing it at PM8550VS
+ *    S2G (the old value) makes pwrseq_get() return -EPROBE_DEFER forever,
+ *    pci-pwrctrl-pwrseq never binds, and &pcie0 itself defers forever.
+ *    The physical board rails feeding the PMU are described by the PMU
+ *    node's own vdd*-supply inputs, not here.
+ *  - compatible is pci17cb,1103 (WCN6855/QCA6490 family -- docs/05 records
+ *    the live device enumerating as 17cb:1103), with the 1103 flavour of
+ *    the supply list (vddrfa1p8, not vddrfa1p7). The earlier "1101"
+ *    reasoning contradicted that live observation. pwrctrl matches both
+ *    IDs, so this was wrong rather than causal.
+ *  - The node belongs under the root port (pcie@0, label pcie0_port0), not
+ *    directly under the host bridge, so the PCI core can attach it to the
+ *    01:00.0 endpoint (ath11k wants the OF node; the pwrctrl core itself
+ *    finds it at either depth).
+ */
+&pcie0_port0 {
+	wifi@0 {
+		compatible = "pci17cb,1103";
+		reg = <0x10000 0x0 0x0 0x0 0x0>;
+
+		vddrfacmn-supply = <&vreg_pmu_rfa_cmn_0p8>;
+		vddaon-supply = <&vreg_pmu_aon_0p8>;
+		vddwlcx-supply = <&vreg_pmu_wlcx_0p8>;
+		vddwlmx-supply = <&vreg_pmu_wlmx_0p8>;
+		vddpcie1p8-supply = <&vreg_pmu_pcie_1p8>;
+		vddpcie0p9-supply = <&vreg_pmu_pcie_0p9>;
+		vddrfa0p8-supply = <&vreg_pmu_rfa_0p8>;
+		vddrfa1p2-supply = <&vreg_pmu_rfa_1p2>;
+		vddrfa1p8-supply = <&vreg_pmu_rfa_1p7>;
+	};
+};
+
+&pcie0_phy {
+	vdda-phy-supply = <&vreg_l1e_0p88>;
+	vdda-pll-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+};
+
+&i2c6 {
+	status = "okay";
+
+	/*
+	 * eUSB2 repeater -- CONFIRMED 2026-09-15 via real kernel dmesg log
+	 * from the running device (not just devicetree inference): this NXP
+	 * chip at 59-004f is the actual active repeater. A second candidate
+	 * (a PMIC-integrated qcom,pmic-eusb2-repeater under PM8550B) also
+	 * exists in the devicetree but its dmesg showed no probe activity --
+	 * this NXP one is confirmed live-active, not a guess between two
+	 * options.
+	 * reset-gpio CONFIRMED: GPIO4 (matches the earlier pinctrl-table
+	 * extraction exactly). vdd18-supply CONFIRMED: L15B (regulator.34,
+	 * same rail as WLAN vddio -- shared, no new regulator needed).
+	 * vdd3-supply CONFIRMED: L5B (regulator.24, newly added above).
+	 * qcom,param-override-seq CONFIRMED: real init register sequence
+	 * read directly from the live device's own booted devicetree,
+	 * cross-matches the real dmesg log byte-for-byte (register:value
+	 * pairs 0x06:0x40, 0x07:0x20, 0x08:0x62, 0x09:0x03, 0x0a:0x00).
+	 */
+	eusb2_repeater: eusb2-repeater@4f {
+		/*
+		 * CORRECTED 2026-09-21: was "nxp,eusb2-repeater" with
+		 * vdd18-supply/vdd3-supply (downstream names). Mainline only has
+		 * the PTN3222 driver (compatible "nxp,ptn3222", supplies vdd3v3 /
+		 * vdd1v8), so the old node could never bind and the eUSB2 HS PHY
+		 * would defer forever. Same rails as before (L5B 3.1 V, L15B 1.8 V).
+		 */
+		compatible = "nxp,ptn3222";
+		reg = <0x4f>;
+		reset-gpios = <&tlmm 4 GPIO_ACTIVE_LOW>;
+		vdd1v8-supply = <&vreg_l15b_1p8>;
+		vdd3v3-supply = <&vreg_l5b_3p104>;
+		#phy-cells = <0>;
+
+		qcom,param-override-seq = <
+			0x40 0x06
+			0x20 0x07
+			0x62 0x08
+			0x03 0x09
+			0x00 0x0a
+		>;
+	};
+};
+
+/*
+ * WLAN/BT combo chip. dm1q uses QCA6490 (CONFIRMED, see
+ * docs/02-open-questions-and-risks.md item 1 -- this corrected an earlier
+ * wrong assumption that it was WCN6855). The real mainline binding for this
+ * chip family is "qcom,wcn6855-pmu" (same PMU-sequencer driver covers both
+ * WCN6855 and QCA6490) -- confirmed by checking the real SM8450-HDK
+ * reference board, which uses the exact same chip.
+ */
+&soc {
+	wcn6855-pmu {
+		compatible = "qcom,wcn6855-pmu";
+		pinctrl-names = "default";
+		pinctrl-0 = <&wlan_en_default>, <&bt_en_default>,
+			    <&sw_ctrl_default>, <&xo_clk_default>;
+
+		/*
+		 * GPIO80/81/82/204 -- CONFIRMED, exact match between dm1q's own
+		 * real downstream source AND the real SM8450-HDK reference
+		 * board using the same chip. This is a fixed SoC-platform pin
+		 * assignment, not a coincidence -- high confidence.
+		 */
+		wlan-enable-gpios = <&tlmm 80 GPIO_ACTIVE_HIGH>;
+		bt-enable-gpios = <&tlmm 81 GPIO_ACTIVE_HIGH>;
+		swctrl-gpios = <&tlmm 82 GPIO_ACTIVE_HIGH>;
+		xo-clk-gpios = <&tlmm 204 GPIO_ACTIVE_HIGH>;
+
+		/*
+		 * Supply mapping. Physical channel identity for io/aon/rfa2/
+		 * dig/rfa1 (L15B/S2G/S4G/S4E/S6G) is CONFIRMED from dm1q's own
+		 * downstream fixup table. The specific *grouping* of mainline's
+		 * 10 named supplies onto those 5 physical regulators is INFERRED
+		 * by structural pattern-matching against the real SM8450-HDK
+		 * reference, which has the identical 1/3/3/1/2 grouping shape
+		 * (one physical regulator per io and dig-class rail, three
+		 * names sharing each of the aon-class and rfa2-class rails, two
+		 * names sharing the rfa1-class rail). Well-justified, not yet
+		 * independently confirmed against dm1q's own fixup table for
+		 * every individual name (the fixup table only directly named
+		 * vdd-wlan-io/dig/rfa1/rfa2/aon, not the finer split).
+		 */
+		vddio-supply = <&vreg_l15b_1p8>;
+		vddaon-supply = <&vreg_s2g_0p98>;
+		vddpmucx-supply = <&vreg_s2g_0p98>;
+		vddrfa0p95-supply = <&vreg_s2g_0p98>;
+		vddpmu-supply = <&vreg_s4g_1p352>;
+		vddrfa1p3-supply = <&vreg_s4g_1p352>;
+		vddpcie1p3-supply = <&vreg_s4g_1p352>;
+		vddpmumx-supply = <&vreg_s4e_0p952>;
+		vddrfa1p9-supply = <&vreg_s6g_1p904>;
+		vddpcie1p9-supply = <&vreg_s6g_1p904>;
+
+		/*
+		 * WLAN PDC calibration table. dm1q's downstream source has TWO
+		 * qcom,pdc_init_table properties; this file originally copied the
+		 * one from the BT-only node (ends "dwnval: 515"). The WLAN-specific
+		 * one inside qcom,cnss-qca6490 (line 17224 of
+		 * _scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts,
+		 * same in r01-r13) ends "dwnval: 800" plus a final "bb, res: pdc,
+		 * enable: 0" entry -- that is the content below.
+		 *
+		 * History: corrected 2026-09-28; briefly reverted 2026-09-30 while
+		 * chasing a pcie0 regression that was blamed on it. That regression
+		 * was NOT caused by this property (nor by wifi@0): every rebuilt
+		 * kernel carried a fresh module-signing key that the pmOS rootfs's
+		 * modules were not signed with, so no module (PCIe PHY included)
+		 * loaded -- docs/07 "ROOT CAUSE FOUND 2026-10-01". Restored
+		 * 2026-10-01.
+		 *
+		 * Neither qcom,qmp nor qcom,wlan-pdc-init is read by any mainline
+		 * driver (pwrseq-qcom-wcn.c ignores both) and neither is in the
+		 * qcom,qca6390-pmu.yaml binding (additionalProperties: false), so
+		 * both would fail dtbs_check. Kept as verified downstream data for
+		 * a possible future AOSS/QMP consumer; drop before any upstream
+		 * submission.
+		 */
+		qcom,qmp = <&aoss_qmp>;
+		qcom,wlan-pdc-init =
+			"{class: wlan_pdc, ss: rf, res: s4e.v, upval: 966}",
+			"{class: wlan_pdc, ss: rf, res: s4e.v, dwnval: 615}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, upval: 1350}",
+			"{class: wlan_pdc, ss: rf, res: s4g.v, dwnval: 945}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, upval: 1900}",
+			"{class: wlan_pdc, ss: rf, res: s6g.v, dwnval: 1825}",
+			"{class: wlan_pdc, ss: rf, res: s2g.m, enable: 1}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, enable: 1}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, upval: 1012}",
+			"{class: wlan_pdc, ss: rf, res: s2g.v, dwnval: 800}",
+			"{class: wlan_pdc, ss: bb, res: pdc, enable: 0}";
+
+		/*
+		 * PMU output regulators. REQUIRED by the binding
+		 * (qcom,qca6390-pmu.yaml: "required: regulators") and by the
+		 * pwrseq match logic -- wifi@0's supplies must point at these.
+		 * Not real regulators: pwrseq-qcom-wcn registers no regulator
+		 * devices for them; they are DT anchors tying a consumer node to
+		 * this PMU. Same ten as sm8450-hdk.dts (WCN6855). ADDED
+		 * 2026-10-01; they were missing before.
+		 */
+		regulators {
+			vreg_pmu_rfa_cmn_0p8: ldo0 {
+				regulator-name = "vreg_pmu_rfa_cmn_0p8";
+			};
+
+			vreg_pmu_aon_0p8: ldo1 {
+				regulator-name = "vreg_pmu_aon_0p8";
+			};
+
+			vreg_pmu_wlcx_0p8: ldo2 {
+				regulator-name = "vreg_pmu_wlcx_0p8";
+			};
+
+			vreg_pmu_wlmx_0p8: ldo3 {
+				regulator-name = "vreg_pmu_wlmx_0p8";
+			};
+
+			vreg_pmu_btcmx_0p8: ldo4 {
+				regulator-name = "vreg_pmu_btcmx_0p8";
+			};
+
+			vreg_pmu_pcie_1p8: ldo5 {
+				regulator-name = "vreg_pmu_pcie_1p8";
+			};
+
+			vreg_pmu_pcie_0p9: ldo6 {
+				regulator-name = "vreg_pmu_pcie_0p9";
+			};
+
+			vreg_pmu_rfa_0p8: ldo7 {
+				regulator-name = "vreg_pmu_rfa_0p8";
+			};
+
+			vreg_pmu_rfa_1p2: ldo8 {
+				regulator-name = "vreg_pmu_rfa_1p2";
+			};
+
+			vreg_pmu_rfa_1p7: ldo9 {
+				regulator-name = "vreg_pmu_rfa_1p7";
+			};
+		};
+	};
+
+	/*
+	 * Touch controller. Goodix Berlin, I2C address 0x5d -- CONFIRMED from
+	 * dm1q's own real source. GPIO24 (reset) / GPIO25 (irq) -- CONFIRMED
+	 * from the same source. Compatible string "goodix,berlin" is a
+	 * reasonable placeholder based on the chip family name -- NOT yet
+	 * verified against the actual mainline Goodix Berlin driver binding
+	 * (if one exists yet); check before relying on this compiling/probing
+	 * correctly.
+	 */
+};
+
+/*
+ * CONFIRMED 2026-09-15 via the live device's own booted devicetree
+ * (/sys/firmware/devicetree/base/ -- not inferred, this is exactly what
+ * the running kernel actually uses): the touch controller sits at
+ * i2c@a90000, which mainline's sm8550.dtsi labels &i2c4 exactly
+ * (i2c4: i2c@a90000 { ... }; reg = <0 0x00a90000 ...>). Fully
+ * unambiguous. Also cross-checked reset-gpio/irq-gpio/irq-flags from the
+ * live devicetree directly -- all three exactly match what was already
+ * in this file (GPIO24 reset, GPIO25 irq, IRQ_TYPE_EDGE_FALLING).
+ */
+&i2c4 {
+	status = "okay";
+
+	touchscreen@5d {
+		compatible = "goodix,berlin";
+		reg = <0x5d>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <25 IRQ_TYPE_EDGE_FALLING>;
+		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
+		irq-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+&tlmm {
+	wlan_en_default: wlan-en-default-state {
+		pins = "gpio80";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	bt_en_default: bt-en-default-state {
+		pins = "gpio81";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	sw_ctrl_default: sw-ctrl-default-state {
+		pins = "gpio82";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	xo_clk_default: xo-clk-default-state {
+		pins = "gpio204";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+};
+
+/*
+ * ============================================================
+ * NOT STARTED -- deliberately left out of this first draft:
+ * ============================================================
+ *
+ * - Display panel: dm1q is dual-sourced (Samsung S6E3FAC / Silicon Works
+ *   LX83118, see docs/02-open-questions-and-risks.md item 3b). Needs real
+ *   panel driver work, not just devicetree wiring. Real GPIO values are
+ *   known (reset=GPIO125, TE=GPIO86/87) -- see
+ *   docs/05-dm1q-real-hardware-values.md -- but no panel node is written
+ *   yet since there's no driver to attach it to.
+ * - PCIe / UFS / USB: DONE -- see above. All board-level wiring live-verified
+ *   or cross-confirmed against a real upstream reference (sm8550-samsung-q5q.dts).
+ * - Camera: out of scope per current risk assessment (see
+ *   docs/02-open-questions-and-risks.md item 4).
+ * - s2mpb02 sub-PMIC (camera/display rails) and the VDD_BTP_1P8
+ *   fingerprint rail: real values are known (see
+ *   docs/05-dm1q-real-hardware-values.md) but not wired up since nothing
+ *   in this file consumes them yet.
+ */

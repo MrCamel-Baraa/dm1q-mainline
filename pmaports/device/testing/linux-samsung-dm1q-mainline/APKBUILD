@@ -1,0 +1,140 @@
+# STATUS (2026-09-27): first draft, never built with abuild/pmbootstrap yet.
+# Structural template: the gts9uwifi kernel package
+# (../_scratch/gts9u-pmos-ref/pmaports/device/testing/linux-samsung-gts9uwifi-mainline/APKBUILD).
+# Content (DTS, config fragment, sec-log patch) is dm1q's own real,
+# hardware-verified v12 bring-up work -- see docs/06-pmos-userspace-plan.md
+# and docs/01-phase1-workplan.md for what's actually been confirmed on
+# real hardware vs. still open (no WLAN/display driver wired to a real
+# rootfs yet, SPMI USID-7/PM8550B identify-read failure still open).
+maintainer="dm1q mainline port <dm1q-mainline@example.com>"
+_flavor="samsung-dm1q-mainline"
+pkgname=linux-$_flavor
+# Matches the kernel version actually built and confirmed booting on
+# hardware in v10-v12 (see docs/01-phase1-workplan.md, 2026-09-20 onward).
+# TODO: move to a released kernel (or a fresher -rc) before any real
+# submission; -rc3 was simply what was checked out at the time.
+pkgver=7.3_rc3
+# r2 was a pure reproducibility test (DTS unchanged, forced recompile --
+# see docs/07-wlan-bringup.md). r3 (2026-09-30): DTS changed for real again
+# (wifi@0 re-added, PDC content reverted to the known-safe value).
+# r4 (2026-10-01): ROOT CAUSE of the "pcie0 regression" fixed in the config
+# fragment (kernel lockdown forced off: every rebuild used to get a fresh
+# module-signing key that the rootfs' modules were not signed with, so no
+# module loaded -- docs/07 "ROOT CAUSE FOUND 2026-10-01") plus the WLAN
+# pwrctrl wiring reworked in the DTS (wifi@0 under &pcie0_port0, supplies =
+# the PMU's own output regulators, compatible 1103, PMU regulators{} added,
+# WLAN PDC table restored). The two changed sha512sums below were computed
+# with plain sha512sum; `pmbootstrap checksum` should leave them unchanged.
+# KBUILD_BUILD_VERSION is pkgrel+1, so r4 reports "#5-samsung-dm1q-mainline".
+# r5 (2026-10-08): carries the upstream PCIe fix pci-qcom-honor-iommu-cells-in-config-sid.patch.
+# 7.3-rc3 programs the PCIe controller's BDF-to-SID table from a mis-parsed 5-cell
+# iommu-map, so the WLAN endpoint (01:00.0) gets no table entry and its MSIs never
+# reach the host (docs/07 section 14). DTS and config fragment are unchanged from r4.
+# r5 reports "#6-samsung-dm1q-mainline".
+pkgrel=5
+pkgdesc="Mainline kernel for Samsung Galaxy S23 (dm1q)"
+arch="aarch64"
+_carch="arm64"
+url="https://kernel.org"
+license="GPL-2.0-only"
+options="
+	!check
+	!strip
+	!tracedeps
+	pmb:cross-native
+"
+makedepends="
+	bash
+	bc
+	bison
+	clang
+	diffutils
+	elfutils-dev
+	findutils
+	flex
+	kmod
+	linux-headers
+	lld
+	llvm
+	openssl-dev
+	pahole
+	perl
+	postmarketos-installkernel
+	python3
+	sed
+	zstd
+"
+
+_kernelver="${pkgver/_/-}"
+# TODO: this is the same commit the gts9uwifi reference package uses (see
+# docs/03-references.md's real-commit verification of that package) --
+# reused here only as a known-real starting point for config-mainline.
+# aarch64. Re-check against current gitlab.postmarketos.org HEAD before
+# actually building; a stale config isn't a correctness risk (it's a
+# baseline that gets merge_config'd against below), but pin to something
+# current before submitting this package anywhere.
+_pmaports_commit="b7681d0e857d395edfaa6c8e5cd0d89e4315fd3f"
+
+source="
+	linux-$_kernelver.tar.gz::https://git.kernel.org/torvalds/t/linux-$_kernelver.tar.gz
+	config-mainline.aarch64::https://gitlab.postmarketos.org/postmarketOS/pmaports/-/raw/$_pmaports_commit/device/main/linux-postmarketos-mainline/config-mainline.aarch64
+	add-samsung-sec-log-console.patch
+	pci-qcom-honor-iommu-cells-in-config-sid.patch
+	config-dm1q.fragment
+	sm8550-samsung-dm1q.dts
+"
+builddir="$srcdir/linux-$_kernelver"
+
+prepare() {
+	default_prepare
+
+	cp "$srcdir/sm8550-samsung-dm1q.dts" arch/arm64/boot/dts/qcom/
+	grep -q 'sm8550-samsung-dm1q.dtb' arch/arm64/boot/dts/qcom/Makefile || \
+		echo 'dtb-$(CONFIG_ARCH_QCOM) += sm8550-samsung-dm1q.dtb' \
+			>> arch/arm64/boot/dts/qcom/Makefile
+
+	cp "$srcdir/config-mainline.aarch64" .config
+
+	unset LDFLAGS
+	scripts/kconfig/merge_config.sh -m \
+		.config "$srcdir/config-dm1q.fragment"
+	make ARCH="$_carch" LLVM=1 olddefconfig
+}
+
+build() {
+	unset LDFLAGS
+	make ARCH="$_carch" LLVM=1 \
+		KBUILD_BUILD_VERSION="$((pkgrel + 1))-$_flavor"
+}
+
+package() {
+	make modules_install zinstall dtbs_install \
+		ARCH="$_carch" \
+		LLVM=1 \
+		INSTALL_PATH="$pkgdir"/boot \
+		INSTALL_MOD_PATH="$pkgdir"/usr \
+		INSTALL_MOD_STRIP=1 \
+		INSTALL_DTBS_PATH="$pkgdir"/boot/dtbs
+
+	rm -f "$pkgdir"/usr/lib/modules/*/build
+	rm -f "$pkgdir"/usr/lib/modules/*/source
+
+	install -D "$builddir"/include/config/kernel.release \
+		"$pkgdir"/usr/share/kernel/"$_flavor"/kernel.release
+}
+
+# PLACEHOLDER -- not real checksums (nothing has actually been fetched/built
+# through this package yet). Run `abuild checksum` once building this for
+# real; also note deviceinfo_flash_method="none" means pmbootstrap's normal
+# install/flash path is not exercised yet either -- see the deviceinfo file
+# in ../device-samsung-dm1q/ and docs/06-pmos-userspace-plan.md for the
+# real (manual, hand-assembled) boot image process this device currently
+# needs instead.
+sha512sums="
+d8ba9027742e20fe2568b9231616077837a51160c0361373ee8fa50afa746133bd9c5cfd198f364a4919113dbb135b7c16f2c90c33ab41f83c750c2f92a88611  linux-7.3-rc3.tar.gz
+720d681f4a0bb7430c89b3e1c7c061ef722dc636000cdb9b2bc1b4af9108a4ee4473ca8a1fad759c423a3fc7a3f1104031f24881092fdf3d535340e9a7a0e94b  config-mainline.aarch64
+d54ea7ab441f0ba0626a58febbb06047aa5e7715a0356303e0e74296fbca07a3cb8a65e76f0ea22b49170dffa0c05c2f784adcee56e23e8dece73560eebf9f7a  add-samsung-sec-log-console.patch
+5b67955c0cbba004de4547803764b2cc5bb3c56c89142af6c3f040b322183d7bb4b490cec9bf0c06c97b684411c99c920b21dcc7752b22360efa5fc638d41d5f  pci-qcom-honor-iommu-cells-in-config-sid.patch
+99dc4ba730538d90f17f13ed8ce1cba17a156e012f513745da9fb8edabcf7343b981cf0cd98512e5122ed6833cb46ec03513e3e250920e6f41f9357b0083c6f4  config-dm1q.fragment
+9a59e6c0bb3304878a06e4d6d87ccc622348c92f2f4db7451d2086266dd9ceea45caa3164bd40e668d4b67d208bc16047c1f7823204458ba57fa45f62f7d118a  sm8550-samsung-dm1q.dts
+"

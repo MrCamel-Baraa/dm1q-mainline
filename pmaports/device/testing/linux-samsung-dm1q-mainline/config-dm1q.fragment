@@ -1,0 +1,57 @@
+# dm1q bring-up kernel config additions (on top of pmaports' config-mainline.aarch64)
+# --- persistent log (v3)
+CONFIG_SAMSUNG_SEC_LOG=y
+# --- visible console over the ABL-preserved splash framebuffer (v4)
+CONFIG_DRM=y
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_SYSFB=y
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+CONFIG_FRAMEBUFFER_CONSOLE=y
+CONFIG_FONTS=y
+CONFIG_FONT_TER16x32=y
+# --- USB2 peripheral + configfs ACM gadget (v4). NOTE: real pmOS userspace
+# uses postmarketos-base's own initramfs (busybox+udev/mdev), not our
+# hand-rolled bring-up initramfs -- these still need to be built in
+# (not =m) since that's what let the eUSB2/HS PHY/UFS chain probe cleanly
+# on real hardware (see docs/01-phase1-workplan.md's 2026-09-23 "UFS never
+# worked at all" entry -- =m drivers are a silent, non-failing dead end
+# whenever the running rootfs can't load modules yet at the point they're
+# needed).
+CONFIG_USB_LIBCOMPOSITE=y
+CONFIG_USB_CONFIGFS=y
+CONFIG_USB_CONFIGFS_ACM=y
+CONFIG_USB_CONFIGFS_SERIAL=y
+CONFIG_PHY_SNPS_EUSB2=y
+CONFIG_PHY_NXP_PTN3222=y
+CONFIG_I2C_QCOM_GENI=y
+# --- storage/PMIC drivers CONFIRMED (2026-09-23) to silently no-op as
+# modules against a rootfs with no module-loading capability at the point
+# they're needed for /: keep these built-in even once real pmOS initramfs
+# (which DOES support modules) is in use, since UFS is / itself.
+CONFIG_SCSI_UFS_QCOM=y
+CONFIG_QCOM_INLINE_CRYPTO_ENGINE=y
+CONFIG_PHY_QCOM_QMP=y
+CONFIG_PHY_QCOM_QMP_UFS=y
+CONFIG_PSTORE_RAM=y
+CONFIG_PSTORE_CONSOLE=y
+CONFIG_PSTORE_PMSG=y
+# NOTE: scripts/config needs --keep-case for FONT_TER16x32 (lower-case x),
+# otherwise it silently does nothing.
+# --- module signing / lockdown policy (2026-10-01; docs/07-wlan-bringup.md,
+# "ROOT CAUSE FOUND 2026-10-01"). pmaports' config-mainline.aarch64 forces
+# kernel lockdown (LOCK_DOWN_KERNEL_FORCE_INTEGRITY=y) and signs every module
+# (MODULE_SIG_ALL=y) with a key that is generated at random for EACH kernel
+# build. This project rebuilds the kernel often but builds the pmOS rootfs --
+# and the /lib/modules inside it -- once, so after any rebuild the kernel's
+# key no longer matches the rootfs' modules, and lockdown makes the kernel
+# refuse ALL of them ("Lockdown: modprobe: unsigned module loading is
+# restricted"): no PCIe PHY, no pwrseq, no ath11k, &pcie0 never probes.
+# With lockdown off, a module signed by an unknown key still loads (tainted)
+# because MODULE_SIG_FORCE stays unset. Development-port policy; revisit
+# before any real release. MODULE_SIG itself cannot be unset here:
+# SECURITY_LOCKDOWN_LSM selects it. scripts/check-kernel-module-key.py
+# compares a built kernel's key with the rootfs' modules.
+CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
