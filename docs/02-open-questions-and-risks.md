@@ -332,7 +332,7 @@ here with their answer and source, and are also reflected in 00-overview.md.
    **Touch scoping 2026-10-12 (docs/08 section 2):** an FTS2BA61Y/SPI driver exists upstream-bound (Eric
    Goncalves' RFC, 2025-09; not in 7.3-rc3, final status unverified). Samsung's SPI pins/CS match mainline's
    `spi4` groups exactly (gpio44-47). Supplies: `tsp_io_ldo` = L12B 1.8 V, `tsp_avdd_ldo` = L16B 3.0 V (neither
-   defined in `dm1q.dts` yet). Found in the compiled DTB: `gpi_dma1` is disabled (spi4's `dmas` target; the
+   added to `dm1q.dts` 2026-10-12). Found in the compiled DTB: `gpi_dma1` was disabled (spi4's `dmas` target; the
    r0q SPI-dead-on-probe thread asked exactly that). Plan: DT-only spidev proof first (B1), then port the driver
    (B2, r6).
    **B1 PASSED on hardware 2026-10-12 (v12-touch, docs/08 2.7):** with `gpi_dma1` on, spi4 on, L12B/L16B up, the
