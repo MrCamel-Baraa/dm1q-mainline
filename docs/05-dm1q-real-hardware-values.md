@@ -279,6 +279,17 @@ the earlier extraction pass was accurate, not just the bus instance.
 compile warning) to the actual `&i2c4` bus override — the warning is now
 gone, not just documented as expected.
 
+**CORRECTION 2026-10-12 -- the part on this bus is NOT the Goodix.** On the mainline kernel the
+serial engine at `a90000` reports protocol 1 = SPI (`geni_i2c a90000.i2c: Invalid proto 1`), i.e. the
+firmware set it up as SPI. Samsung's DT (`samsung/dm1q_eur_openx_w00_r13.dts`) carries two touch overlay
+fragments, both `status = "ok"`: the Goodix `goodix-berlin@5d` (a Qualcomm-base-DT leftover, I2C, GPIO24
+reset / GPIO25 irq) and `touchscreen@0` `compatible = "stm,stm_ts_spi"` (STMicroelectronics FTS2BA61Y,
+SPI, `sec,irq_gpio` GPIO25, `sec,gpio_spi_cs` GPIO47, `spi-max-frequency` 10 MHz,
+`trusted-touch-io-bases` containing `0xa90000`, firmware `tsp_stm/fts2ba61y_dm1q{,_boe}.bin`). The
+live-DT read of 2026-09-15 found the Goodix node because both exist; the SE's protocol picks the one
+that can work: SPI. The `&i2c4` / `goodix,berlin` block in `dm1q.dts` is therefore wrong for this unit
+and must become an `&spi4` block with the STM part (docs/02 item 16). The GPIO numbers above stay valid.
+
 ## Display panel driver — investigation status 2026-09-15 (paused, not resolved)
 
 Obtained Samsung's real official GPL kernel source

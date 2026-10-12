@@ -304,9 +304,25 @@ here with their answer and source, and are also reflected in 00-overview.md.
    **DNS works (2026-10-11 ~17:55, user's paste): `ping google.com` 3/3, ~66 ms.** WLAN is functionally done;
    what remains is the unexplained morning loss (parked) and the board data question.
 
-16. **No input devices -- open.** No touch, no power/volume keys. Touch sits on `i2c@a90000`
-   (docs/05) but the serial engine comes up with protocol 1 (SPI) and `i2c-qcom-geni` refuses
-   (`Invalid proto 1`); the keys need PMIC pwrkey/resin and gpio-keys nodes. docs/07 15.6.
+16. **No input devices -- open; findings of 2026-10-12 (docs/05 "Touch controller" correction).**
+   - **Keys** (Samsung's downstream DT, `_scratch/crdroid-dm1q-dts/samsung/dm1q_eur_openx_w00_r13.dts`):
+     power = PMK8550 PON `pwrkey` (`qcom,pmk8350-pwrkey`, KEY_POWER); volume down = PON `resin`
+     (`qcom,pmk8350-resin`, code 114 = KEY_VOLUMEDOWN); volume up = `gpio-keys` on PM8550 **gpio 6**
+     (active low, pull-up, power-source 1, KEY_VOLUMEUP, debounce 15 ms, wakeup). That is exactly the
+     mainline `sm8550-qrd.dts` arrangement (`&pon_pwrkey` / `&pon_resin` okay + `gpio-keys` on
+     `&pm8550_gpios` 6). `dm1q.dts` already includes `pm8550.dtsi` and `pmk8550.dtsi`; none of it is enabled.
+   - **Touch: the Goodix-on-I2C reading of docs/05 is the wrong part for this unit.** The serial engine at
+     `a90000` runs SPI firmware (protocol 1), which is why `i2c-qcom-geni` refuses it (`Invalid proto 1`).
+     Samsung's DT has a second overlay fragment (`fragment@68`): `touchscreen@0`, `compatible =
+     "stm,stm_ts_spi"` -- an STMicroelectronics FTS2BA61Y on SPI (10 MHz, `sec,irq_gpio` = GPIO25, the same
+     pin the Goodix node uses; `sec,gpio_spi_cs` = GPIO47; firmware `tsp_stm/fts2ba61y_dm1q{,_boe}.bin`;
+     `trusted-touch-io-bases` lists `0xa90000`). Both fragments are `status = "ok"` in the overlay (two
+     hardware variants); the SE's protocol decides -- here SPI. So **no SE-firmware loader is needed**
+     (the idea of 2026-10-09 was wrong): `sm8550.dtsi` already has `spi4: spi@a90000`. What is missing is a
+     **driver**: 7.3-rc3 has `stmfts.c` (I2C) but nothing for the FTS2BA61Y over SPI; Samsung's GPL driver
+     (sec_input / stm) is in `_scratch/samsung-opensource-s911b`. Also open: the touch supplies
+     (`tsp_io_ldo`, `tsp_avdd_ldo`) -- find them with the fixup-table method of docs/05.
+   docs/07 15.6.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.

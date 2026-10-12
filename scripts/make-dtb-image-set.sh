@@ -16,10 +16,10 @@
 #
 # Usage: scripts/make-dtb-image-set.sh --dts <file.dts> --out <dir> [--ref-set <dir with vendor_boot.img + boot.img>]
 #        [--apk <kernel apk>] [--new-kernel]
-#   --apk         default: the r4 APK (kernel #5, the one v6/v7/v8/v9 run). For the r5 kernel (carries the PCIe
-#                 BDF-to-SID fix) pass the r5 APK together with --new-kernel
+#   --apk         default: the r5 APK (kernel #6, carries the PCIe BDF-to-SID fix; since 2026-10-11 the baseline,
+#                 and the rootfs' module tree is r5's -- an r4 kernel would refuse every module, docs/07 15.12)
 #   --new-kernel  the kernel is EXPECTED to differ from the reference's (reported, not a failure)
-# Defaults: --ref-set ../_scratch/pmos-v8-r4-rails
+# Defaults: --ref-set ../_scratch/pmos-v10-r5-pcifix
 # The last lines report whether the kernel in the new boot.img contains the PCIe BDF-to-SID fix
 # (docs/07 section 14): r4 = no, r5 = yes.
 # Nothing here flashes anything.
@@ -29,8 +29,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/.." && pwd)"
 KSRC="${KSRC:-$HOME/.cache/dm1q-kernel-src/full/linux-7.3-rc3}"
 KOUT="${KOUT:-$HOME/.cache/dm1q-kernel-src/out-real}"
-APK="${APK:-$HOME/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r4.apk}"
-REF="$REPO/../_scratch/pmos-v8-r4-rails"
+APK="${APK:-$HOME/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r5.apk}"
+REF="$REPO/../_scratch/pmos-v10-r5-pcifix"
 DTS="" OUT="" NEWK=0
 while [ $# -gt 0 ]; do
 	case "$1" in
