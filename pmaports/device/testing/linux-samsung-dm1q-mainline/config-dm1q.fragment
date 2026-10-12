@@ -55,3 +55,11 @@ CONFIG_PSTORE_PMSG=y
 # compares a built kernel's key with the rootfs' modules.
 CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
 # CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
+# --- touchscreen (2026-10-12; docs/08-input-bringup.md section 2): STMicro
+# FTS2BA61Y on SPI, driver carried as add-fts2ba61y-touchscreen.patch (not
+# upstream yet). SPI4 also needs the GPI DMA engine and the GENI SPI
+# controller; both were already modules in the r5 build (the B1 spidev test
+# loaded them). INPUT_TOUCHSCREEN is set explicitly because olddefconfig
+# silently drops the driver symbol when its menu is off.
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_TOUCHSCREEN_FTS2BA61Y=m

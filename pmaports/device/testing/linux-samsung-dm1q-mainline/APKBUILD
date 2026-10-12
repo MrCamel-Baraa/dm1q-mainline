@@ -31,7 +31,12 @@ pkgver=7.3_rc3
 # iommu-map, so the WLAN endpoint (01:00.0) gets no table entry and its MSIs never
 # reach the host (docs/07 section 14). DTS and config fragment are unchanged from r4.
 # r5 reports "#6-samsung-dm1q-mainline".
-pkgrel=5
+# r6 (2026-10-12): touchscreen. Adds add-fts2ba61y-touchscreen.patch (the
+# STMicro FTS2BA61Y SPI driver, binding, Kconfig/Makefile; docs/08 section 2),
+# CONFIG_TOUCHSCREEN_FTS2BA61Y=m in the fragment, and the DTS now carries the
+# keys (v11) and the spi4 touchscreen node + L12B/L16B rails + gpi_dma1 (v12).
+# r6 reports "#7-samsung-dm1q-mainline".
+pkgrel=6
 pkgdesc="Mainline kernel for Samsung Galaxy S23 (dm1q)"
 arch="aarch64"
 _carch="arm64"
@@ -80,6 +85,7 @@ source="
 	config-mainline.aarch64::https://gitlab.postmarketos.org/postmarketOS/pmaports/-/raw/$_pmaports_commit/device/main/linux-postmarketos-mainline/config-mainline.aarch64
 	add-samsung-sec-log-console.patch
 	pci-qcom-honor-iommu-cells-in-config-sid.patch
+	add-fts2ba61y-touchscreen.patch
 	config-dm1q.fragment
 	sm8550-samsung-dm1q.dts
 "
@@ -135,6 +141,7 @@ d8ba9027742e20fe2568b9231616077837a51160c0361373ee8fa50afa746133bd9c5cfd198f364a
 720d681f4a0bb7430c89b3e1c7c061ef722dc636000cdb9b2bc1b4af9108a4ee4473ca8a1fad759c423a3fc7a3f1104031f24881092fdf3d535340e9a7a0e94b  config-mainline.aarch64
 d54ea7ab441f0ba0626a58febbb06047aa5e7715a0356303e0e74296fbca07a3cb8a65e76f0ea22b49170dffa0c05c2f784adcee56e23e8dece73560eebf9f7a  add-samsung-sec-log-console.patch
 5b67955c0cbba004de4547803764b2cc5bb3c56c89142af6c3f040b322183d7bb4b490cec9bf0c06c97b684411c99c920b21dcc7752b22360efa5fc638d41d5f  pci-qcom-honor-iommu-cells-in-config-sid.patch
-99dc4ba730538d90f17f13ed8ce1cba17a156e012f513745da9fb8edabcf7343b981cf0cd98512e5122ed6833cb46ec03513e3e250920e6f41f9357b0083c6f4  config-dm1q.fragment
-9a59e6c0bb3304878a06e4d6d87ccc622348c92f2f4db7451d2086266dd9ceea45caa3164bd40e668d4b67d208bc16047c1f7823204458ba57fa45f62f7d118a  sm8550-samsung-dm1q.dts
+39b8eb692f7d4059b63ee3b7ceca7649754a6281c0fc849f1fded1a6827533607f0eb311f4ce7eaea58c194d385bb9e758b22e7a1961decd0c281c905bdf2f4f  add-fts2ba61y-touchscreen.patch
+a0a3e03ffb8f1f45334170803249609d93ef480969102dd82612b06511aa409fadc1705c439e4882660371367037fdce7a3a0bd88c0001566adc845886a43088  config-dm1q.fragment
+a4a5b2ede2099480844cbd9e193ba3c1f19c51be929d25ee97facac3e8509bc0faecb4d8b5261f2af56d3d6096791a89e67fd1d33b82d6ea89015ea6269fd150  sm8550-samsung-dm1q.dts
 "

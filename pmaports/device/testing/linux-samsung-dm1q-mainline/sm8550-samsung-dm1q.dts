@@ -402,6 +402,22 @@
 			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
 		};
 
+		/* touch IO rail (Samsung tsp_io_ldo = pm_humu_l12, 1.8 V; docs/08) */
+		vreg_l12b_1p8: ldo12 {
+			regulator-name = "vreg_l12b_1p8";
+			regulator-min-microvolt = <1800000>;
+			regulator-max-microvolt = <1800000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
+		/* touch AVDD (Samsung tsp_avdd_ldo = pm_humu_l16, 3.0 V; docs/08) */
+		vreg_l16b_3p0: ldo16 {
+			regulator-name = "vreg_l16b_3p0";
+			regulator-min-microvolt = <3000000>;
+			regulator-max-microvolt = <3000000>;
+			regulator-initial-mode = <RPMH_REGULATOR_MODE_HPM>;
+		};
+
 		/* CONFIRMED 2026-09-15 via live hardware measurement: fixed
 		 * 3104000 (regulator.24, pm_humu_l5). Feeds the eUSB2
 		 * repeater's vdd3-supply -- see the &i2c6 block below. */
@@ -1029,8 +1045,15 @@
  * live devicetree directly -- all three exactly match what was already
  * in this file (GPIO24 reset, GPIO25 irq, IRQ_TYPE_EDGE_FALLING).
  */
+/*
+ * 2026-10-12: DISABLED. The serial engine at a90000 runs SPI firmware (protocol 1): with this node
+ * enabled the kernel only says "geni_i2c a90000.i2c: Invalid proto 1" and nothing probes. The unit's
+ * touch part is the STMicroelectronics FTS2BA61Y on SPI, described under &spi4 below (docs/08).
+ * The Goodix node is kept as the alternative reading (Samsung's DT has both overlay fragments);
+ * i2c4 and spi4 are the SAME serial engine, so only one of them can ever be enabled.
+ */
 &i2c4 {
-	status = "okay";
+	status = "disabled";
 
 	touchscreen@5d {
 		compatible = "goodix,berlin";
@@ -1039,6 +1062,37 @@
 		interrupts = <25 IRQ_TYPE_EDGE_FALLING>;
 		reset-gpios = <&tlmm 24 GPIO_ACTIVE_LOW>;
 		irq-gpios = <&tlmm 25 GPIO_ACTIVE_HIGH>;
+	};
+};
+
+/*
+ * Touch: STMicroelectronics FTS2BA61Y on SPI (docs/08 section 2; Samsung DT fragment@68).
+ * - SE a90000 = spi4; mainline's qup_spi4_* pin groups (gpio44-46 data/clk, gpio47 CS) are exactly
+ *   Samsung's spi_*_tsp_* / CS pins.
+ * - gpi_dma1 is what spi4's `dmas` point at; it was disabled before (the r0q SPI-dead-on-probe thread
+ *   asked the same question).
+ * - Supplies: tsp_io_ldo = pm_humu_l12 (L12B, 1.8 V) and tsp_avdd_ldo = pm_humu_l16 (L16B, 3.0 V), from
+ *   Samsung's overlay fragments 40 / 43 and "humu" = PM8550B (docs/05).
+ * - compatible / supply names follow the upstream-bound RFC binding (st,fts2ba61y: vdd, avdd); there
+ *   is no driver in 7.3-rc3, so nothing binds to this node yet. IRQ type: Samsung requests LOW|ONESHOT.
+ */
+&gpi_dma1 {
+	status = "okay";
+};
+
+&spi4 {
+	status = "okay";
+
+	touchscreen@0 {
+		compatible = "st,fts2ba61y";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <25 IRQ_TYPE_LEVEL_LOW>;
+		vdd-supply = <&vreg_l12b_1p8>;
+		avdd-supply = <&vreg_l16b_3p0>;
+		pinctrl-0 = <&ts_int_default>;
+		pinctrl-names = "default";
 	};
 };
 
@@ -1064,12 +1118,64 @@
 		bias-pull-down;
 	};
 
+	ts_int_default: ts-int-default-state {
+		pins = "gpio25";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
 	xo_clk_default: xo-clk-default-state {
 		pins = "gpio204";
 		function = "gpio";
 		drive-strength = <2>;
 		bias-disable;
 	};
+};
+
+/*
+ * Physical keys (docs/08-input-bringup.md). Same arrangement as Samsung's
+ * downstream DT (dm1q_eur_openx_w00_r13.dts: PON pwrkey / PON resin /
+ * gpio-keys on PM8550 gpio 6) and as mainline sm8550-qrd.dts.
+ *   power       = PMK8550 PON pwrkey (KEY_POWER, from pmk8550.dtsi)
+ *   volume down = PMK8550 PON resin  (code 114 = KEY_VOLUMEDOWN)
+ *   volume up   = PM8550 gpio6, active low, pull-up, power-source 1
+ */
+/ {
+	gpio-keys {
+		compatible = "gpio-keys";
+
+		pinctrl-0 = <&volume_up_n>;
+		pinctrl-names = "default";
+
+		key-volume-up {
+			label = "Volume Up";
+			linux,code = <KEY_VOLUMEUP>;
+			gpios = <&pm8550_gpios 6 GPIO_ACTIVE_LOW>;
+			debounce-interval = <15>;
+			linux,can-disable;
+			wakeup-source;
+		};
+	};
+};
+
+&pm8550_gpios {
+	volume_up_n: volume-up-n-state {
+		pins = "gpio6";
+		function = "normal";
+		power-source = <1>;
+		bias-pull-up;
+		input-enable;
+	};
+};
+
+&pon_pwrkey {
+	status = "okay";
+};
+
+&pon_resin {
+	linux,code = <KEY_VOLUMEDOWN>;
+	status = "okay";
 };
 
 /*

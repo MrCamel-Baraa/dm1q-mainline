@@ -1,0 +1,654 @@
+From: dm1q mainline port <dm1q-mainline@example.com>
+Subject: [PATCH] Input: add support for the ST-Microelectronics FTS2BA61Y touchscreen
+
+SPI touchscreen controller used on the Galaxy S23 (dm1q) and other
+Samsung phones. Port of the RFC posted to linux-input on 2025-09-11
+(Eric Goncalves, originally written by Ivaylo Ivanov), not merged
+upstream at the time of writing, with these changes:
+
+ - no per-call allocations: DMA-safe bounce buffers in the driver data,
+   guarded by one mutex (they are shared, so the lock is not redundant)
+ - regulators are released if probing fails after they were enabled
+ - the reset no longer calls disable_irq()/enable_irq() on an interrupt
+   that is not requested yet; the interrupt is requested last
+ - trigger type comes from the devicetree, not hard coded
+ - the number of slots is the contact limit of the vendor driver (10),
+   not the TX channel count; touch ids above it are ignored
+ - touch type bits 1:0 live in byte 7 bits 7:6 (the RFC read bits 1:0,
+   which dropped touches whenever events were queued); checked against
+   the Samsung stm_spi driver
+ - one input_sync() per interrupt, palm reported as MT_TOOL_PALM
+ - panel info of all zeroes/ones makes probe fail with -ENODEV
+
+Signed-off-by: dm1q mainline port <dm1q-mainline@example.com>
+---
+diff --git a/Documentation/devicetree/bindings/input/touchscreen/st,fts2ba61y.yaml b/Documentation/devicetree/bindings/input/touchscreen/st,fts2ba61y.yaml
+new file mode 100644
+index 000000000..96261d9c0
+--- /dev/null
++++ b/Documentation/devicetree/bindings/input/touchscreen/st,fts2ba61y.yaml
+@@ -0,0 +1,58 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/input/touchscreen/st,fts2ba61y.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: ST-Microelectronics FTS2BA61Y touchscreen controller
++
++maintainers:
++  - dm1q mainline port <dm1q-mainline@example.com>
++
++allOf:
++  - $ref: touchscreen.yaml#
++  - $ref: /schemas/spi/spi-peripheral-props.yaml#
++
++properties:
++  compatible:
++    const: st,fts2ba61y
++
++  reg:
++    maxItems: 1
++
++  interrupts:
++    maxItems: 1
++
++  avdd-supply:
++    description: Analog power supply
++
++  vdd-supply:
++    description: Digital I/O power supply
++
++required:
++  - compatible
++  - reg
++  - interrupts
++  - avdd-supply
++  - vdd-supply
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/irq.h>
++
++    spi {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        touchscreen@0 {
++            compatible = "st,fts2ba61y";
++            reg = <0>;
++            spi-max-frequency = <10000000>;
++            interrupt-parent = <&tlmm>;
++            interrupts = <25 IRQ_TYPE_LEVEL_LOW>;
++            avdd-supply = <&vreg_l16b_3p0>;
++            vdd-supply = <&vreg_l12b_1p8>;
++        };
++    };
+diff --git a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
+index 9b9ae8ac3..ccd945877 100644
+--- a/drivers/input/touchscreen/Kconfig
++++ b/drivers/input/touchscreen/Kconfig
+@@ -370,6 +370,19 @@ config TOUCHSCREEN_EXC3000
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called exc3000.
+ 
++config TOUCHSCREEN_FTS2BA61Y
++	tristate "ST-Microelectronics FTS2BA61Y touchscreen"
++	depends on SPI
++	help
++	  Say Y here if you have a touchscreen using the ST-Microelectronics
++	  FTS2BA61Y controller connected over SPI, as found in some Samsung
++	  phones.
++
++	  If unsure, say N.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called fts2ba61y.
++
+ config TOUCHSCREEN_FUJITSU
+ 	tristate "Fujitsu serial touchscreen"
+ 	select SERIO
+diff --git a/drivers/input/touchscreen/Makefile b/drivers/input/touchscreen/Makefile
+index bfd9de833..feaeb9a16 100644
+--- a/drivers/input/touchscreen/Makefile
++++ b/drivers/input/touchscreen/Makefile
+@@ -43,6 +43,7 @@ obj-$(CONFIG_TOUCHSCREEN_ELO)		+= elo.o
+ obj-$(CONFIG_TOUCHSCREEN_EGALAX)	+= egalax_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_EGALAX_SERIAL)	+= egalax_ts_serial.o
+ obj-$(CONFIG_TOUCHSCREEN_EXC3000)	+= exc3000.o
++obj-$(CONFIG_TOUCHSCREEN_FTS2BA61Y)	+= fts2ba61y.o
+ obj-$(CONFIG_TOUCHSCREEN_FUJITSU)	+= fujitsu_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_GOODIX)	+= goodix_ts.o
+ obj-$(CONFIG_TOUCHSCREEN_GOODIX_BERLIN_CORE)	+= goodix_berlin_core.o
+diff --git a/drivers/input/touchscreen/fts2ba61y.c b/drivers/input/touchscreen/fts2ba61y.c
+new file mode 100644
+index 000000000..c58a02182
+--- /dev/null
++++ b/drivers/input/touchscreen/fts2ba61y.c
+@@ -0,0 +1,524 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * ST-Microelectronics FTS2BA61Y SPI touchscreen driver
++ *
++ * Based on the RFC posted by Eric Goncalves (originally written by Ivaylo
++ * Ivanov), reworked after the review comments on that posting and checked
++ * against the Samsung stm_spi vendor driver for the event layout.
++ */
++
++#include <linux/bitfield.h>
++#include <linux/bits.h>
++#include <linux/cache.h>
++#include <linux/cleanup.h>
++#include <linux/delay.h>
++#include <linux/input.h>
++#include <linux/input/mt.h>
++#include <linux/input/touchscreen.h>
++#include <linux/interrupt.h>
++#include <linux/mod_devicetable.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/regulator/consumer.h>
++#include <linux/spi/spi.h>
++#include <linux/string.h>
++#include <linux/unaligned.h>
++
++/* SPI opcodes that are sent as is */
++#define FTS2BA61Y_OP_READ_EVENT		0x87
++#define FTS2BA61Y_OP_CUSTOM_W		0xC0
++#define FTS2BA61Y_OP_CUSTOM_R		0xD1
++#define FTS2BA61Y_OP_REG_W		0xFA
++
++/* commands, sent through FTS2BA61Y_OP_CUSTOM_W */
++#define FTS2BA61Y_CMD_SENSE_ON		0x10
++#define FTS2BA61Y_CMD_SENSE_OFF		0x11
++#define FTS2BA61Y_CMD_READ_DEVICE_ID	0x22
++#define FTS2BA61Y_CMD_READ_PANEL_INFO	0x23
++#define FTS2BA61Y_CMD_TOUCHTYPE		0x30
++#define FTS2BA61Y_CMD_CLEAR_EVENTS	0x62
++
++/* touch type enable bits */
++#define FTS2BA61Y_TOUCHTYPE_EN_TOUCH	BIT(0)
++#define FTS2BA61Y_TOUCHTYPE_EN_PALM	BIT(5)
++#define FTS2BA61Y_TOUCHTYPE_EN_WET	BIT(6)
++
++/* event byte 0 */
++#define FTS2BA61Y_EVENT_ID		GENMASK(1, 0)
++#define FTS2BA61Y_EVENT_STYPE		GENMASK(5, 2)	/* non-coordinate events */
++#define FTS2BA61Y_EVENT_TID		GENMASK(5, 2)	/* coordinate events */
++#define FTS2BA61Y_EVENT_TCHSTA		GENMASK(7, 6)
++
++/* event byte 3, 6 and 7 */
++#define FTS2BA61Y_EVENT_X_3_0		GENMASK(7, 4)
++#define FTS2BA61Y_EVENT_Y_3_0		GENMASK(3, 0)
++#define FTS2BA61Y_EVENT_Z		GENMASK(5, 0)
++#define FTS2BA61Y_EVENT_TTYPE_3_2	GENMASK(7, 6)
++#define FTS2BA61Y_EVENT_LEFT		GENMASK(4, 0)
++#define FTS2BA61Y_EVENT_TTYPE_1_0	GENMASK(7, 6)
++
++#define FTS2BA61Y_EVENT_ID_COORDINATE	0x0
++#define FTS2BA61Y_STYPE_INFO		0x2
++#define FTS2BA61Y_INFO_READY		0x00
++
++#define FTS2BA61Y_ACTION_PRESS		0x1
++#define FTS2BA61Y_ACTION_MOVE		0x2
++#define FTS2BA61Y_ACTION_RELEASE	0x3
++
++#define FTS2BA61Y_TTYPE_NORMAL		0x0
++#define FTS2BA61Y_TTYPE_GLOVE		0x3
++#define FTS2BA61Y_TTYPE_PALM		0x5
++#define FTS2BA61Y_TTYPE_WET		0x6
++
++#define FTS2BA61Y_MAX_TOUCHES		10
++#define FTS2BA61Y_EVENT_SIZE		16
++#define FTS2BA61Y_MAX_EVENTS		31	/* 5 bit "events left" counter */
++#define FTS2BA61Y_PANEL_INFO_SIZE	11
++#define FTS2BA61Y_DEVICE_ID_SIZE	5
++
++/* opcode + one dummy byte + all the events the chip can queue */
++#define FTS2BA61Y_XFER_MAX		(2 + FTS2BA61Y_EVENT_SIZE * FTS2BA61Y_MAX_EVENTS)
++
++struct fts2ba61y_data {
++	struct spi_device *spi;
++	struct input_dev *input_dev;
++	struct touchscreen_properties prop;
++	struct regulator_bulk_data regulators[2];
++	unsigned int max_x;
++	unsigned int max_y;
++	u8 events[FTS2BA61Y_EVENT_SIZE * FTS2BA61Y_MAX_EVENTS];
++
++	/* serializes use of the bounce buffers below */
++	struct mutex lock;
++	u8 tx_buf[FTS2BA61Y_XFER_MAX] __aligned(ARCH_DMA_MINALIGN);
++	u8 rx_buf[FTS2BA61Y_XFER_MAX] __aligned(ARCH_DMA_MINALIGN);
++};
++
++/* Send @opcode followed by @len bytes of @data. */
++static int fts2ba61y_write(struct fts2ba61y_data *ts, u8 opcode,
++			   const u8 *data, size_t len)
++{
++	if (len + 1 > sizeof(ts->tx_buf))
++		return -EINVAL;
++
++	guard(mutex)(&ts->lock);
++
++	ts->tx_buf[0] = opcode;
++	if (len)
++		memcpy(&ts->tx_buf[1], data, len);
++
++	return spi_write(ts->spi, ts->tx_buf, len + 1);
++}
++
++/* Callers hold ts->lock. */
++static int __fts2ba61y_command(struct fts2ba61y_data *ts, u8 cmd,
++			       const u8 *data, size_t len)
++{
++	if (len + 2 > sizeof(ts->tx_buf))
++		return -EINVAL;
++
++	ts->tx_buf[0] = FTS2BA61Y_OP_CUSTOM_W;
++	ts->tx_buf[1] = cmd;
++	if (len)
++		memcpy(&ts->tx_buf[2], data, len);
++
++	return spi_write(ts->spi, ts->tx_buf, len + 2);
++}
++
++static int fts2ba61y_command(struct fts2ba61y_data *ts, u8 cmd,
++			     const u8 *data, size_t len)
++{
++	guard(mutex)(&ts->lock);
++
++	return __fts2ba61y_command(ts, cmd, data, len);
++}
++
++/*
++ * Full duplex transfer of @tx_len command bytes (already in ts->tx_buf)
++ * followed by @rx_len clock-out bytes. The chip answers in the bytes that
++ * follow the command and a dummy byte, so @skip bytes of the reply are
++ * dropped. Callers hold ts->lock.
++ */
++static int __fts2ba61y_read(struct fts2ba61y_data *ts, size_t tx_len,
++			    size_t skip, u8 *buf, size_t rx_len)
++{
++	struct spi_transfer xfer = {
++		.tx_buf = ts->tx_buf,
++		.rx_buf = ts->rx_buf,
++		.len = skip + rx_len,
++	};
++	int error;
++
++	if (xfer.len > sizeof(ts->tx_buf))
++		return -EINVAL;
++
++	memset(&ts->tx_buf[tx_len], 0, xfer.len - tx_len);
++
++	error = spi_sync_transfer(ts->spi, &xfer, 1);
++	if (error)
++		return error;
++
++	memcpy(buf, &ts->rx_buf[skip], rx_len);
++
++	return 0;
++}
++
++static int fts2ba61y_read_events(struct fts2ba61y_data *ts, u8 *buf, size_t len)
++{
++	guard(mutex)(&ts->lock);
++
++	ts->tx_buf[0] = FTS2BA61Y_OP_READ_EVENT;
++
++	return __fts2ba61y_read(ts, 1, 2, buf, len);
++}
++
++/* Read the reply to a command: select it, then fetch it from offset 0. */
++static int fts2ba61y_command_read(struct fts2ba61y_data *ts, u8 cmd,
++				  u8 *buf, size_t len)
++{
++	int error;
++
++	guard(mutex)(&ts->lock);
++
++	error = __fts2ba61y_command(ts, cmd, NULL, 0);
++	if (error)
++		return error;
++
++	ts->tx_buf[0] = FTS2BA61Y_OP_CUSTOM_R;
++	ts->tx_buf[1] = 0;
++	ts->tx_buf[2] = 0;
++
++	return __fts2ba61y_read(ts, 3, 4, buf, len);
++}
++
++static int fts2ba61y_wait_for_ready(struct fts2ba61y_data *ts)
++{
++	u8 event[FTS2BA61Y_EVENT_SIZE];
++	int error;
++
++	for (int retries = 5; retries > 0; retries--) {
++		error = fts2ba61y_read_events(ts, event, sizeof(event));
++		if (error)
++			return error;
++
++		if (FIELD_GET(FTS2BA61Y_EVENT_STYPE, event[0]) == FTS2BA61Y_STYPE_INFO &&
++		    event[1] == FTS2BA61Y_INFO_READY)
++			return 0;
++
++		msleep(20);
++	}
++
++	return -ENODEV;
++}
++
++static int fts2ba61y_reset(struct fts2ba61y_data *ts)
++{
++	/* undocumented soft reset sequence */
++	static const u8 reset[] = { 0x20, 0x00, 0x00, 0x24, 0x81 };
++	int error;
++
++	error = fts2ba61y_write(ts, FTS2BA61Y_OP_REG_W, reset, sizeof(reset));
++	if (error)
++		return error;
++
++	msleep(30);
++
++	return fts2ba61y_wait_for_ready(ts);
++}
++
++static int fts2ba61y_read_panel_info(struct fts2ba61y_data *ts)
++{
++	u8 info[FTS2BA61Y_PANEL_INFO_SIZE];
++	u8 id[FTS2BA61Y_DEVICE_ID_SIZE];
++	struct device *dev = &ts->spi->dev;
++	int error;
++
++	error = fts2ba61y_command_read(ts, FTS2BA61Y_CMD_READ_DEVICE_ID,
++				       id, sizeof(id));
++	if (error)
++		return error;
++
++	dev_dbg(dev, "device id: %*ph\n", (int)sizeof(id), id);
++
++	error = fts2ba61y_command_read(ts, FTS2BA61Y_CMD_READ_PANEL_INFO,
++				       info, sizeof(info));
++	if (error)
++		return error;
++
++	dev_dbg(dev, "panel info: %*ph\n", (int)sizeof(info), info);
++
++	ts->max_x = get_unaligned_be16(&info[0]);
++	ts->max_y = get_unaligned_be16(&info[2]);
++
++	/* a chip that is not really there reads back all zeroes or all ones */
++	if (!ts->max_x || !ts->max_y || ts->max_x == 0xffff || ts->max_y == 0xffff)
++		return dev_err_probe(dev, -ENODEV, "invalid panel info %*ph\n",
++				     (int)sizeof(info), info);
++
++	dev_info(dev, "id %*ph, resolution %ux%u, %u TX x %u RX channels\n",
++		 (int)sizeof(id), id, ts->max_x, ts->max_y, info[8], info[9]);
++
++	return 0;
++}
++
++static int fts2ba61y_set_touch_types(struct fts2ba61y_data *ts)
++{
++	u8 types[2];
++
++	put_unaligned_le16(FTS2BA61Y_TOUCHTYPE_EN_TOUCH |
++			   FTS2BA61Y_TOUCHTYPE_EN_PALM |
++			   FTS2BA61Y_TOUCHTYPE_EN_WET, types);
++
++	return fts2ba61y_command(ts, FTS2BA61Y_CMD_TOUCHTYPE, types, sizeof(types));
++}
++
++/* Returns the number of events now in ts->events, or a negative errno. */
++static int fts2ba61y_get_events(struct fts2ba61y_data *ts)
++{
++	unsigned int left;
++	int error;
++
++	error = fts2ba61y_read_events(ts, ts->events, FTS2BA61Y_EVENT_SIZE);
++	if (error)
++		return error;
++
++	if (!ts->events[0])
++		return 0;
++
++	left = FIELD_GET(FTS2BA61Y_EVENT_LEFT, ts->events[7]);
++	if (left >= FTS2BA61Y_MAX_EVENTS) {
++		fts2ba61y_command(ts, FTS2BA61Y_CMD_CLEAR_EVENTS, NULL, 0);
++		return -EIO;
++	}
++
++	if (left) {
++		error = fts2ba61y_read_events(ts, &ts->events[FTS2BA61Y_EVENT_SIZE],
++					      FTS2BA61Y_EVENT_SIZE * left);
++		if (error)
++			return error;
++	}
++
++	return left + 1;
++}
++
++static void fts2ba61y_report_touch(struct fts2ba61y_data *ts, const u8 *event,
++				   unsigned int slot)
++{
++	struct input_dev *input = ts->input_dev;
++	unsigned int ttype, x, y;
++	int tool;
++
++	ttype = FIELD_GET(FTS2BA61Y_EVENT_TTYPE_3_2, event[6]) << 2 |
++		FIELD_GET(FTS2BA61Y_EVENT_TTYPE_1_0, event[7]);
++
++	switch (ttype) {
++	case FTS2BA61Y_TTYPE_NORMAL:
++	case FTS2BA61Y_TTYPE_GLOVE:
++	case FTS2BA61Y_TTYPE_WET:
++		tool = MT_TOOL_FINGER;
++		break;
++	case FTS2BA61Y_TTYPE_PALM:
++		tool = MT_TOOL_PALM;
++		break;
++	default:
++		return;
++	}
++
++	x = event[1] << 4 | FIELD_GET(FTS2BA61Y_EVENT_X_3_0, event[3]);
++	y = event[2] << 4 | FIELD_GET(FTS2BA61Y_EVENT_Y_3_0, event[3]);
++
++	input_mt_slot(input, slot);
++	input_mt_report_slot_state(input, tool, true);
++	touchscreen_report_pos(input, &ts->prop, x, y, true);
++	input_report_abs(input, ABS_MT_TOUCH_MAJOR, event[4]);
++	input_report_abs(input, ABS_MT_TOUCH_MINOR, event[5]);
++	input_report_abs(input, ABS_MT_PRESSURE,
++			 FIELD_GET(FTS2BA61Y_EVENT_Z, event[6]));
++}
++
++static void fts2ba61y_handle_event(struct fts2ba61y_data *ts, const u8 *event)
++{
++	unsigned int slot;
++
++	if (FIELD_GET(FTS2BA61Y_EVENT_ID, event[0]) != FTS2BA61Y_EVENT_ID_COORDINATE)
++		return;
++
++	slot = FIELD_GET(FTS2BA61Y_EVENT_TID, event[0]);
++	if (slot >= FTS2BA61Y_MAX_TOUCHES)
++		return;
++
++	switch (FIELD_GET(FTS2BA61Y_EVENT_TCHSTA, event[0])) {
++	case FTS2BA61Y_ACTION_PRESS:
++	case FTS2BA61Y_ACTION_MOVE:
++		fts2ba61y_report_touch(ts, event, slot);
++		break;
++	case FTS2BA61Y_ACTION_RELEASE:
++		input_mt_slot(ts->input_dev, slot);
++		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
++		break;
++	}
++}
++
++static irqreturn_t fts2ba61y_irq_handler(int irq, void *handle)
++{
++	struct fts2ba61y_data *ts = handle;
++	int count;
++
++	count = fts2ba61y_get_events(ts);
++	if (count < 0) {
++		dev_dbg(&ts->spi->dev, "failed to get events: %d\n", count);
++		return IRQ_NONE;
++	}
++
++	for (int i = 0; i < count; i++)
++		fts2ba61y_handle_event(ts, &ts->events[i * FTS2BA61Y_EVENT_SIZE]);
++
++	if (count) {
++		input_mt_sync_frame(ts->input_dev);
++		input_sync(ts->input_dev);
++	}
++
++	return IRQ_HANDLED;
++}
++
++static int fts2ba61y_input_open(struct input_dev *dev)
++{
++	struct fts2ba61y_data *ts = input_get_drvdata(dev);
++
++	return fts2ba61y_command(ts, FTS2BA61Y_CMD_SENSE_ON, NULL, 0);
++}
++
++static void fts2ba61y_input_close(struct input_dev *dev)
++{
++	struct fts2ba61y_data *ts = input_get_drvdata(dev);
++	int error;
++
++	error = fts2ba61y_command(ts, FTS2BA61Y_CMD_SENSE_OFF, NULL, 0);
++	if (error)
++		dev_err(&ts->spi->dev, "failed to turn off sensing: %d\n", error);
++}
++
++static void fts2ba61y_power_off(void *data)
++{
++	struct fts2ba61y_data *ts = data;
++
++	regulator_bulk_disable(ARRAY_SIZE(ts->regulators), ts->regulators);
++}
++
++static int fts2ba61y_probe(struct spi_device *spi)
++{
++	struct device *dev = &spi->dev;
++	struct fts2ba61y_data *ts;
++	struct input_dev *input;
++	int error;
++
++	if (spi->irq <= 0)
++		return dev_err_probe(dev, -EINVAL, "no interrupt specified\n");
++
++	ts = devm_kzalloc(dev, sizeof(*ts), GFP_KERNEL);
++	if (!ts)
++		return -ENOMEM;
++
++	ts->spi = spi;
++	mutex_init(&ts->lock);
++
++	spi->mode = SPI_MODE_0;
++	spi->bits_per_word = 8;
++	error = spi_setup(spi);
++	if (error)
++		return error;
++
++	ts->regulators[0].supply = "vdd";
++	ts->regulators[1].supply = "avdd";
++	error = devm_regulator_bulk_get(dev, ARRAY_SIZE(ts->regulators),
++					ts->regulators);
++	if (error)
++		return dev_err_probe(dev, error, "failed to get regulators\n");
++
++	error = regulator_bulk_enable(ARRAY_SIZE(ts->regulators), ts->regulators);
++	if (error)
++		return dev_err_probe(dev, error, "failed to enable regulators\n");
++
++	error = devm_add_action_or_reset(dev, fts2ba61y_power_off, ts);
++	if (error)
++		return error;
++
++	msleep(140);
++
++	error = fts2ba61y_reset(ts);
++	if (error)
++		return dev_err_probe(dev, error, "chip did not come out of reset\n");
++
++	error = fts2ba61y_read_panel_info(ts);
++	if (error)
++		return error;
++
++	error = fts2ba61y_set_touch_types(ts);
++	if (error)
++		return dev_err_probe(dev, error, "failed to set touch types\n");
++
++	input = devm_input_allocate_device(dev);
++	if (!input)
++		return -ENOMEM;
++
++	ts->input_dev = input;
++	input_set_drvdata(input, ts);
++
++	input->name = "STMicroelectronics FTS2BA61Y Touchscreen";
++	input->id.bustype = BUS_SPI;
++	input->open = fts2ba61y_input_open;
++	input->close = fts2ba61y_input_close;
++
++	input_set_abs_params(input, ABS_MT_POSITION_X, 0, ts->max_x, 0, 0);
++	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, ts->max_y, 0, 0);
++	input_set_abs_params(input, ABS_MT_TOUCH_MAJOR, 0, 255, 0, 0);
++	input_set_abs_params(input, ABS_MT_TOUCH_MINOR, 0, 255, 0, 0);
++	input_set_abs_params(input, ABS_MT_PRESSURE, 0,
++			     FIELD_MAX(FTS2BA61Y_EVENT_Z), 0, 0);
++	input_set_abs_params(input, ABS_MT_TOOL_TYPE, 0, MT_TOOL_MAX, 0, 0);
++
++	touchscreen_parse_properties(input, true, &ts->prop);
++
++	error = input_mt_init_slots(input, FTS2BA61Y_MAX_TOUCHES, INPUT_MT_DIRECT);
++	if (error)
++		return error;
++
++	error = input_register_device(input);
++	if (error)
++		return dev_err_probe(dev, error, "failed to register input device\n");
++
++	/* the trigger type comes from the devicetree */
++	error = devm_request_threaded_irq(dev, spi->irq, NULL,
++					  fts2ba61y_irq_handler, IRQF_ONESHOT,
++					  "fts2ba61y", ts);
++	if (error)
++		return dev_err_probe(dev, error, "failed to request interrupt\n");
++
++	return 0;
++}
++
++static const struct of_device_id fts2ba61y_of_match[] = {
++	{ .compatible = "st,fts2ba61y" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, fts2ba61y_of_match);
++
++static const struct spi_device_id fts2ba61y_spi_ids[] = {
++	{ "fts2ba61y" },
++	{ }
++};
++MODULE_DEVICE_TABLE(spi, fts2ba61y_spi_ids);
++
++static struct spi_driver fts2ba61y_driver = {
++	.driver = {
++		.name = "fts2ba61y",
++		.of_match_table = fts2ba61y_of_match,
++	},
++	.probe = fts2ba61y_probe,
++	.id_table = fts2ba61y_spi_ids,
++};
++module_spi_driver(fts2ba61y_driver);
++
++MODULE_AUTHOR("Ivaylo Ivanov");
++MODULE_DESCRIPTION("ST-Microelectronics FTS2BA61Y touchscreen driver");
++MODULE_LICENSE("GPL");
