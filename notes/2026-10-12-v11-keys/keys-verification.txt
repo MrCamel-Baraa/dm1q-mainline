@@ -1,0 +1,29 @@
+v11-keys (r5 kernel #6, DTS with pon_pwrkey / pon_resin / gpio-keys volume-up), pasted by the user from the phone, 2026-10-12.
+No MAC addresses, SSIDs or serials in this capture.
+
+== cat /proc/bus/input/devices (Name / Handlers / KEY bitmap only)
+gpio-keys    event0  KEY=8000000000000 0   -> bit 51 of the 64..127 word = code 115 = KEY_VOLUMEUP
+pmic_pwrkey  event1  KEY=10000000000000 0  -> bit 52 = code 116 = KEY_POWER
+pmic_resin   event2  KEY=4000000000000 0   -> bit 50 = code 114 = KEY_VOLUMEDOWN
+sysfs: /devices/platform/gpio-keys/input/input0
+       /devices/platform/soc@0/c400000.spmi/spmi-0/0-00/c400000.spmi:pmic@0:pon@1300/...:pwrkey/input/input1
+       .../...:pon@1300:resin/input/input2
+
+== sudo dmesg | grep -i -E 'pwrkey|resin|gpio-keys|input:'
+[    0.409573] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+[    0.409627] probe of gpio-keys with driver gpio-keys returned 0 after 573 usecs
+[    6.866532] input: pmic_pwrkey as .../c400000.spmi:pmic@0:pon@1300:pwrkey/input/input1
+[    6.866693] probe of c400000.spmi:pmic@0:pon@1300:pwrkey with driver pm8941-pwrkey returned 0 after 14505 usecs
+[    6.880552] input: pmic_resin as .../c400000.spmi:pmic@0:pon@1300:resin/input/input2
+[    6.894576] probe of c400000.spmi:pmic@0:pon@1300:resin with driver pm8941-pwrkey returned 0 after 26821 usecs
+(the plain `dmesg` as user fails: "read kernel buffer failed: Operation not permitted" -- use sudo)
+
+== sudo dd if=/dev/input/eventN bs=24 count=4 | hexdump -C   (one press + release each)
+(`hexdump -C /dev/input/eventN` directly fails with EINVAL: busybox reads 16-byte chunks, evdev needs
+ whole 24-byte struct input_event reads.)
+event0: type 0001 code 0x0073 (115 KEY_VOLUMEUP)   value 1, then value 0   (each followed by EV_SYN)
+event1: type 0001 code 0x0074 (116 KEY_POWER)      value 1, then value 0
+event2: type 0001 code 0x0072 (114 KEY_VOLUMEDOWN) value 1, then value 0
+raw event0 first event: e8 49 cc 6a 00.. 4a 6d 0e 00.. | 01 00 73 00 01 00 00 00
+raw event1 first event: f5 49 cc 6a 00.. a5 d6 0a 00.. | 01 00 74 00 01 00 00 00
+raw event2 first event: 01 4a cc 6a 00.. a4 ab 01 00.. | 01 00 72 00 01 00 00 00

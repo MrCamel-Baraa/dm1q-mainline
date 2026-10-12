@@ -323,6 +323,13 @@ here with their answer and source, and are also reflected in 00-overview.md.
      (sec_input / stm) is in `_scratch/samsung-opensource-s911b`. Also open: the touch supplies
      (`tsp_io_ldo`, `tsp_avdd_ldo`) -- find them with the fixup-table method of docs/05.
    docs/07 15.6.
+   **UPDATE 2026-10-12 (docs/08):** keys are DT-only (config checked: `KEYBOARD_GPIO=y`,
+   `INPUT_PM8941_PWRKEY=y`, `PINCTRL_QCOM_SPMI_PMIC=y`, `INPUT_EVDEV=m`). `dm1q.dts` now enables
+   `pon_pwrkey`, `pon_resin` (KEY_VOLUMEDOWN) and a `gpio-keys` volume-up on `pm8550_gpios` 6; image set
+   `_scratch/pmos-v11-keys/` built and verified against the r5 reference (only those nodes differ).
+   **KEYS CONFIRMED ON HARDWARE 2026-10-12 (v11-keys):** three input devices, one correct event per key
+   (volume up 115, power 116, volume down 114). Evidence `notes/2026-10-12-v11-keys/`. Touch: still
+   scoping (docs/08 section 2).
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.
