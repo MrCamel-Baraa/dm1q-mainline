@@ -129,7 +129,42 @@ sent as ONE `spi_message`.
   load `spi-geni-qcom` / `spidev`, send the reset + `0x87` read as ONE message, expect the ready event.
   Pass = the SE answers and the chip reports ready; fail modes (all `0x00` / all `0xFF`, no `/dev/spidev*`,
   probe deferred) say which of rails / CS / GPI-DMA to look at next.
+- **B1 prepared 2026-10-12** (details in 2.6).
 - **B2:** port the upstream FTS2BA61Y driver (latest posted version) as a kernel patch -> r6 build (user's
   sudo) -> `scripts/refresh-phone-modules.sh` (rule 6). Try without a firmware blob first.
 - Open: IRQ polarity / type for GPIO25 on this chip (RFC used level-low, then moved to DT); whether the
   panel variant (`_boe` firmware) matters.
+
+### 2.6 B1 as prepared (2026-10-12; hardware result PENDING)
+
+Canonical `dts/dm1q/dm1q.dts` now: `&gpi_dma1` okay; `&i2c4` (Goodix) kept but `status = "disabled"`;
+`&spi4` okay with `touchscreen@0 { compatible = "st,fts2ba61y"; spi-max-frequency = 10 MHz;
+interrupts = <&tlmm 25 IRQ_TYPE_LEVEL_LOW>; vdd-supply = L12B; avdd-supply = L16B; pinctrl ts_int_default }`;
+`ts_int_default` (gpio25, drive 2, bias-disable); `regulators-0` gained `ldo12` (`vreg_l12b_1p8`, 1.8 V) and
+`ldo16` (`vreg_l16b_3p0`, 3.0 V). Goodix is not deleted: i2c4 and spi4 are the same engine, so "try both" means
+one image with i2c4 on (already known: every earlier boot printed `Invalid proto 1`) and one with spi4 on.
+
+Test image set `_scratch/pmos-v12-touch-spidev/` (boot + vendor_boot to flash; dtbo / init_boot unchanged),
+built from `_scratch/dts-b1/dm1q-b1-spidev.dts` = the canonical DTS + three scratch-only overrides
+(`touchscreen@0` compatible `rohm,dh2228fv` so spidev binds; `regulator-always-on` on both rails). Verified by
+decompiling against the flashed v11 DTB (phandle lines stripped): `gpi_dma1` disabled -> okay, `i2c@a90000`
+okay -> disabled, `spi@a90000` disabled -> okay + the touch node (`interrupts = <0x19 0x08>` = gpio25 LEVEL_LOW,
+10 MHz), `ldo12` / `ldo16` with the right microvolts and `regulator-always-on`, `ts-int-default-state`;
+nothing else semantic changed. Kernel and PCIe fix identical to r5.
+
+Phone-side tooling (all new, PC-tested per rule 3):
+
+- `scripts/spi-xfer.c` (+ `build-spi-xfer.sh`, `bin/spi-xfer-aarch64`): freestanding static helper, one SPI
+  message per item through `/dev/spidevB.C`. `test-spi-xfer.sh`: 27 checks incl. struct size and ioctl numbers
+  against the real kernel header; the real transfer can only be exercised on the phone.
+- `scripts/phone-touch-spi-probe.sh`: loads `gpi`, `spi_geni_qcom`, `spidev`; reports the SPI device, deferred
+  probes, rails, GPIOs, dmesg; runs read / reset / 5 polls at 1 MHz and 10 MHz and prints
+  `RESULT hz=.. pre=.. polls=.. verdict=READY|ALLFF|ALLZERO|OTHER|SHORT|XFERERR|NODEV`.
+  `test-phone-touch-spi-probe.sh`: fake `/sys`, `/dev`, helper; bash and `bash --posix` (no dash / busybox on the
+  PC, so busybox ash is first exercised on the phone).
+- `collect-phone-state.sh <label> --touch` pushes both and writes `touch.txt` next to the usual files.
+
+Reading the verdict: READY = the chip answered the soft reset like the upstream driver expects (SE, CS, mode,
+rails all work; go to B2). ALLFF / ALLZERO = MISO stuck: no power, wrong CS framing or mode, or the chip wants
+something first. OTHER = it answers but is not "ready" (look at the raw bytes). NODEV = no `/dev/spidev*`:
+read the deferred-probe list and dmesg (GPI DMA / SE / pinctrl). XFERERR = the ioctl failed (errno in the log).
