@@ -339,6 +339,9 @@ here with their answer and source, and are also reflected in 00-overview.md.
    FTS2BA61Y answers over SPI mode 0 at 1 and 10 MHz (opcode echo, controller-ready record `49 00 10`, soft reset
    OK). spi4 probes with -517 until `gpi` loads (the gpi_dma1 dependency, confirmed). Open: the driver (B2), the
    IRQ line, the `_boe` panel firmware question. Evidence `notes/2026-10-12-v12-touch/touch.txt`.
+   **B2 prepared 2026-10-12 (docs/08 2.8):** the driver is carried as `kernel/patches/0002-...patch` (package r6, not
+   built, not flashed). Differences from the RFC include a vendor-checked bug fix (touch-type bits 1:0 live in byte 7
+   bits 7:6) and the slot count (10, not the TX channel count). Compiles clean on the PC; zero hardware evidence yet.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.

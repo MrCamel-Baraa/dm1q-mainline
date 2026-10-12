@@ -55,7 +55,7 @@ Flash boot + vendor_boot only.
 - `dmesg` needs sudo on this rootfs.
 - `evdev` is a module here; the nodes exist, so it loaded without help.
 
-## 2. Touch (Task B) — scoping, 2026-10-12 (nothing flashed yet)
+## 2. Touch (Task B) — scoping, B1 (spidev proof) and B2 (driver), 2026-10-12
 
 See docs/02 item 16 and docs/05 "Touch controller ... CORRECTION 2026-10-12" for why this is an
 STMicroelectronics FTS2BA61Y on SPI and not the Goodix on I2C.
@@ -199,3 +199,65 @@ committed.
   remaining work is purely a driver (B2) plus the interrupt wiring.
 - **Goodix alternative:** not tested again. With `i2c4` enabled every earlier boot logged `Invalid proto 1`
   (docs/05); and the SPI answer above means the SPI part is the one that is physically there.
+
+### 2.8 B2 prepared (2026-10-12): the driver as a kernel patch, package r6 -- NOT built, NOT flashed yet
+
+**What is in the repo** (all untested on hardware):
+
+- `kernel/patches/0002-Input-add-ST-FTS2BA61Y-SPI-touchscreen-driver.patch` (identical copy in the pmaports package as
+  `add-fts2ba61y-touchscreen.patch`): `drivers/input/touchscreen/fts2ba61y.c`, its Kconfig/Makefile entries and the
+  binding `st,fts2ba61y.yaml`. Port of the RFC of 2025-09-11 (`_scratch/fts2ba61y-upstream/`, not committed). A search
+  on 2026-10-12 found no v2 of the driver and no merge (only the RFC and the v1 review); that is a search result, not
+  proof -- re-check before any upstream submission.
+- Package r6: `APKBUILD` (pkgrel 6, kernel reports `#7-samsung-dm1q-mainline`, new patch in `source`, sums updated with
+  plain `sha512sum`), `config-dm1q.fragment` (`CONFIG_INPUT_TOUCHSCREEN=y`, `CONFIG_TOUCHSCREEN_FTS2BA61Y=m`),
+  and `sm8550-samsung-dm1q.dts` re-synced from `dts/dm1q/dm1q.dts` (the pmaports copy was stale: it lacked the keys of
+  v11 and the touch nodes of v12). `pmbootstrap apkbuild_parse` parses it. `pmbootstrap checksum` needs sudo
+  (chroot), so the sums are not yet confirmed by it.
+
+**Differences from the RFC** (each is a change to the posted code; the ones marked V are checked against Samsung's
+`stm_spi` driver in `_scratch/samsung-stm-spi/`, the rest follow the v1 review and normal kernel practice):
+
+- V: the touch-type low bits are event byte 7 bits 7:6 (`ttype_1_0:2` after `left_event:5` and `max_energy:1` in
+  `struct stm_ts_event_coordinate`). The RFC masked bits 1:0 -- the "events left" counter -- which would drop any touch
+  reported while more events were queued.
+- V: the slot count is the vendor's `SEC_TS_SUPPORT_TOUCH_COUNT` = 10 (`sec_input.h:361`), ids above are ignored. The
+  RFC used the TX channel count (`data[8]` of the panel info is a channel count, not a contact limit).
+- V: panel info of all zeroes / all ones -> `-ENODEV` (vendor `stm_ts_get_channel_info`). The device-id read (`0x22`,
+  5 bytes) is logged too; both go through `C0 <cmd>` then `D1 00 00` with 4 reply bytes dropped (vendor `stm_ts_spi_read`).
+- V: `0x87` event read, 16-byte records, level-low interrupt (vendor `IRQF_TRIGGER_LOW`); here the trigger comes from the
+  DT (`IRQ_TYPE_LEVEL_LOW`, already in `dm1q.dts`).
+- No per-call `kmalloc`: two DMA-aligned bounce buffers in the driver data; one mutex guards them (shared buffers, so it
+  is not redundant). Regulators are released when probe fails after enabling them. The interrupt is requested last
+  (the RFC called `disable_irq()` on a line it had not requested). One `input_sync()` per interrupt. Palm is reported as
+  `MT_TOOL_PALM`. An SPI error in the handler returns `IRQ_NONE` (the spurious-IRQ guard stops a dead bus from spinning
+  a level interrupt forever).
+- Binding: example uses this board's values, `spi-peripheral-props` added; maintainers is a placeholder
+  (`dm1q-mainline@example.com`) because the archive hides the authors' addresses -- replace before upstreaming.
+
+**Checks done on the PC** (kernel 7.3-rc3 tree, config of the earlier build + `TOUCHSCREEN_FTS2BA61Y=m`): `fts2ba61y.o`
+compiles with clang `W=1` without a warning; `checkpatch --strict` clean (driver and binding); the patch passes
+`git apply --check` / `patch --dry-run` on the tree with the sec-log patch applied. **Not done:** `dt_binding_check`
+(no `dtschema` here), a full module link, and anything on the phone.
+
+**Known unknowns the first boot will answer** (all would show in dmesg as `fts2ba61y spi0.0: ...`):
+
+1. The dm1q-specific protocol assumptions are the RFC's (written for the S22 series): no reset GPIO, no firmware
+   upload, `0x30` touch-type value `0x0061`, `0x10` sense-on at `open()`. B1 proved reset + ready; nothing past that.
+2. The panel resolution the chip reports vs the display (1080x2340 expected): the driver logs
+   `id <5 bytes>, resolution WxH, N TX x M RX`. If it differs from the display, `touchscreen-size-x/y` goes into the DT.
+3. Whether the interrupt (gpio25, level low, `ts_int_default` pinctrl) fires.
+
+**Steps** (the user runs these; sudo needed only for the first):
+
+1. `pmbootstrap checksum linux-samsung-dm1q-mainline && pmbootstrap build linux-samsung-dm1q-mainline` (the build log
+   must show `add-fts2ba61y-touchscreen.patch: OK` next to the two older patches; `git diff` of the APKBUILD after the
+   checksum step should be empty).
+2. `bash scripts/make-dtb-image-set.sh --dts dts/dm1q/dm1q.dts --out ../_scratch/pmos-v13-touch-driver --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r6.apk --new-kernel`
+   (canonical DTS: `compatible = "st,fts2ba61y"`, no `regulator-always-on` -- the driver holds the rails).
+3. Flash `boot` + `vendor_boot` from TWRP (`scripts/flash-recovery.sh`), boot, then **before** anything else
+   `bash scripts/refresh-phone-modules.sh --apk <the r6 apk> --reboot` (rule 6: the kernel code changed).
+4. On the phone: `sudo dmesg | grep -i -E 'fts2ba61y|spi0'`, `cat /proc/bus/input/devices` (a `STMicroelectronics
+   FTS2BA61Y Touchscreen` entry), `grep -i -E 'fts|geni' /proc/interrupts`, then touch the screen while
+   `sudo cat /dev/input/eventN | hexdump -C` runs (N from the devices list; touch events are `type 3` abs codes
+   `0x35/0x36` = X/Y, `0x39` = tracking id, evdev records are 24 bytes).
