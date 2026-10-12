@@ -55,10 +55,81 @@ Flash boot + vendor_boot only.
 - `dmesg` needs sudo on this rootfs.
 - `evdev` is a module here; the nodes exist, so it loaded without help.
 
-## 2. Touch (Task B) — scoping notes, not started
+## 2. Touch (Task B) — scoping, 2026-10-12 (nothing flashed yet)
 
-See docs/02 item 16 and docs/05 "Touch controller ... CORRECTION 2026-10-12". Order of work:
-(1) prior-art check for FTS2BA61Y/SPI upstream and in postmarketOS; (2) `&spi4` + spidev placeholder
-to prove the SE answers; compare Samsung's SPI pins / CS (GPIO47) with mainline's `qup_spi4_*`
-groups first; (3) find the touch LDOs with the docs/05 fixup-table method; (4) driver
-(kernel change -> r6 -> `refresh-phone-modules.sh`).
+See docs/02 item 16 and docs/05 "Touch controller ... CORRECTION 2026-10-12" for why this is an
+STMicroelectronics FTS2BA61Y on SPI and not the Goodix on I2C.
+
+### 2.1 Prior art (rule 4) — a driver exists upstream-bound, it is not in 7.3-rc3
+
+- `grep -ri fts2ba61y` over `drivers/`, `Documentation/`, `arch/arm64/boot/dts` of the 7.3-rc3 tree:
+  **no hit**. `stmfts.c` there is I2C only. Kernel config: `TOUCHSCREEN_STMFTS` unset, `SPI_QCOM_GENI=m`,
+  `SPI_SPIDEV=m`, `QCOM_GPI_DMA=m`.
+- LKML, 2025-09-11: *[RFC PATCH 0/2] Input: add fts2ba61y touchscreen driver* by Eric Goncalves, upstreaming
+  a driver originally by Ivaylo Ivanov: binding `st,fts2ba61y.yaml` + `drivers/input/touchscreen/fts2ba61y.c`
+  (588 lines). The cover letter names Galaxy S22 series and Z Fold 5 as users.
+  https://lkml.iu.edu/2509.1/08064.html (patch 2/2: https://lkml.iu.edu/2509.1/08062.html)
+- v1 review by Dmitry Torokhov (13 comments: error variable naming, per-call kmalloc, redundant mutex,
+  no hardcoded IRQ polarity, regulator cleanup on init failure, ...); Eric agreed to most and promised v2.
+  https://lkml.iu.edu/hypermail/linux/kernel/2509.3/07078.html
+- DT side, 2025-10: *[PATCH v2 3/6] arm64: dts: qcom: r0q: add touchscreen support* (Galaxy S22, SM8450).
+  **Relevant risk:** on r0q the SPI bus was reported broken ("driver probes, but fails to recognize the
+  touchscreen"), the patch used `spi-gpio` as a workaround, and Konrad Dybcio asked whether `gpi_dma1` and
+  `qupv3_id_1` were enabled before the SPI node. The outcome is not visible in the archive pages I could read.
+  https://lkml.iu.edu/2510.3/04249.html, https://lkml.iu.edu/2511.0/03894.html
+- **Not found / unverified:** whether a later version (v2+) of the driver was merged or what its final
+  binding looks like. Check lore.kernel.org / linux-next before porting. A separate series, *Input: support
+  for STM FTS5* (I2C, Pixel 3, v6 2026-09), is unrelated to SPI.
+
+### 2.2 Protocol (from the v1 RFC driver, https://lkml.iu.edu/2509.1/08062.html; Samsung's driver agrees on mode)
+
+SPI mode 0, 8 bits. Supplies `vdd`, `avdd`; **no reset GPIO**, no firmware load; IRQ from DT.
+Opcodes: `0x10` sense on, `0x11` sense off, `0x23` read panel info (11 bytes), `0x30` touch type,
+`0x62` clear events, `0x87` read event, `0xC0` custom write prefix, `0xD1` custom read (+2-byte BE address),
+`0xFA` / `0xFB` register write / read. Reads discard `1 + tx_len` leading bytes (2 for `0x87`, 4 for custom
+reads). Power-up: enable supplies, wait 140 ms, write `FA 20 00 00 24 81` (undocumented soft reset), wait
+30 ms, poll `0x87` up to 5 x 20 ms until byte0 bits 5:2 == 0x2 and byte1 == 0x0 ("ready"), then read panel
+info. Events are 16 bytes: byte0 bits 7:6 action, 5:2 touch id; X = (b1 << 4) | (b3 >> 4);
+Y = (b2 << 4) | (b3 & 0xF); byte7 bits 4:0 = further pending events. **There is no device-ID read.**
+This comes from a review-stage RFC; confirm against Samsung's `stm_reg.h` / `stm_spi.c` when needed.
+
+### 2.3 Wiring of this unit (Samsung downstream DT, `dm1q_eur_openx_w00_r13.dts`)
+
+| Item | Samsung value | Mainline `sm8550.dtsi` / status |
+|---|---|---|
+| SE | `0xa90000`, SPI (protocol 1) | `spi4: spi@a90000`, pinctrl `qup_spi4_data_clk` + `qup_spi4_cs` |
+| MISO / MOSI / CLK | `spi_miso/mosi/clk_tsp_*`: gpio44 / gpio45 / gpio46, `qup1_se4_l0/l1/l2`, drive 6, bias-disable | `qup_spi4_data_clk`: gpio44-46, `qup1_se4`, drive 6, bias-disable: **same pins** |
+| CS | `sec,gpio_spi_cs` = GPIO47 | `qup_spi4_cs`: gpio47, `qup1_se4`, drive 6: **same pin** |
+| IRQ | `sec,irq_gpio` = GPIO25 (`tsp_int_*`, drive 2, bias-disable) | same pin the Goodix node used |
+| Speed / mode | `spi-max-frequency` 10 MHz; `SPI_MODE_0` | - |
+| IO rail | `tsp_io_ldo` = `pm_humu_l12`; overlay fragment@40: 1,800,000 uV, boot-on | L12B (humu = PM8550B, docs/05); not defined in `dm1q.dts` yet |
+| AVDD rail | `tsp_avdd_ldo` = `pm_humu_l16`; overlay fragment@43: 3,000,000 uV, boot-on | L16B; not defined in `dm1q.dts` yet |
+| Firmware | `tsp_stm/fts2ba61y_dm1q_boe.bin`, `..._dm1q.bin` (not on the PC) | upstream RFC driver loads none |
+
+Samsung's driver additionally drives GPIO47 as a plain output around every `spi_sync()` (`stm_spi.c`
+`gpio_direction_output(gpio_spi_cs, 0/1)`). Inference (not tested): a hint that the chip wants CS framed
+around whole transactions; mainline's GENI driver asserts CS per message, so a two-transfer sequence must be
+sent as ONE `spi_message`.
+
+### 2.4 Blockers found in the repo (evidence: decompiled `_scratch/pmos-v11-keys/sm8550-samsung-dm1q.dtb`)
+
+1. `spi@a90000` is `disabled`; `i2c@a90000` (the Goodix reading) is `okay` on the same SE — only one can be on.
+2. `dma-controller@a00000` (`gpi_dma1`, which `spi4`'s `dmas` point at) is **`disabled`**; `geniqup@ac0000` is okay.
+   This is exactly Konrad's question on the r0q thread, and a plausible cause of an SPI that probes but is dead.
+3. `regulators-0` (PM8550B) defines only ldo5 / ldo15 / ldo17: **L12B and L16B do not exist** as regulators.
+4. No driver (2.1).
+
+### 2.5 Plan
+
+- **B1, DT-only (no kernel build, no module refresh):** canonical `dm1q.dts`: enable `&gpi_dma1`, replace
+  `&i2c4`/Goodix by `&spi4` + `touchscreen@0 { compatible = "st,fts2ba61y" ... }` (unverified binding, as in
+  the RFC), add `ldo12` 1.8 V and `ldo16` 3.0 V to `regulators-0`. Test image in `_scratch` only (rule 5):
+  the same plus `compatible = "rohm,dh2228fv"` so `spidev` binds, and `regulator-always-on` on both rails
+  (nothing consumes them until a driver exists, and the regulator core would switch them off). On the phone:
+  load `spi-geni-qcom` / `spidev`, send the reset + `0x87` read as ONE message, expect the ready event.
+  Pass = the SE answers and the chip reports ready; fail modes (all `0x00` / all `0xFF`, no `/dev/spidev*`,
+  probe deferred) say which of rails / CS / GPI-DMA to look at next.
+- **B2:** port the upstream FTS2BA61Y driver (latest posted version) as a kernel patch -> r6 build (user's
+  sudo) -> `scripts/refresh-phone-modules.sh` (rule 6). Try without a firmware blob first.
+- Open: IRQ polarity / type for GPIO25 on this chip (RFC used level-low, then moved to DT); whether the
+  panel variant (`_boe` firmware) matters.

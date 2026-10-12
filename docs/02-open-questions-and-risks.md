@@ -328,8 +328,13 @@ here with their answer and source, and are also reflected in 00-overview.md.
    `pon_pwrkey`, `pon_resin` (KEY_VOLUMEDOWN) and a `gpio-keys` volume-up on `pm8550_gpios` 6; image set
    `_scratch/pmos-v11-keys/` built and verified against the r5 reference (only those nodes differ).
    **KEYS CONFIRMED ON HARDWARE 2026-10-12 (v11-keys):** three input devices, one correct event per key
-   (volume up 115, power 116, volume down 114). Evidence `notes/2026-10-12-v11-keys/`. Touch: still
-   scoping (docs/08 section 2).
+   (volume up 115, power 116, volume down 114). Evidence `notes/2026-10-12-v11-keys/`.
+   **Touch scoping 2026-10-12 (docs/08 section 2):** an FTS2BA61Y/SPI driver exists upstream-bound (Eric
+   Goncalves' RFC, 2025-09; not in 7.3-rc3, final status unverified). Samsung's SPI pins/CS match mainline's
+   `spi4` groups exactly (gpio44-47). Supplies: `tsp_io_ldo` = L12B 1.8 V, `tsp_avdd_ldo` = L16B 3.0 V (neither
+   defined in `dm1q.dts` yet). Found in the compiled DTB: `gpi_dma1` is disabled (spi4's `dmas` target; the
+   r0q SPI-dead-on-probe thread asked exactly that). Plan: DT-only spidev proof first (B1), then port the driver
+   (B2, r6). Nothing flashed yet.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.
