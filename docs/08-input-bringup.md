@@ -135,7 +135,7 @@ sent as ONE `spi_message`.
 - Open: IRQ polarity / type for GPIO25 on this chip (RFC used level-low, then moved to DT); whether the
   panel variant (`_boe` firmware) matters.
 
-### 2.6 B1 as prepared (2026-10-12; hardware result PENDING)
+### 2.6 B1 as prepared (2026-10-12) -- result in 2.7: PASS
 
 Canonical `dts/dm1q/dm1q.dts` now: `&gpi_dma1` okay; `&i2c4` (Goodix) kept but `status = "disabled"`;
 `&spi4` okay with `touchscreen@0 { compatible = "st,fts2ba61y"; spi-max-frequency = 10 MHz;
@@ -168,3 +168,34 @@ Reading the verdict: READY = the chip answered the soft reset like the upstream 
 rails all work; go to B2). ALLFF / ALLZERO = MISO stuck: no power, wrong CS framing or mode, or the chip wants
 something first. OTHER = it answers but is not "ready" (look at the raw bytes). NODEV = no `/dev/spidev*`:
 read the deferred-probe list and dmesg (GPI DMA / SE / pinctrl). XFERERR = the ioctl failed (errno in the log).
+
+### 2.7 B1 result, 2026-10-12: PASS -- the FTS2BA61Y answers over SPI on the mainline kernel
+
+Evidence: `notes/2026-10-12-v12-touch/touch.txt` (v12-touch image, r5 kernel #6, `collect-phone-state.sh v12-touch
+--touch`). The other files of that collection (dmesg, journal, WLAN probe) contain MACs / SSID and are NOT
+committed.
+
+- **Probe order shows the gpi_dma1 dependency:** `probe of a90000.spi with driver geni_spi returned 517`
+  (EPROBE_DEFER) at 7.3587 s, right after `a00000.dma-controller` (gpi) probed; the retry succeeds at 7.454 s
+  (`returned 0`), then `spi0.0` binds `spidev` and `/dev/spidev0.0` appears. With `gpi_dma1` disabled (the
+  v11 DTB) the SPI controller could never have probed. No `Invalid proto` anywhere (i2c4 is off).
+- **Rails:** `vreg_l12b_1p8` 1800 mV and `vreg_l16b_3p0` 3000 mV registered, enabled (use count 1, always-on from
+  the scratch override).
+- **The chip talks, at both 1 MHz and 10 MHz, mode 0, native CS, ONE message per step.** Read event (`87` + 17 zeros)
+  returns `00 87 | 49 00 10 00 ...`: byte 1 echoes the opcode (the "1 + tx_len leading bytes" header of the RFC
+  driver), the 16-byte record starts after it. `0x49` = status type 2 (bits 5:2), event id 1, byte1 = 0 -> the
+  upstream driver's "ready" test passes. The soft reset `FA 20 00 00 24 81` came back as `00 fa 20 00 00 24`
+  (the MISO line shifting the TX bytes one byte late: a live chip, not a floating line).
+  - 1 MHz run: the record was already pending BEFORE the reset (`pre=READY`: the chip had come up with an unread
+    ready event), the reset produced a fresh one on the first poll, polls 2-5 returned all zeros (queue empty).
+  - 10 MHz run (second): pre-read all zeros (the 1 MHz run drained the queue), the reset again produced the same
+    `49 00 10` record on the first poll.
+  - Reading: `49 00 10 ...` is the chip's "controller ready" record (the `0x10` there matches the FTS family's
+    controller-ready event code -- inference from the family, not from this chip's documentation).
+- **Not yet seen:** panel info (`0x23`), touch events, the interrupt line (gpio25 is not requested by anything
+  in this image, so `/sys/kernel/debug/gpio` has no line for it), firmware version. No firmware blob was loaded:
+  the chip's own flash firmware runs.
+- **Conclusion:** SE a90000 as SPI, its pins, CS framing, the two rails and `gpi_dma1` are all correct. The
+  remaining work is purely a driver (B2) plus the interrupt wiring.
+- **Goodix alternative:** not tested again. With `i2c4` enabled every earlier boot logged `Invalid proto 1`
+  (docs/05); and the SPI answer above means the SPI part is the one that is physically there.

@@ -334,7 +334,11 @@ here with their answer and source, and are also reflected in 00-overview.md.
    `spi4` groups exactly (gpio44-47). Supplies: `tsp_io_ldo` = L12B 1.8 V, `tsp_avdd_ldo` = L16B 3.0 V (neither
    defined in `dm1q.dts` yet). Found in the compiled DTB: `gpi_dma1` is disabled (spi4's `dmas` target; the
    r0q SPI-dead-on-probe thread asked exactly that). Plan: DT-only spidev proof first (B1), then port the driver
-   (B2, r6). Nothing flashed yet.
+   (B2, r6).
+   **B1 PASSED on hardware 2026-10-12 (v12-touch, docs/08 2.7):** with `gpi_dma1` on, spi4 on, L12B/L16B up, the
+   FTS2BA61Y answers over SPI mode 0 at 1 and 10 MHz (opcode echo, controller-ready record `49 00 10`, soft reset
+   OK). spi4 probes with -517 until `gpi` loads (the gpi_dma1 dependency, confirmed). Open: the driver (B2), the
+   IRQ line, the `_boe` panel firmware question. Evidence `notes/2026-10-12-v12-touch/touch.txt`.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.

@@ -1,0 +1,135 @@
+
+== kernel
+Linux samsung-dm1q 7.3.0-rc3 #6-samsung-dm1q-mainline SMP PREEMPT Sun Oct 11 04:04:29 UTC 202 aarch64 Linux
+Mon Oct 12 08:06:14 GMT 2026
+
+== modules
+modprobe gpi rc=0 
+modprobe spi_geni_qcom rc=0 
+modprobe spidev rc=0 
+
+== spi devices
+spi0.0: driver=spidev modalias=spi:dh2228fv
+crw-------    1 root     root      153,   0 Jan  2  1970 /dev/spidev0.0
+-- spi masters
+spi0 -> /sys/devices/platform/soc@0/ac0000.geniqup/a90000.spi/spi_master/spi0
+-- deferred probes
+6d44000.codec	va_macro: unable to get macro clock
+6aa0000.codec	platform: supplier 6d44000.codec not ready
+6b00000.codec	platform: supplier 6d44000.codec not ready
+6e80000.pinctrl	
+6ac0000.codec	platform: supplier 6d44000.codec not ready
+6ae0000.codec	platform: supplier 6d44000.codec not ready
+-- touch rails
+    vreg_l12b_1p8                 1    0      0  normal  1800mV     0mA  1800mV  1800mV 
+    vreg_l16b_3p0                 1    0      0  normal  3000mV     0mA  3000mV  3000mV 
+-- gpios (25 = touch irq, 44-47 = spi4 miso/mosi/clk/cs)
+-- dmesg (spi / geni / gpi / touch)
+[    0.140880] initcall brcmstb_qspi_driver_init+0x0/0x44 returned 0 after 28 usecs
+[    0.140882] calling  cqspi_platform_driver_init+0x0/0x44 @ 1
+[    0.140932] initcall cqspi_platform_driver_init+0x0/0x44 returned 0 after 48 usecs
+[    0.140934] calling  fsl_dspi_driver_init+0x0/0x44 @ 1
+[    0.140981] initcall fsl_dspi_driver_init+0x0/0x44 returned 0 after 45 usecs
+[    0.140983] calling  fsl_lpspi_driver_init+0x0/0x44 @ 1
+[    0.141013] initcall fsl_lpspi_driver_init+0x0/0x44 returned 0 after 28 usecs
+[    0.141015] calling  fsl_qspi_driver_init+0x0/0x44 @ 1
+[    0.141056] initcall fsl_qspi_driver_init+0x0/0x44 returned 0 after 38 usecs
+[    0.141058] calling  mtk_spi_driver_init+0x0/0x44 @ 1
+[    0.141110] initcall mtk_spi_driver_init+0x0/0x44 returned 0 after 50 usecs
+[    0.141112] calling  nxp_fspi_driver_init+0x0/0x44 @ 1
+[    0.141151] initcall nxp_fspi_driver_init+0x0/0x44 returned 0 after 37 usecs
+[    0.141153] calling  orion_spi_driver_init+0x0/0x44 @ 1
+[    0.141191] initcall orion_spi_driver_init+0x0/0x44 returned 0 after 36 usecs
+[    0.141193] calling  spi_qup_driver_init+0x0/0x44 @ 1
+[    0.141228] initcall spi_qup_driver_init+0x0/0x44 returned 0 after 33 usecs
+[    0.141230] calling  rockchip_spi_driver_init+0x0/0x44 @ 1
+[    0.141280] initcall rockchip_spi_driver_init+0x0/0x44 returned 0 after 48 usecs
+[    0.141282] calling  s3c64xx_spi_driver_init+0x0/0x44 @ 1
+[    0.141327] initcall s3c64xx_spi_driver_init+0x0/0x44 returned 0 after 43 usecs
+[    0.141329] calling  sun6i_spi_driver_init+0x0/0x44 @ 1
+[    0.141364] initcall sun6i_spi_driver_init+0x0/0x44 returned 0 after 32 usecs
+[    0.146385] probe of c400000.spmi:pmic@1:gpio@8800 with driver qcom-spmi-gpio returned 0 after 1483 usecs
+[    0.170706] probe of c400000.spmi:pmic@5:gpio@8800 with driver qcom-spmi-gpio returned 0 after 1121 usecs
+[    0.173012] probe of c400000.spmi:pmic@0:gpio@b800 with driver qcom-spmi-gpio returned 0 after 809 usecs
+[    0.183996] calling  geni_i2c_driver_init+0x0/0x44 @ 1
+[    0.184039] initcall geni_i2c_driver_init+0x0/0x44 returned 0 after 40 usecs
+[    0.184531] calling  gpio_poweroff_driver_init+0x0/0x44 @ 1
+[    0.184562] initcall gpio_poweroff_driver_init+0x0/0x44 returned 0 after 29 usecs
+[    0.184564] calling  gpio_restart_driver_init+0x0/0x44 @ 1
+[    0.184595] initcall gpio_restart_driver_init+0x0/0x44 returned 0 after 29 usecs
+[    0.192552] calling  mmc_spi_driver_init+0x0/0x3c @ 1
+[    0.192560] initcall mmc_spi_driver_init+0x0/0x3c returned 0 after 5 usecs
+[    0.201194] calling  cros_ec_driver_spi_init+0x0/0x3c @ 1
+[    0.201203] initcall cros_ec_driver_spi_init+0x0/0x3c returned 0 after 6 usecs
+[    0.232889] calling  rqspinlock_register_kfuncs+0x0/0x34 @ 1
+[    0.232908] initcall rqspinlock_register_kfuncs+0x0/0x34 returned 0 after 11 usecs
+[    0.260305] probe of ac0000.geniqup with driver geni_se_qup returned -517 after 6 usecs
+[    0.290449] platform ac0000.geniqup: Adding to iommu group 1
+[    0.298900] geni_i2c a98000.i2c: Bus frequency not specified, default to 100kHz.
+[    0.303997] probe of a98000.i2c with driver geni_i2c returned 0 after 5293 usecs
+[    0.309165] probe of a9c000.serial with driver qcom_geni_serial returned 0 after 4882 usecs
+[    0.309260] probe of ac0000.geniqup with driver geni_se_qup returned 0 after 11312 usecs
+[    0.440146] calling  gpio_keys_init+0x0/0x44 @ 1
+[    0.440695] input: gpio-keys as /devices/platform/gpio-keys/input/input0
+[    0.440746] probe of gpio-keys with driver gpio-keys returned 0 after 492 usecs
+[    0.440813] initcall gpio_keys_init+0x0/0x44 returned 0 after 659 usecs
+[    0.441184] calling  acpi_gpio_handle_deferred_request_irqs+0x0/0x68 @ 1
+[    0.441187] initcall acpi_gpio_handle_deferred_request_irqs+0x0/0x68 returned 0 after 0 usecs
+[    7.357693] calling  init_module+0x0/0xfd8 [spi_geni_qcom] @ 1368
+[    7.358142] calling  init_module+0x0/0xfd8 [gpi] @ 1063
+[    7.358592] probe of a00000.dma-controller with driver gpi returned 0 after 375 usecs
+[    7.358726] probe of a90000.spi with driver geni_spi returned 517 after 906 usecs
+[    7.358830] initcall init_module+0x0/0xfd8 [gpi] returned 0 after 681 usecs
+[    7.358848] initcall init_module+0x0/0xfd8 [spi_geni_qcom] returned 0 after 699 usecs
+[    7.454392] probe of a90000.spi with driver geni_spi returned 0 after 90849 usecs
+[    7.570834] calling  init_module+0x0/0xfa8 [spidev] @ 1367
+[    7.571987] probe of spi0.0 with driver spidev returned 0 after 1082 usecs
+[    7.572007] initcall init_module+0x0/0xfa8 [spidev] returned 0 after 1161 usecs
+
+== sequence on /dev/spidev0.0 at 1000000 Hz
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 49 00 10 00 00 00 00 00 00 00 00 00 00 00 00 00
+TX fa 20 00 00 24 81
+RX 00 fa 20 00 00 24
+SLEEP 30
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 49 00 10 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+spi-xfer rc=0
+RESULT hz=1000000 pre=READY polls=READY,OTHER,OTHER,OTHER,OTHER verdict=READY
+
+== sequence on /dev/spidev0.0 at 10000000 Hz
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+TX fa 20 00 00 24 81
+RX 00 fa 20 00 00 24
+SLEEP 30
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 49 00 10 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+SLEEP 20
+TX 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+RX 00 87 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+spi-xfer rc=0
+RESULT hz=10000000 pre=OTHER polls=READY,OTHER,OTHER,OTHER,OTHER verdict=READY
+
+== gpios after the sequences
