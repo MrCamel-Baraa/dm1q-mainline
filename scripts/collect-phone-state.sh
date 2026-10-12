@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -22,6 +22,9 @@
 #                probe, the register sampler in idle mode (chip in PBL, nobody talking to it) and then in
 #                load mode (a clean ath11k attempt), and collect everything. The blacklist file is removed
 #                again right after the reboot, so later boots are normal.
+#   --touch      also run scripts/phone-touch-spi-probe.sh (docs/08 step B1: needs the spidev test image; loads
+#                gpi / spi_geni_qcom / spidev, talks the FTS2BA61Y protocol over /dev/spidev*, adds touch.txt). It uses
+#                the static helper scripts/bin/spi-xfer-aarch64 (build once with `bash scripts/build-spi-xfer.sh`).
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -29,7 +32,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -37,6 +40,7 @@ for a in "$@"; do
 	--regdump) REGDUMP=load ;;
 	--regdump=idle|--regdump=load|--regdump=reload) REGDUMP="${a#--regdump=}" ;;
 	--fresh) FRESH=1 ;;
+	--touch) TOUCH=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -50,6 +54,10 @@ MMIO_BIN="$REPO/scripts/bin/mmio-read-aarch64"
 if [ "$FRESH" = 1 ] || [ -n "$REGDUMP" ]; then
 	[ -f "$MMIO_BIN" ] || { echo "no $MMIO_BIN -- run: bash scripts/build-mmio-read.sh   (needs clang + lld)"; exit 1; }
 fi
+SPI_BIN="$REPO/scripts/bin/spi-xfer-aarch64"
+if [ "$TOUCH" = 1 ]; then
+	[ -f "$SPI_BIN" ] || { echo "no $SPI_BIN -- run: bash scripts/build-spi-xfer.sh   (needs clang + lld)"; exit 1; }
+fi
 DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
 CP="/tmp/dm1q-ssh-$$"
 SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR
@@ -60,6 +68,10 @@ push_scripts() {
 	scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-wlan-probe.sh" "$REPO/scripts/phone-ath11k-reload.sh" "$REPO/scripts/phone-mhi-regdump.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the scripts failed"; exit 1; }
 	if [ -f "$MMIO_BIN" ]; then
 		scp "${SSH_OPTS[@]}" -q "$MMIO_BIN" "$PUSER@$PHONE:/tmp/mmio-read" || { echo "scp of the MMIO helper failed"; exit 1; }
+	fi
+	if [ "$TOUCH" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-touch-spi-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the touch probe failed"; exit 1; }
+		scp "${SSH_OPTS[@]}" -q "$SPI_BIN" "$PUSER@$PHONE:/tmp/spi-xfer" || { echo "scp of the SPI helper failed"; exit 1; }
 	fi
 }
 wait_up() {
@@ -107,7 +119,7 @@ if [ "$FRESH" = 1 ]; then
 fi
 
 BODY='rm -f /etc/modprobe.d/zz-dm1q-test.conf
-chmod +x /tmp/mmio-read 2>/dev/null
+chmod +x /tmp/mmio-read /tmp/spi-xfer 2>/dev/null
 rm -rf /tmp/dm1q-collect; mkdir -p /tmp/dm1q-collect
 mount | grep -q /sys/kernel/debug || mount -t debugfs none /sys/kernel/debug'
 if [ "$FRESH" = 1 ]; then
@@ -118,6 +130,10 @@ sh /tmp/phone-mhi-regdump.sh load 2>&1 | tee /tmp/dm1q-collect/regdump-load.txt"
 elif [ -n "$REGDUMP" ]; then
 	BODY="$BODY
 sh /tmp/phone-mhi-regdump.sh $REGDUMP 2>&1 | tee /tmp/dm1q-collect/regdump.txt"
+fi
+if [ "$TOUCH" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-touch-spi-probe.sh 2>&1 | tee /tmp/dm1q-collect/touch.txt"
 fi
 BODY="$BODY
 sh /tmp/phone-wlan-probe.sh 2>&1 | tee /tmp/dm1q-collect/probe.txt
@@ -137,6 +153,7 @@ ls -la /tmp/dm1q-collect"
 RMSG=""
 [ "$RELOAD" = 1 ] && RMSG="; the reload step takes ~30 s"
 [ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
+[ "$TOUCH" = 1 ] && RMSG="$RMSG; the touch probe takes ~10 s"
 [ "$FRESH" = 1 ] && RMSG="; the idle + load steps take ~1.5 min"
 echo "== collecting on the phone (sudo asks for the password once$RMSG) =="
 # everything shown is also kept in session.log, so a hang on the phone does not lose the partial output
@@ -144,7 +161,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
