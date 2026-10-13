@@ -200,7 +200,7 @@ committed.
 - **Goodix alternative:** not tested again. With `i2c4` enabled every earlier boot logged `Invalid proto 1`
   (docs/05); and the SPI answer above means the SPI part is the one that is physically there.
 
-### 2.8 B2 prepared (2026-10-12): the driver as a kernel patch, package r6 -- NOT built, NOT flashed yet
+### 2.8 B2 prepared (2026-10-12): the driver as a kernel patch, package r6 -- result in 2.9: PASS
 
 **What is in the repo** (all untested on hardware):
 
@@ -261,3 +261,36 @@ compiles with clang `W=1` without a warning; `checkpatch --strict` clean (driver
    FTS2BA61Y Touchscreen` entry), `grep -i -E 'fts|geni' /proc/interrupts`, then touch the screen while
    `sudo cat /dev/input/eventN | hexdump -C` runs (N from the devices list; touch events are `type 3` abs codes
    `0x35/0x36` = X/Y, `0x39` = tracking id, evdev records are 24 bytes).
+
+### 2.9 B2 result, 2026-10-13: PASS -- touch works on the mainline kernel (r6 + canonical DTS)
+
+Evidence: `notes/2026-10-13-v13-touch-driver/touch-driver.txt` (pasted by the user; the decode of the raw evdev dump is
+mine). Built and flashed by the user following the steps of 2.8 (r6 kernel, canonical DTB, module tree refreshed); the
+paste does not show `uname -a`, the image-set name or the refresh output; that the r6 kernel and its module tree
+are what ran is inferred from `fts2ba61y` loading as a module and probing.
+
+- **Probe:** `fts2ba61y spi0.0: id 53 54 40 36 01, resolution 4095x4095, 16 TX x 34 RX channels`, then
+  `input: STMicroelectronics FTS2BA61Y Touchscreen ... input3` and `probe of spi0.0 ... returned 0 after 182868 usecs`
+  (140 ms supply wait + 30 ms reset wait + reads). The canonical DTS has no `regulator-always-on` on the two rails; the
+  driver enables them itself (`regulator_summary` was not collected this time, so the rails' state is not shown).
+- **Input device:** `/proc/bus/input/devices` lists it on `event3` (Bus 0x1c = SPI), `PROP=2` (direct), `BTN_TOUCH` and the
+  multitouch ABS set.
+- **Interrupt:** `178: 205 ... msmgpio 25 Level fts2ba61y` -- gpio25 as a level interrupt (the DT's `IRQ_TYPE_LEVEL_LOW`)
+  fired 205 times by the time of the capture.
+- **Events** (one touch, decoded): `BTN_TOUCH 1` + tracking id 3 + `MT_X 2040` / `MT_Y 1991` + major 15 / minor 8 +
+  pressure 17, then moves (x 2039, 2036 / y 1992, 1994), reports ~8 ms apart, then `tracking id -1` + `BTN_TOUCH 0`: press,
+  move and release all work through the driver's slot handling. The ~8 ms spacing is ~120 Hz; Samsung's DT has
+  `sync-reportrate-120` (the match is an inference, nothing else was measured).
+- **Coordinate space:** the chip reports 4095x4095, and Samsung's DT says `sec,max_coords = <0x1000 0x1000>`
+  (`dm1q_eur_openx_w00_r13.dts`, touchscreen@0 of `fragment@68`): a normalized 4096x4096 space, not the 1080x2340 of the
+  display. The input device advertises 0..4095 on both axes and a compositor / libinput scales that to the output, so
+  the DT needs no `touchscreen-size-x/y`. Not yet checked: axis orientation and inversion (the single touch above sits near
+  the middle of the range; where the finger was is not recorded).
+- **Chip id bytes** `53 54 40 36 01` are `'S' 'T'` and a 24-bit id `0x403601` (the vendor driver builds `chip_id` from
+  bytes 2..4); what that id maps to was not looked up.
+- **Not yet verified:** the four corners / orientation, two or more fingers, palm rejection, the pressure range, sensing off
+  at `close()`, suspend / resume (no display driver yet, so nothing turns the panel off), the `_boe` panel variant (the
+  chip runs the firmware in its own flash; none was loaded), behaviour over hours. The Goodix-on-I2C variant is not tested
+  and cannot be on this unit: the SE is SPI and every earlier boot with `i2c4` on logged `Invalid proto 1` (2.7).
+- **Next:** a corner test (touch top-left, top-right, bottom-right, bottom-left in turn with `cat | hexdump` running) to
+  fix orientation, then multi-touch; both need nothing but the same image.

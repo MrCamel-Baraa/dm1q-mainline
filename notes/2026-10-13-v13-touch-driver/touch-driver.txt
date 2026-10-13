@@ -1,0 +1,68 @@
+Touch driver (fts2ba61y, kernel package r6, canonical dm1q.dts) on hardware -- pasted by the user from the phone,
+2026-10-13 early morning. Nothing in here is a MAC / SSID / serial. The raw `hexdump -C` of /dev/input/event3 (58 lines,
+928 bytes = 38 whole 24-byte evdev records + 16 bytes of a cut-off one, ^C) is not repeated; its decode is at the end.
+
+samsung-dm1q:~$ sudo dmesg | grep -i -E 'fts2ba61y|spi0'
+[    7.480680] calling  init_module+0x0/0xfd8 [fts2ba61y] @ 1058
+[    7.662942] fts2ba61y spi0.0: id 53 54 40 36 01, resolution 4095x4095, 16 TX x 34 RX channels
+[    7.663087] input: STMicroelectronics FTS2BA61Y Touchscreen as /devices/platform/soc@0/ac0000.geniqup/a90000.spi/spi_master/spi0/spi0.0/input/input3
+[    7.663573] probe of spi0.0 with driver fts2ba61y returned 0 after 182868 usecs
+[    7.663618] initcall init_module+0x0/0xfd8 [fts2ba61y] returned 0 after 182928 usecs
+
+samsung-dm1q:~$ cat /proc/bus/input/devices      (the touchscreen entry; gpio-keys, pmic_pwrkey, pmic_resin as in v11)
+I: Bus=001c Vendor=0000 Product=0000 Version=0000
+N: Name="STMicroelectronics FTS2BA61Y Touchscreen"
+P: Phys=
+S: Sysfs=/devices/platform/soc@0/ac0000.geniqup/a90000.spi/spi_master/spi0/spi0.0/input/input3
+U: Uniq=
+H: Handlers=event3 
+B: PROP=2
+B: EV=b
+B: KEY=400 0 0 0 0 0
+B: ABS=6e3800001000003
+
+samsung-dm1q:~$ grep -i -E 'fts|geni' /proc/interrupts
+ 129:  0 0 0 0 0 0 0 0  GICv3      611 Level     qcom_geni_serial_uart0
+ 178:  205 0 0 0 0 0 0 0  msmgpio    25 Level     fts2ba61y
+
+samsung-dm1q:~$ sudo cat /dev/input/event3 | hexdump -C      (one touch-and-release; decoded by the assistant with a
+                                                              24-byte struct input_event parser, little endian)
+1791831256.965309 type=3 code=0x39 MT_TRACKING_ID  3
+1791831256.965309 type=3 code=0x35 MT_X            2040
+1791831256.965309 type=3 code=0x36 MT_Y            1991
+1791831256.965309 type=3 code=0x30 MT_TOUCH_MAJOR  15
+1791831256.965309 type=3 code=0x31 MT_TOUCH_MINOR  8
+1791831256.965309 type=3 code=0x3a MT_PRESSURE     17
+1791831256.965309 type=1 code=0x14a BTN_TOUCH       1
+1791831256.965309 type=3 code=0x00 ABS_X           2040
+1791831256.965309 type=3 code=0x01 ABS_Y           1991
+1791831256.965309 type=3 code=0x18 ABS_PRESSURE    17
+1791831256.965309 type=0 code=0x00 SYN_REPORT      0
+1791831256.982647 type=3 code=0x30 MT_TOUCH_MAJOR  17
+1791831256.982647 type=3 code=0x31 MT_TOUCH_MINOR  9
+1791831256.982647 type=0 code=0x00 SYN_REPORT      0
+1791831256.990954 type=3 code=0x3a MT_PRESSURE     18
+1791831256.990954 type=3 code=0x18 ABS_PRESSURE    18
+1791831256.990954 type=0 code=0x00 SYN_REPORT      0
+1791831256.999344 type=3 code=0x35 MT_X            2039
+1791831256.999344 type=3 code=0x36 MT_Y            1992
+1791831256.999344 type=3 code=0x30 MT_TOUCH_MAJOR  14
+1791831256.999344 type=3 code=0x31 MT_TOUCH_MINOR  10
+1791831256.999344 type=3 code=0x3a MT_PRESSURE     17
+1791831256.999344 type=3 code=0x00 ABS_X           2039
+1791831256.999344 type=3 code=0x01 ABS_Y           1992
+1791831256.999344 type=3 code=0x18 ABS_PRESSURE    17
+1791831256.999344 type=0 code=0x00 SYN_REPORT      0
+1791831257.007653 type=3 code=0x35 MT_X            2036
+1791831257.007653 type=3 code=0x36 MT_Y            1994
+1791831257.007653 type=3 code=0x30 MT_TOUCH_MAJOR  5
+1791831257.007653 type=3 code=0x31 MT_TOUCH_MINOR  4
+1791831257.007653 type=3 code=0x3a MT_PRESSURE     10
+1791831257.007653 type=3 code=0x00 ABS_X           2036
+1791831257.007653 type=3 code=0x01 ABS_Y           1994
+1791831257.007653 type=3 code=0x18 ABS_PRESSURE    10
+1791831257.007653 type=0 code=0x00 SYN_REPORT      0
+1791831257.015532 type=3 code=0x39 MT_TRACKING_ID  -1
+1791831257.015532 type=1 code=0x14a BTN_TOUCH       0
+1791831257.015532 type=3 code=0x18 ABS_PRESSURE    0
+(then 16 bytes of the next record, cut off by ^C: its type/code/value are not in the paste)

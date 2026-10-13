@@ -341,7 +341,11 @@ here with their answer and source, and are also reflected in 00-overview.md.
    IRQ line, the `_boe` panel firmware question. Evidence `notes/2026-10-12-v12-touch/touch.txt`.
    **B2 prepared 2026-10-12 (docs/08 2.8):** the driver is carried as `kernel/patches/0002-...patch` (package r6, not
    built, not flashed). Differences from the RFC include a vendor-checked bug fix (touch-type bits 1:0 live in byte 7
-   bits 7:6) and the slot count (10, not the TX channel count). Compiles clean on the PC; zero hardware evidence yet.
+   bits 7:6) and the slot count (10, not the TX channel count).
+   **TOUCH WORKS ON HARDWARE 2026-10-13 (docs/08 2.9, `notes/2026-10-13-v13-touch-driver/`):** r6 + canonical DTS, probe OK
+   (`resolution 4095x4095, 16 TX x 34 RX`, matches Samsung's `sec,max_coords` 4096x4096 normalized space), input device
+   `event3`, gpio25 level interrupt firing, press / move / release decoded correctly. Open: orientation (corner test),
+   multi-touch, palm, suspend/resume (needs a display driver first), `_boe` panel variant.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.
