@@ -344,8 +344,13 @@ here with their answer and source, and are also reflected in 00-overview.md.
    bits 7:6) and the slot count (10, not the TX channel count).
    **TOUCH WORKS ON HARDWARE 2026-10-13 (docs/08 2.9, `notes/2026-10-13-v13-touch-driver/`):** r6 + canonical DTS, probe OK
    (`resolution 4095x4095, 16 TX x 34 RX`, matches Samsung's `sec,max_coords` 4096x4096 normalized space), input device
-   `event3`, gpio25 level interrupt firing, press / move / release decoded correctly. Open: orientation (corner test),
-   multi-touch, palm, suspend/resume (needs a display driver first), `_boe` panel variant.
+   `event3`, gpio25 level interrupt firing, press / move / release decoded correctly. Open: multi-touch, palm,
+   suspend/resume (needs a display driver first), `_boe` panel variant.
+   **Corner test 2026-10-13 (docs/08 2.10):** orientation correct with no DT flags (X right, Y down, full 0..4095).
+   **RISK, unexplained:** one later boot had no touch (device present, probe clean, gpio25 interrupt count flat at 2
+   through a touch); re-running `refresh-phone-modules.sh` + reboot made it work and it has worked since. Candidate
+   cause (untested): chip state surviving a warm reboot; Samsung's driver sets scan mode `A0 00 01` and calibrates after
+   reset, ours does not. Next step if it recurs: docs/08 2.10.
 
 17. **ADSP/CDSP remoteprocs never start -- open.** No battery/charger data, USB-C role handling,
    audio or sensors until the ADSP boots (firmware from the vendor partitions). docs/07 15.6.

@@ -36,7 +36,8 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
   canonical DTS: `wlan0` is up (section 15; 15.12 is the module-tree pitfall of kernel rebuilds)
 - `docs/08-input-bringup.md` — input bring-up: physical keys (power / volume, DT-only,
   2026-10-12), touch (STMicroelectronics FTS2BA61Y on SPI): confirmed on hardware 2026-10-13 with
-  the driver carried as a kernel patch (package r6); orientation / multi-touch still to check
+  the driver carried as a kernel patch (package r6); orientation verified (no DT flags needed); one
+  unexplained no-touch boot, see 2.10; multi-touch still to check
 - `pmaports/` — local pmaports-style device (`device-samsung-dm1q`) and
   kernel (`linux-samsung-dm1q-mainline`) packages, structurally templated
   on the gts9uwifi reference; see docs/06 for status (unbuilt skeleton,

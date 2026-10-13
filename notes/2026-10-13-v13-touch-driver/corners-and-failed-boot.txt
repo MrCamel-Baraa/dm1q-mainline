@@ -1,0 +1,35 @@
+Touch driver (r6, canonical DTS), 2026-10-13: (A) the four-corner test, (B) a boot where touch did not work.
+Both pasted by the user. No MACs / SSID / serials.
+
+== A. Four-corner test (working boot) ==
+`sudo cat /dev/input/event3 | hexdump -C`, 9616 bytes = 400 evdev records (+16 bytes cut off by ^C). Decoded by the assistant
+(24-byte struct input_event, little endian). The user touched, in order: top-left, top-right, bottom-right, bottom-left,
+lifting the finger between touches. ABS_MT_POSITION_X / _Y per touch (first report, then the min..max of the touch):
+
+  touch  corner         first (X,Y)    X range      Y range      reports
+  0      top-left       (333, 27)      307..333     27..197      23
+  1      top-right      (3887, 133)    3847..3887   121..137     14
+  2      bottom-right   (3864, 3999)   3844..3864   3977..3999   17
+  3      bottom-left    (32, 3919)     32..125      3919..3928   9
+
+Reading: X grows to the right, Y grows downward, both across the full 0..4095 range -- no swap, no inversion. (The user
+named the corners; the decode just agrees with that order.) The extremes are not 0 / 4095 because a fingertip does not sit
+on the very edge pixel.
+
+== B. A boot where touch did not work ==
+Reported by the user: after the first reboot following the first refresh-phone-modules run the touch worked; after a
+later reboot the input device existed but touching the screen did nothing. Diagnostics taken in that state:
+
+  uname -a      -> 7.3.0-rc3 #7-samsung-dm1q-mainline (r6 kernel)
+  dmesg         -> identical to the working boot: `fts2ba61y spi0.0: id 53 54 40 36 01, resolution 4095x4095, 16 TX x 34 RX
+                   channels`, `probe of spi0.0 with driver fts2ba61y returned 0 after 183012 usecs`; no SPI, IRQ or driver error
+                   anywhere (the logs end 31.7 s after boot, so they cannot show anything from later)
+  /proc/interrupts, before touching:                 178: 2 ... msmgpio 25 Level fts2ba61y
+  `sudo timeout 10 cat /dev/input/event3 | hexdump -C` while touching: no output
+  /proc/interrupts, after the 10 s:                  178: 2 (unchanged)
+
+(In the working boot the same line read 205 at the time of the first capture.) So in the bad boot the chip never raised
+its interrupt on touch, although the input device was open (the driver sends SENSE_ON at open).
+
+Then the user re-ran `bash scripts/refresh-phone-modules.sh --apk .../linux-samsung-dm1q-mainline-7.3_rc3-r6.apk --reboot`
+and reports touch worked after that reboot and after every reboot since. Cause not established.

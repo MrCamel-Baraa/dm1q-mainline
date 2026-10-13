@@ -294,5 +294,28 @@ are what ran is inferred from `fts2ba61y` loading as a module and probing.
   at `close()`, suspend / resume (no display driver yet, so nothing turns the panel off), the `_boe` panel variant (the
   chip runs the firmware in its own flash; none was loaded), behaviour over hours. The Goodix-on-I2C variant is not tested
   and cannot be on this unit: the SE is SPI and every earlier boot with `i2c4` on logged `Invalid proto 1` (2.7).
-- **Next:** a corner test (touch top-left, top-right, bottom-right, bottom-left in turn with `cat | hexdump` running) to
-  fix orientation, then multi-touch; both need nothing but the same image.
+- **Next:** multi-touch (two fingers), then the open items above. The corner test is done, see 2.10.
+
+### 2.10 Corner test and one boot where touch did not work (2026-10-13)
+
+Evidence: `notes/2026-10-13-v13-touch-driver/corners-and-failed-boot.txt`.
+
+- **Orientation: no DT flags needed.** Touching top-left, top-right, bottom-right, bottom-left in turn gave
+  (333,27), (3887,133), (3864,3999), (32,3919): X grows to the right, Y grows downward, both over the full 0..4095
+  range. No `touchscreen-swapped-x-y` / `-inverted-x/y` required. (Corner order is the user's; the decode agrees with it.)
+- **An intermittent failure, not explained.** After the first reboot following the first `refresh-phone-modules.sh`
+  run touch worked; after a later reboot the input device existed but a touch produced nothing. In that boot dmesg was
+  identical to the working one (probe OK, same id/resolution line, no errors) and `/proc/interrupts` showed
+  `fts2ba61y` at 2 and unchanged over a 10 s touch with `cat /dev/input/event3` holding the device open (the driver
+  sends SENSE_ON on open): the chip did not raise gpio25. The user then re-ran the same `refresh-phone-modules.sh ... r6.apk
+  --reboot` and touch has worked after every reboot since. Whether that re-run or just a different reboot fixed it is
+  unknown -- one data point, no controlled test.
+- **Candidate cause, untested:** the chip keeps state across a warm reboot that the driver's soft reset does not
+  restore. Samsung's driver does more after the reset than the RFC driver: touch-function write, `C0 13` force
+  calibration and `C0 62` clear-events (each waiting for an echo event), then `A0 00 01` (scan mode MS+SS, echo-checked),
+  and only then SENSE_ON (`stm_core.c` `stm_ts_hw_init` / `stm_ts_start_device`, `stm_fn.c` `stm_ts_set_scanmode`). Our
+  driver never sets the scan mode. This is a reading of the vendor source, not something observed on the chip.
+- **If it recurs:** capture, in the bad state, `grep fts /proc/interrupts` before and after a touch with `cat
+  /dev/input/event3` running, plus `sudo dmesg | tail -n 60`; then add the vendor init sequence (and a raw-transfer
+  debugfs file so the chip can be poked without a kernel rebuild) as package r7. Not done speculatively: nothing
+  proves the sequence is the cause, and every kernel change costs a rebuild and a module refresh.
