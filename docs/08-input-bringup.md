@@ -256,7 +256,9 @@ compiles with clang `W=1` without a warning; `checkpatch --strict` clean (driver
 2. `bash scripts/make-dtb-image-set.sh --dts dts/dm1q/dm1q.dts --out ../_scratch/pmos-v13-touch-driver --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r6.apk --new-kernel`
    (canonical DTS: `compatible = "st,fts2ba61y"`, no `regulator-always-on` -- the driver holds the rails).
 3. Flash `boot` + `vendor_boot` from TWRP (`scripts/flash-recovery.sh`), boot, then **before** anything else
-   `bash scripts/refresh-phone-modules.sh --apk <the r6 apk> --reboot` (rule 6: the kernel code changed).
+   `bash scripts/refresh-phone-modules.sh --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r6.apk --reboot`
+   (rule 6: the kernel code changed; the placeholder form `<the r6 apk>` pasted literally makes the shell redirect
+   into a file named `--reboot` in the repo root -- that is where the stray empty `--reboot` file came from).
 4. On the phone: `sudo dmesg | grep -i -E 'fts2ba61y|spi0'`, `cat /proc/bus/input/devices` (a `STMicroelectronics
    FTS2BA61Y Touchscreen` entry), `grep -i -E 'fts|geni' /proc/interrupts`, then touch the screen while
    `sudo cat /dev/input/eventN | hexdump -C` runs (N from the devices list; touch events are `type 3` abs codes
