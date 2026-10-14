@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -25,6 +25,9 @@
 #   --touch      also run scripts/phone-touch-spi-probe.sh (docs/08 step B1: needs the spidev test image; loads
 #                gpi / spi_geni_qcom / spidev, talks the FTS2BA61Y protocol over /dev/spidev*, adds touch.txt). It uses
 #                the static helper scripts/bin/spi-xfer-aarch64 (build once with `bash scripts/build-spi-xfer.sh`).
+#   --display    also run scripts/phone-display-probe.sh (docs/09: read-only; running kernel config, display modules,
+#                DRM/fbdev state, platform devices and their drivers, clocks, panel rails and GPIOs, display dmesg
+#                lines; adds display.txt). No modprobe, no MMIO.
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -32,7 +35,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -41,6 +44,7 @@ for a in "$@"; do
 	--regdump=idle|--regdump=load|--regdump=reload) REGDUMP="${a#--regdump=}" ;;
 	--fresh) FRESH=1 ;;
 	--touch) TOUCH=1 ;;
+	--display) DISPLAY_PROBE=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -68,6 +72,9 @@ push_scripts() {
 	scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-wlan-probe.sh" "$REPO/scripts/phone-ath11k-reload.sh" "$REPO/scripts/phone-mhi-regdump.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the scripts failed"; exit 1; }
 	if [ -f "$MMIO_BIN" ]; then
 		scp "${SSH_OPTS[@]}" -q "$MMIO_BIN" "$PUSER@$PHONE:/tmp/mmio-read" || { echo "scp of the MMIO helper failed"; exit 1; }
+	fi
+	if [ "$DISPLAY_PROBE" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-display-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the display probe failed"; exit 1; }
 	fi
 	if [ "$TOUCH" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-touch-spi-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the touch probe failed"; exit 1; }
@@ -135,6 +142,10 @@ if [ "$TOUCH" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-touch-spi-probe.sh 2>&1 | tee /tmp/dm1q-collect/touch.txt"
 fi
+if [ "$DISPLAY_PROBE" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-display-probe.sh 2>&1 | tee /tmp/dm1q-collect/display.txt"
+fi
 BODY="$BODY
 sh /tmp/phone-wlan-probe.sh 2>&1 | tee /tmp/dm1q-collect/probe.txt
 dmesg > /tmp/dm1q-collect/dmesg.txt 2>&1
@@ -161,7 +172,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
