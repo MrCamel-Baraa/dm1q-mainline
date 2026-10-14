@@ -38,6 +38,9 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
   2026-10-12), touch (STMicroelectronics FTS2BA61Y on SPI): confirmed on hardware 2026-10-13 with
   the driver carried as a kernel patch (package r6); orientation verified (no DT flags needed); one
   unexplained no-touch boot, see 2.10; multi-touch still to check
+- `docs/09-display-bringup.md` — display bring-up (MDSS/DPU + DSI + panel): research and draft only, nothing
+  flashed (2026-10-13). This unit's panel is the Samsung S6E3FAC; its DCS init sequence, DSC parameters, rails
+  and GPIOs are recorded; draft DT nodes compile; next is a panel driver + kernel r7
 - `pmaports/` — local pmaports-style device (`device-samsung-dm1q`) and
   kernel (`linux-samsung-dm1q-mainline`) packages, structurally templated
   on the gts9uwifi reference; see docs/06 for status (unbuilt skeleton,

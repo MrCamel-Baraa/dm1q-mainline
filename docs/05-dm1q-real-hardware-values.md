@@ -292,6 +292,14 @@ and must become an `&spi4` block with the STM part (docs/02 item 16). The GPIO n
 
 ## Display panel driver — investigation status 2026-09-15 (paused, not resolved)
 
+**CORRECTION 2026-10-13: the init sequence WAS found; see docs/09.** The panel node
+`DM1_S6E3FAC_AMB606AW01` in the downstream DT carries the command scripts as upper-case properties
+(`POWER_ON_PRE_SETTING`, `DSC_SETTING`, `POWER_ON_POST_SETTING`, ...), referenced from the
+per-revision properties by `$name` (`samsung,mdss_dsi_on_tx_cmds_revA = "$POWER_ON_PRE_SETTING"`),
+which is why the searches below missed them; and the Samsung bootloader logs every DSI packet it
+sent for this unit (`notes/2026-09-28-pmos-v1-hang/last_kmsg.txt`). This unit's panel is the S6E3FAC.
+The text below is the 2026-09-15 state, kept as history; its "not in the panel DT node" statement is wrong.
+
 Obtained Samsung's real official GPL kernel source
 (opensource.samsung.com, SM-S911B) — extracted to
 `../_scratch/samsung-opensource-s911b/`. Confirmed real, substantial driver

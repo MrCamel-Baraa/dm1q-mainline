@@ -358,3 +358,13 @@ here with their answer and source, and are also reflected in 00-overview.md.
 18. **Display is still only the bootloader framebuffer (item 3b).** A mobile desktop is deliberately
    not the next step: on `simpledrm` it tests nothing about the display and there is no input.
    docs/07 15.7.
+   **UPDATE 2026-10-13 (docs/09, research only, nothing flashed):** this unit's panel is the **S6E3FAC /
+   AMB606AW01** (XBL log: DDI ID 0x810225, `Selected ... S6E3FAC_AMB606AW01_FHD_dsc_`), so item 3b's
+   dual-source question is settled for this unit (LX83118 not needed). The DCS init sequence **was found**
+   (downstream DT properties referenced by `$name`, and the bootloader's own DSI packet log; they agree) --
+   docs/05's "not found" was wrong. Link: DSI0, 4 lanes, command mode + TE (GPIO86), DSC 1.1 (2 slices
+   540x117, 8 bpp), 1080x2340@120, 951.08 Mbit/s/lane. Rails: panel_vdd3/vci/vddr = GPIO fixed regulators
+   (TLMM 21/20/187), AVDD 5.5 V (gate GPIO inferred: PM8550 gpio11), reset TLMM125. No upstream S6E3FAC
+   driver; gts9uwifi (same SoC/ABL, Samsung cmd-mode DSC panel) works on upstream msm. Draft DT nodes compile
+   (`notes/2026-10-13-display-bringup/`). Next: panel driver patch 0003 + r7 config (docs/09 sections 8-10);
+   open: AVDD gate, `DRM_MSM` =m vs =y, brightness range, IRC table byte, running r6 config.
