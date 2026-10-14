@@ -80,7 +80,7 @@ say "6a. deferred probes"
 cat "$DEBUGFS/devices_deferred" 2>/dev/null || echo "(no devices_deferred)"
 
 say "6b. clocks (display / GPU / DSI)"
-grep -E 'disp_cc|mdss|gpu_cc|byte|pclk|dsi|esc' "$DEBUGFS/clk/clk_summary" 2>/dev/null | head -60 || echo "(no clk_summary)"
+grep -E 'disp_cc|mdss|gpu_cc|byte|pclk|dsi|esc' "$DEBUGFS/clk/clk_summary" 2>/dev/null | grep -v dptx | head -80 || echo "(no clk_summary)"
 
 say "6c. regulators (panel rails, DSI/PHY supplies)"
 grep -iE 'panel|avdd|vreg_l3e|vreg_l1e|ae94000|ae95000|display' "$DEBUGFS/regulator/regulator_summary" 2>/dev/null || echo "(none)"

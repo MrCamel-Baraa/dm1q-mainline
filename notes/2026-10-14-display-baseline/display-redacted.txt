@@ -1,0 +1,140 @@
+# Live display baseline of the RUNNING r6 kernel (#7-samsung-dm1q-mainline), 2026-10-14,
+# from `collect-phone-state.sh display-baseline --display` (scripts/phone-display-probe.sh).
+# Redacted: the raw kernel command line is dropped (it carries device identifiers), the DP-TX clock
+# rows and the long dmesg are not kept. The raw capture stays uncommitted in notes/2026-10-14-display-baseline/.
+
+
+== 1. kernel
+release: 7.3.0-rc3
+cmdline: (dropped; flags below)
+cmdline has clk_ignore_unused
+cmdline has pd_ignore_unused
+cmdline has regulator_ignore_unused
+
+== 2. running kernel config (display-related)
+CONFIG_MODULE_SIG_FORMAT=y
+CONFIG_MODULE_SIG=y
+# CONFIG_MODULE_SIG_FORCE is not set
+CONFIG_MODULE_SIG_ALL=y
+CONFIG_MODULE_SIG_HASH="sha512"
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_PINCTRL_MSM=y
+CONFIG_PINCTRL_SM8550=y
+CONFIG_REGULATOR_FIXED_VOLTAGE=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_DRM_DISPLAY_HELPER=m
+CONFIG_DRM_DISPLAY_DP_HELPER=y
+CONFIG_DRM_DISPLAY_DSC_HELPER=y
+CONFIG_DRM_DISPLAY_HDCP_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_AUDIO_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_CEC_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_CEC_NOTIFIER_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_STATE_HELPER=y
+CONFIG_DRM_PANEL_BRIDGE=y
+CONFIG_DRM_MSM=m
+# CONFIG_DRM_PANEL_SAMSUNG_AMS581VF01 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_AMS639RQ08 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E88A0_AMS427AP24 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E88A0_AMS452EF01 is not set
+CONFIG_DRM_PANEL_SAMSUNG_ATNA33XC20=m
+# CONFIG_DRM_PANEL_SAMSUNG_DB7430 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_LD9040 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_LTL106HL02 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E3FA7 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D16D0 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D27A1 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D7AA0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E3FC2X01=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E3HA2 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E3HA8=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E63J0X03 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E63M0 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E8AA0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E8AA5X01_AMS561RA01=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E8FC0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_SOFEF00=m
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
+CONFIG_SM_DISPCC_8550=m
+CONFIG_SM_GCC_8550=y
+CONFIG_SM_GPUCC_8550=m
+CONFIG_ARM_SMMU=y
+CONFIG_QCOM_IOMMU=y
+CONFIG_QCOM_COMMAND_DB=y
+CONFIG_QCOM_LLCC=m
+CONFIG_QCOM_UBWC_CONFIG=m
+CONFIG_PHY_QCOM_QMP=y
+CONFIG_INTERCONNECT_QCOM_SM8550=y
+CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set
+CONFIG_MODULE_SIG_KEY="certs/signing_key.pem"
+CONFIG_MODULE_SIG_KEY_TYPE_RSA=y
+# CONFIG_MODULE_SIG_KEY_TYPE_ECDSA is not set
+
+== 3. display modules
+on disk under /lib/modules/7.3.0-rc3:
+kernel/drivers/clk/qcom/dispcc-sm8550.ko.zst
+kernel/drivers/clk/qcom/gpucc-sm8550.ko.zst
+kernel/drivers/gpu/drm/display/drm_display_helper.ko.zst
+kernel/drivers/gpu/drm/msm/msm.ko.zst
+kernel/drivers/soc/qcom/llcc-qcom.ko.zst
+loaded:
+dispcc_sm8550          45056  0
+llcc_qcom              61440  0
+gpucc_sm8550           20480  2
+
+== 4. DRM / fbdev
+card0: driver=simple-framebuffer
+card0-Unknown-1: status=connected enabled=enabled
+    mode 1080x2340
+fb0: name=simpledrmdrmfb size=1080,2340 bpp=32 stride=4320
+
+== 5. display platform devices
+ae00000.display-subsystem: absent
+ae01000.display-controller: absent
+ae94000.dsi: absent
+ae95000.phy: absent
+af00000.clock-controller: disp_cc-sm8550
+3d90000.clock-controller: gpu_cc-sm8550
+3da0000.iommu: arm-smmu
+3d00000.gpu: absent
+3d6a000.gmu: no driver
+framebuffer0: absent
+simple-framebuffer.0: absent
+
+== 6a. deferred probes
+6ae0000.codec	platform: supplier 6d44000.codec not ready
+6ac0000.codec	platform: supplier 6d44000.codec not ready
+6d44000.codec	va_macro: unable to get macro clock
+6aa0000.codec	platform: supplier 6d44000.codec not ready
+6b00000.codec	platform: supplier 6d44000.codec not ready
+6e80000.pinctrl	
+
+== 6b. clocks (display / GPU / DSI)
+(clock rows not kept; the first run's listing was all DP-TX clocks)
+== 6c. regulators (panel rails, DSI/PHY supplies)
+       spi0.0-avdd                1                                 0mA     0mV     0mV
+    vreg_l1e_0p88                 3    3      0  normal   880mV     0mA   880mV   912mV 
+    vreg_l3e_1p2                  3    3      0  normal  1200mV     0mA  1200mV  1200mV 
+
+== 6d. panel GPIO state (TLMM 20 21 86 125 187; PM8550 gpio11)
+ gpio11: in   low  normal  vin-0 pull-down 10uA              push-pull  low     atest-1 dtest-0
+ gpio20  : out high func0 2mA no pull
+ gpio21  : out high func0 2mA no pull
+ gpio86  : in  low  func1 2mA no pull
+ gpio87  : in  low  func0 2mA pull down
+ gpio108 : in  low  func0 2mA no pull
+ gpio125 : out high func0 2mA no pull
+ gpio186 : egpio
+ gpio187 : out high func0 2mA no pull
+ gpio202 : in  low  func0 2mA pull down
+
+== 6e. dmesg (display related)
+[    0.120314] calling  simpledrm_platform_driver_init+0x0/0x44 @ 1
+[    0.120566] [drm] Initialized simpledrm 1.0.0 for b8000000.framebuffer on minor 0
+[    0.137089] simple-framebuffer b8000000.framebuffer: [drm] fb0: simpledrmdrmfb frame buffer device
+[    0.137339] initcall simpledrm_platform_driver_init+0x0/0x44 returned 0 after 17022 usecs
+[    7.371295] disp_cc_mdss_mdp_clk_src: rcg didn't update its configuration.
+[    7.371398]  disp_cc_sm8550_probe+0x1d4/0x2c4 [dispcc_sm8550]

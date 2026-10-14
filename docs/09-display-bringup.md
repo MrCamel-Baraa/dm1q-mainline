@@ -12,9 +12,9 @@ Labels: FACT = quoted from a file in the repo/_scratch; INFERENCE = reasoned, no
 - Prior art: upstream has SM8550 MDSS/DPU/DSI/PHY, no S6E3FAC driver. The same-SoC, same-ABL gts9uwifi port already drives a Samsung command-mode DSC panel on mainline-style msm (6).
 - Patch 0003 (panel driver, binding, Kconfig/Makefile) compiles as a module with W=1 against 7.3-rc3; the canonical DTS now carries the display nodes; package r7 is prepared (`DRM_MSM=m`, decision in 8). Next: you build r7 (sudo), then first light (11).
 
-## 1. Baseline (from docs/02 item 18 and the handoff)
-
-Display = bootloader framebuffer through simpledrm (`framebuffer0` @ 0xb8000000, `dm1q.dts` ~line 123). No `&mdss`/DSI/panel nodes enabled. The running r6 config was not re-read this session; the `~/.cache/dm1q-kernel-src/out-*/.config` files (2026-10-01/08, pre-r6) show `DRM_MSM=m`, `SM_DISPCC_8550=m`, `SM_GPUCC_8550=m`, `QCOM_LLCC=m`, `QCOM_GPI_DMA=m`, `BACKLIGHT_CLASS_DEVICE=y`, no S6E3FAC driver. So the handoff's "no DRM_MSM" is probably "not built in"; **verify against r6** (`zcat /proc/config.gz` on the phone) before deciding r7's config.
+## 1. Baseline
+Display = bootloader framebuffer through simpledrm (`framebuffer0` @ 0xb8000000, `dm1q.dts` ~line 123). Before r7 no `&mdss`/DSI/panel nodes are enabled.
+**Live check of the running r6 kernel, 2026-10-14** (`notes/2026-10-14-display-baseline/display-redacted.txt`, FACT): kernel `#7-samsung-dm1q-mainline`; `CONFIG_DRM_MSM=m`, `SM_DISPCC_8550=m`, `SM_GPUCC_8550=m`, `QCOM_LLCC=m`, `BACKLIGHT_CLASS_DEVICE=y`, `DRM_SIMPLEDRM=y`, no S6E3FAC driver; `msm.ko`, `dispcc-sm8550`, `gpucc-sm8550`, `llcc-qcom`, `drm_display_helper` are on the rootfs; dispcc, gpucc and llcc are loaded; **the GPU SMMU `3da0000.iommu` is bound (arm-smmu)**, so the r5-era deferral is gone; `card0` = simple-framebuffer, `fb0` = simpledrmdrmfb 1080x2340, stride 4320, 32 bpp; no mdss/dpu/dsi/phy device exists; the cmdline has `clk_ignore_unused`, `pd_ignore_unused` and `regulator_ignore_unused`; the panel pins read as in section 5. The handoff's "no DRM_MSM" meant "not built in".
 
 ## 2. Which panel
 
@@ -137,7 +137,7 @@ gts9uwifi differs (AVDD on TLMM 202, vci = L13B); do not copy its rails.
 The block at the end of `dts/dm1q/dm1q.dts` (reviewed copy with provenance per value: `notes/2026-10-13-display-bringup/dm1q-display-nodes.dts.txt`): three GPIO fixed regulators (`panel_vdd3/vci/vddr`, TLMM 21/20/187), their pinctrl, `sde_te` (gpio86), `sde_dsi_active/suspend` (gpio125), `&mdss`, `&mdss_dsi0` (`vdda` = L3E) with `panel@0` (`samsung,s6e3fac-amb606aw01`, our own compatible), `&mdss_dsi0_out` (lanes 0-3), `&mdss_dsi0_phy` (`vdds` = L1E). No AVDD node (5). The pmaports copy is synced.
 Verified 2026-10-14: compiles with the documented `cpp | dtc` (no new warning; the `avoid_unnecessary_addr_size` warning on `dsi@ae94000` disappears) and with the kernel's own dtc through `scripts/make-dtb-image-set.sh` (`../_scratch/pmos-v14-display-dtonly-check`, r6 kernel + this DT, **not flashed**). Bindings are not schema-checked (no `dtschema` on the PC).
 `&gpu` stays disabled (the sm8550.dtsi default): msm's master bind would otherwise wait for the Adreno/GMU/GPU-SMMU chain (`3da0000.iommu` defers while `gpucc` is a module) and block the display (INFERENCE from the msm component model; gts9uwifi did the opposite and built gpucc in).
-One side effect to expect: the three rails are `regulator-boot-on` fixed regulators; until the panel driver binds, nothing consumes them, and the regulator core switches unused boot-on regulators off about 30 s after boot unless the cmdline has `regulator_ignore_unused` (the display probe prints whether it does). With the r7 driver the panel consumes them, so this only matters for a DT-only boot.
+The three rails are `regulator-boot-on` fixed regulators. The running cmdline has `regulator_ignore_unused` (live check, section 1), so they are not switched off at late init even before a panel driver consumes them; the screen does not go dark from that, which also removes the only reason to avoid the optional DT-only boot of the v14 set.
 
 ## 8. `DRM_MSM` `=m` vs `=y` (decision: `=m`)
 | | `=m` | `=y` |
@@ -162,19 +162,20 @@ One side effect to expect: the three rails are `regulator-boot-on` fixed regulat
 3. IRC byte 5 (3.4): driver uses the bootloader's `0x01`.
 4. Brightness range (3.5): 0x07FF assumed full scale.
 5. Warm-reboot DDIC state (gts9uwifi saw ID `00 00 00` and a dark panel until a second prepare cycle).
-6. The running r6 config and cmdline were not read live (the `--display` probe does it, 11); the on-disk `.config` files predate r6.
-7. The GPU SMMU deferral seen in r5 is not a blocker while `&gpu` is disabled; not re-checked.
+6. (Resolved 2026-10-14, section 1: running config, cmdline flags, modules on the rootfs.)
+7. (Resolved: `3da0000.iommu` is bound; `&gpu` stays disabled anyway.)
 8. Samsung's hypervisor may restrict some display blocks (handoff note); gts9uwifi's success on the same bootloader family is encouraging, not proof for the phone.
 9. DSC with 2 encoders merged into one DSI on DPU 9.0: gts9uwifi's 2-slice panel works, so INFERENCE that it transfers.
-10. First-light failure signatures to read from dmesg: `msm_dpu`/`dsi` probe errors (clocks, supplies, `-EPROBE_DEFER` loops on the panel), `panel id` line, `DSI error`/`ack` lines, `drm ... [drm] fb0:` only once msm is bound.
+10. **`disp_cc_mdss_mdp_clk_src: rcg didn't update its configuration` (WARN at dispcc probe)**, present in every captured boot since v8 (`notes/2026-10-05-v8-wlan-rails/dmesg.txt` ... `notes/2026-10-14-display-baseline/`; clk-rcg2.c:136 via `clk_rcg2_shared_init` -> parking the MDP RCG on its safe source). FACT: the MDP RCG keeps the bootloader's configuration (rate 85.7 MHz in `clk_summary`) and the console stays on screen. INFERENCE, not verified: the RCG's update bit never clears because the bootloader left it running from a source Linux does not control yet (dispcc reconfigures its PLLs at probe). Risk: when the DPU later asks for a higher MDP rate (a 120 Hz DSC panel needs far more than 85 MHz) the same update can time out (`-EBUSY`), and `msm` then fails at DPU power-up. If first light dies there, the dmesg shows `clk_set_rate`/`dpu` errors on `disp_cc_mdss_mdp_clk`; candidates: building `SM_DISPCC_8550=y` (gts9uwifi does and does not document this WARN), or a dispcc patch that does not park an RCG that is running. gts9uwifi's notes contain no occurrence of it. Do not pre-empt this; see what r7 does.
+11. First-light failure signatures to read from dmesg: `msm_dpu`/`dsi` probe errors (clocks, supplies, `-EPROBE_DEFER` loops on the panel), `panel id` line, `DSI error`/`ack` lines, `drm ... [drm] fb0:` only once msm is bound.
 Optional read of the bootloader's DSI/MDP registers with `mmio-read-aarch64` is not recommended now: mode, lane rate and DSC are already known, and reading display registers with gated clocks can fault the bus (cf. the NoC resets of docs/01). Only after checking `clk_summary` (the probe prints it) and only if first light fails.
 
 ## 11. Next steps
 You (sudo / phone / flashing):
-1. Optional, any time on r6, PC on the phone's USB network: `bash scripts/collect-phone-state.sh display-baseline --display` (you type the passwords). Results land in `notes/<date>-display-baseline/`; `display.txt` is the new part (running config, whether `msm.ko` is on the rootfs, cmdline flags, DRM/fbdev state, drivers bound, clocks, rails, panel pins). The raw `dmesg.txt`/`gpio.txt` etc. need redaction before any commit.
+1. Done 2026-10-14: `bash scripts/collect-phone-state.sh display-baseline --display` (results in section 1; raw files stay uncommitted, `display-redacted.txt` is committed).
 2. Build r7: `pmbootstrap checksum linux-samsung-dm1q-mainline && pmbootstrap build linux-samsung-dm1q-mainline` (sudo). Tell me "done" and whether `checksum` changed anything.
 Me, after "done": `bash scripts/make-dtb-image-set.sh --dts dts/dm1q/dm1q.dts --out ../_scratch/pmos-v15-display-r7 --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r7.apk --new-kernel`, `scripts/check-kernel-module-key.py`, verification that the built config has the four options, then the exact flash/refresh commands (module refresh first while the phone still boots r6, then TWRP flash of `boot` + `vendor_boot` with `scripts/flash-recovery.sh`).
-Optional DT-only step before r7: flash `boot` + `vendor_boot` of `../_scratch/pmos-v14-display-dtonly-check` (r6 kernel, no module refresh needed). It exercises mdss/dsi/phy/regulator/pinctrl probing without the panel driver; the DSI host then waits for the missing panel, so simpledrm stays. It can blank the screen after ~30 s (7). I recommend skipping it and going straight to r7.
+Optional DT-only step before r7: flash `boot` + `vendor_boot` of `../_scratch/pmos-v14-display-dtonly-check` (r6 kernel, no module refresh needed). It exercises mdss/dsi/phy/regulator/pinctrl probing without the panel driver; the DSI host then waits for the missing panel, so simpledrm stays. It is harmless for the screen (7) but also cannot show the MDP-clock risk of item 10, which only appears once msm binds. I recommend skipping it and going straight to r7.
 
 ## 12. Evidence index
 - `notes/2026-10-13-display-bringup/xbl-display-init.txt` -- XBL excerpt, panel ID and DSI packets
