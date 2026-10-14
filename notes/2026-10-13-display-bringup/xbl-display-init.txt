@@ -1,0 +1,205 @@
+# XBL (Samsung bootloader) display init as logged on THIS unit, boot of 2026-09-28
+# source: notes/2026-09-28-pmos-v1-hang/last_kmsg.txt lines 15360-15560 (verbatim excerpt; XBL logs every DSI packet it sends)
+# long payloads are cut by the log line buffer (PPS, 98, 92, 4C, 5C); the full values come from the downstream DT, see dt-panel-*.txt
+
+{ 1570292 }[ XBL ] displaydriverlib_init ++: ndx=0
+{ 1570292 }[ XBL ] displaydriverlib_init: freq = Default
+{ 1570323 }[ XBL ] displaydriverlib_init: HW_REV : 0xD, ndx=0
+{ 1570323 }[ XBL ] Add S6E3FAC_AMB606AW01_FHD Panel
+{ 1570323 }[ XBL ] [SDE] Add DM1_LX83118_CM002_FHD Panel
+{ 1570353 }[ XBL ] S6E3FAC_AMB606AW01_FHD_octa_init: reset_gpio (125) reset_sequence_size (3)
+{ 1570353 }[ XBL ] S6E3FAC_AMB606AW01_FHD_octa_init
+{ 1570353 }[ XBL ] [SDE] DM1_LX83118_CM002_FHD_octa_init HW_REV = 13
+{ 1570384 }[ XBL ] DM1_LX83118_CM002_FHD_octa_init: reset_gpio (125) reset_sequence_size (3)
+{ 1570384 }[ XBL ] DM1_LX83118_CM002_FHD_octa_init
+{ 1570384 }[ XBL ] PBA_BOOTING_FHD_init
+{ 1570414 }[ XBL ] displaydriverlib_init --: ndx=0
+{ 1570414 }[ XBL ] displaydriverlib_init ++: ndx=1
+{ 1570414 }[ XBL ] displaydriverlib_init: freq = Default
+{ 1570445 }[ XBL ] displaydriverlib_init: HW_REV : 0xD, ndx=1
+{ 1570445 }[ XBL ] PBA_BOOTING_FHD_DSI1_init
+{ 1570445 }[ XBL ] displaydriverlib_init --: ndx=1
+{ 1570536 }[ XBL ] display_panel_power_up_S6E3FAC_AMB606AW01: Not XBL_LOADER(13) ++
+{ 1572580 }[ XBL ] display_panel_power_up_S6E3FAC_AMB606AW01: Not XBL_LOADER --
+{ 1587616 }[ XBL ] MDPPlatformGetPanelXmlConfig ++ (vtdr6130_144hz_fhd_dsc_cmd)
+{ 1587616 }[ XBL ] samsung_panel_select_xml_data: eDisplayId = 0, vdd->ndx = 0, selected_panel = 0 ++
+{ 1587616 }[ XBL ] samsung_check_support_panel: panel_list_max : 3 ++ : ndx=0
+{ 1587647 }[ XBL ] display_panel_power_up_S6E3FAC_AMB606AW01: Not XBL_LOADER(13) ++
+{ 1589660 }[ XBL ] display_panel_power_up_S6E3FAC_AMB606AW01: Not XBL_LOADER --
+{ 1604666 }[ XBL ] DSIDriver_MinimalInit ++
+{ 1605977 }[ XBL ] samsung_panel_reset: enable : 1 vdd->ndx = 0++
+{ 1606008 }[ XBL ] samsung_panel_reset: Reset_N state : 0 , gpio_num : 125
+{ 1606008 }[ XBL ] samsung_panel_reset: Reset_N state : 0 , gpio_num : 125
+{ 1606038 }[ XBL ] samsung_panel_reset: Reset_N state : 1 , gpio_num : 125
+{ 1616073 }[ XBL ] samsung_panel_reset: Configure GPIO 86 for TE line, alt_func=1
+{ 1616103 }[ XBL ] ub_con(108) val: 0
+{ 1616103 }[ XBL ] samsung_panel_reset: enable : 1--
+{ 1616256 }[ XBL ] [DSI_0] phy TimingParams : 14 05 05 13 1F 05 05 06 00 02 04 / 12 0A 
+{ 1618391 }[ XBL ] DSIDriver_MinimalInit --
+{ 1618391 }[ XBL ] Default prepare read function
+{ 1618391 }[ XBL ] read_ddi_id ++: num_panel=0
+{ 1618421 }[ XBL ] MIPI TX: Type: 37, Mode: 0,  [01] : 00 
+{ 1618696 }[ XBL ] [RDAh] { 1618726 }[ XBL ] 0x00000081 { 1618726 }[ XBL ] 0x00000000 { 1618726 }[ XBL ] 
+{ 1618726 }[ XBL ] [RC4BB8DA4h] response_size: 2
+{ 1618757 }[ XBL ] MIPI TX: Type: 37, Mode: 0,  [01] : 00 
+{ 1619001 }[ XBL ] [RDBh] { 1619031 }[ XBL ] 0x00000002 { 1619031 }[ XBL ] 0x00000000 { 1619031 }[ XBL ] 
+{ 1619031 }[ XBL ] [RC4BB8DA2h] response_size: 2
+{ 1619062 }[ XBL ] MIPI TX: Type: 37, Mode: 0,  [01] : 00 
+{ 1619336 }[ XBL ] [RDCh] { 1619336 }[ XBL ] 0x00000025 { 1619336 }[ XBL ] 0x00000000 { 1619336 }[ XBL ] 
+{ 1619336 }[ XBL ] [RC4BB8DA0h] response_size: 2
+{ 1619367 }[ XBL ] read_ddi_id[0]: id1: 0x81, id2: 0x02, id3: 0x25 type: 0x00 color: 0x01
+{ 1619367 }[ XBL ] read_ddi_id --
+{ 1619367 }[ XBL ] ddi_id: 0x810225
+{ 1619367 }[ XBL ] samsung_check_support_panel: valid_bit_mask(003520) expect_data(810065) 
+{ 1619397 }[ XBL ] samsung_check_support_panel: panel is matched : num(0)
+{ 1619397 }[ XBL ] samsung_check_support_panel: lcd_id : 0x810225
+{ 1621532 }[ XBL ] samsung_panel_reset: enable : 0 vdd->ndx = 0++
+{ 1621563 }[ XBL ] samsung_panel_reset: enable : 0--
+{ 1621563 }[ XBL ] check_support_panel_S6E3FAC_AMB606AW01: panel is supported
+{ 1621563 }[ XBL ] samsung_check_support_panel: found supported panel: 0
+{ 1621593 }[ XBL ] samsung_check_support_panel -- 
+{ 1621593 }[ XBL ] samsung_panel_select_xml_data: vdd->ndx = 0, Selected[0] - Panel Name : S6E3FAC_AMB606AW01_FHD_dsc_{ 1621593 }[ XBL ] samsung_panel_select_xml_data: eDisplayId = 0, vdd->ndx = 0 --
+{ 1623698 }[ XBL ] DisplayDxeSetMode ++
+{ 1623728 }[ XBL ] DisplayDxeSetMode --
+{ 1623728 }[ XBL ] DisplayDxe : bDisplayPwrState is NOT TRUE..-994383176, set again
+{ 1623728 }[ XBL ] DisplayDxe [1]: bDisplayPwrState : 0
+{ 1624338 }[ XBL ] DisplayDxe_SetMode: +++: set is_doing_setmode
+{ 1624369 }[ XBL ] [CalculateFrameBufferOffsets] uNumBuffers[1] 
+{ 1629920 }[ XBL ] samsung_panel_reset: enable : 1 vdd->ndx = 0++
+{ 1629920 }[ XBL ] samsung_panel_reset: Reset_N state : 0 , gpio_num : 125
+{ 1629950 }[ XBL ] DisplayDxeInitialize -- 
+{ 1630987 }[ XBL ] samsung_panel_reset: Reset_N state : 0 , gpio_num : 125
+{ 1632024 }[ XBL ] samsung_panel_reset: Reset_N state : 1 , gpio_num : 125
+Failed to get QseeDiagLogEnableFlag, Status=Success
+{ 1643126 }[ XBL ] samsung_panel_reset: Configure GPIO 86 for TE line, alt_func=1
+{ 1643126 }[ XBL ] ub_con(108) val: 0
+{ 1643157 }[ XBL ] samsung_panel_reset: enable : 1--
+{ 1654015 }[ XBL ] [DSI_0] phy TimingParams : 20 08 08 18 17 08 08 08 00 02 04 / 1B 0D 
+Failed to get QseeDiagLogEnableFlag, Status=Success
+ RemoteObj_invoke  count 1 
+time for license check including RTIC and qwes TA 23620 uS 
+{ 1657217 }[ XBL ] SendPanelXMLSequence: bHighSpeedMode:0
+{ 1657248 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [9F] : a5 a5 
+{ 1657492 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F0] : 5a 5a 
+{ 1657644 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [FC] : 5a 5a 
+{ 1657766 }[ XBL ] MIPI TX: Type: 05, Mode: 0,  [11]
+{ 1669295 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 ac f6 
+{ 1687412 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F6] : 25 
+{ 1687534 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 09 f6 
+{ 1687687 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F6] : 22 
+{ 1687809 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 0f f6 
+{ 1687961 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F6] : 01 
+{ 1688083 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F4] : 44 
+{ 1688205 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [60] : 00 
+{ 1688388 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1795382 }[ XBL ] Overriding PIL cfg by caller
+{ 1796724 }[ XBL ] pil-SPSS Mount partition return Not Found
+{ 1797456 }[ XBL ] pil-SPSS Failed to get MDT size
+{ 1797456 }[ XBL ] pil-SPSS Failed to load metadata
+{ 1797456 }[ XBL ] SPSSDxe:: SPSSDxe_LoadSPSS ProcessPilImageExt = Load Error 
+{ 1800354 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [35] : 00 
+{ 1801970 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B9] : 61 00 01 00 00 01 00 00 00 00 00 00 04 94 00 00 00 00 00 10 
+{ 1802123 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [2A] : 00 00 04 37 
+{ 1802245 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [2B] : 00 00 09 23 
+{ 1802397 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 36 c5 
+{ 1802519 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [C5] : 11 
+{ 1802672 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 3e c5 
+{ 1802794 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [C5] : 40 f1 3f 99 
+{ 1802916 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 56 c5 
+{ 1803068 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [C5] : 40 f1 3f 99 
+{ 1803221 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 02 f8 
+{ 1803343 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F8] : 00 
+{ 1803495 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [E5] : 15 
+{ 1803617 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 3d f4 
+{ 1803739 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F4] : 10 
+{ 1803892 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [ED] : 00 40 42 01 
+{ 1804014 }[ XBL ] MIPI TX: Type: 07, Mode: 0,  [01]
+{ 1804166 }[ XBL ] MIPI TX: Type: 0a, Mode: 0,  [PPS] 11 00 00 89 30 80 09 24 04 38 00 75 02 1c 02 1c 02 00 02 0e 00 2{ 1804319 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [BD] : 21 81 
+{ 1804441 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 2f bd 
+{ 1804593 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [BD] : 00 02 
+{ 1804715 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1804837 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F2] : 01 
+{ 1804990 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 08 f2 
+{ 1805112 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F2] : 00 0c 
+{ 1805234 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 8b 98 
+{ 1805386 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 09 40 09 40 09 40 09 40 09 40 09 40 09 40 09 40 09 40 09 40 09 { 1805539 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [60] : 00 
+{ 1805661 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1805783 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 01 95 92 
+{ 1805935 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [92] : 02 
+{ 1806057 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 0e 94 
+{ 1806210 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [94] : 01 
+{ 1806332 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1806454 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 19 a3 
+{ 1806606 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [A3] : 01 
+{ 1806728 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 1a cb 
+{ 1806850 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [CB] : 12 
+{ 1807003 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 2e cb 
+{ 1807125 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [CB] : 12 
+{ 1807277 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1807399 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 33 f2 
+{ 1807521 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F2] : f0 
+{ 1807674 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 4e 98 
+{ 1807796 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 00 
+{ 1807918 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 4e 98 
+{ 1808070 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 00 01 7a 
+{ 1808192 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 51 98 
+{ 1808345 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 01 
+{ 1808467 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 01 bd 
+{ 1808589 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [BD] : 81 
+{ 1808741 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 04 bd 
+{ 1808863 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [BD] : 03 
+{ 1809016 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 30 bd 
+{ 1809138 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [BD] : 02 
+{ 1809260 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 01 47 98 
+{ 1809412 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 55 80 01 
+{ 1809534 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 01 56 98 
+{ 1809687 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [98] : 00 1f 
+{ 1809809 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [55] : 02 
+{ 1809931 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 09 87 
+{ 1810083 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [87] : 00 00 00 
+{ 1810205 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 85 93 
+{ 1810358 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [93] : 00 
+{ 1810480 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 01 b1 
+{ 1810602 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B1] : 1e 
+{ 1810754 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1810876 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 00 0d 94 
+{ 1810998 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [94] : 70 0f 
+{ 1811151 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [53] : 28 
+{ 1811273 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [51] : 07 ff 
+{ 1811425 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [B0] : 02 79 92 
+{ 1811547 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [92] : 65 ff 01 00 80 01 ff 10 b8 ff 10 ff 64 86 0b 06 06 06 1b 1b 1b { 1811700 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F7] : 0f 
+{ 1816031 }[ XBL ] UsbConfigLibOpenProtocols: PMI version (0x0)
+{ 1817373 }[ XBL ] MIPI TX: Type: 05, Mode: 0,  [29]
+{ 1817586 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [FC] : a5 a5 
+{ 1817708 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F0] : a5 a5 
+{ 1817861 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [9F] : 5a 5a 
+{ 1818105 }[ XBL ] Self Mask Enable(1) ++
+{ 1818105 }[ XBL ] panel_type=0 panel_color=1
+{ 1818105 }[ XBL ] Self Mask Image for P-Hole C-Type
+{ 1818135 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F0] : 5a 5a 
+{ 1818257 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [75] : 10 
+{ 1818410 }[ XBL ] usb_repeater_init: core_num(0)
+{ 1820148 }[ XBL ] __read_hw_rev_by_adc: ADC:[150519]
+{ 1820148 }[ XBL ] hw_rev(13)
+{ 1820148 }[ XBL ] [REPEATER] REPEATER SW i2c init
+{ 1820148 }[ XBL ] i2c driver is not initialized, Do init
+{ 1820179 }[ XBL ] cfg_table[index].reg: 6
+{ 1820179 }[ XBL ] cfg_table[index].data: 64
+{ 1820362 }[ XBL ] cfg_table[index].reg: 7
+{ 1820362 }[ XBL ] cfg_table[index].data: 32
+{ 1820392 }[ XBL ] total data size [4560]
+{ 1820423 }[ XBL ] cmd size [57] paylod_size [80]
+{ 1820453 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [4C] : c0 66 41 f9 41 eb 41 dc 41 ce 41 bf 41 b0 41 ae 42 a0 41 97 41 { 1820728 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [5C] : 41 77 42 80 41 8f 41 90 41 97 42 a0 41 ae 41 b0 41 bf 41 ce 41 { 1820880 }[ XBL ] MIPI 
+{ 1829115 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [7A] : 05 00 00 00 00 00 01 2b 07 f8 09 23 
+{ 1829237 }[ XBL ] MIPI TX: Type: 29, Mode: 0,  [F0] : a5 a5 
+{ 1829359 }[ XBL ] Self Mask Enable(1) --
+{ 1830945 }[ XBL ] DisplayUtils: pDest [ msm_drm.lcd_id=][0xA77502CC] uStart (16) pSrc [81][0xA775028C] 
+{ 1830976 }[ XBL ] DisplayUtils: A77502DC - A775028C = 0x50, 2
+{ 1830976 }[ XBL ] DisplayUtils: pDest [ sec_common_fn.lcd_id=][0xA7750290] uStart (22) pSrc [81][0xA775028C] 
+{ 1830976 }[ XBL ] DisplayUtils: A77502A6 - A775028C = 0x1A, 2
+{ 1831006 }[ XBL ] DisplayUtils: pDest [ msm_drm.lcd_id=81][0xA77502CC] uStart (18) pSrc [02][0xA775028C] 
+{ 1831006 }[ XBL ] DisplayUtils: A77502DE - A775028C = 0x52, 2
+{ 1831006 }[ XBL ] DisplayUtils: pDest [ sec_common_fn.lcd_id=81][0xA7750290] uStart (24) pSrc [02][0xA775028C] 
+{ 1831006 }[ XBL ] DisplayUtils: A77502A8 - A775028C = 0x1C, 2
+{ 1831037 }[ XBL ] DisplayUtils: pDest [ msm_drm.lcd_id=8102][0xA77502CC] uStart (20) pSrc [25][0xA775028C] 
+{ 1831037 }[ XBL ] DisplayUtils: A77502E0 - A775028C = 0x54, 2
