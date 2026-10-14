@@ -1,0 +1,17 @@
+# Pin state as the kernel saw it on a running r6-era boot (display lit by the bootloader), 2026-10-12.
+# Excerpt of /sys/kernel/debug/gpio (notes/2026-10-12-v12-touch/gpio.txt, itself not committed: raw capture).
+# gpiochip0 = PM8550 pmic@1 gpio@8800 (12 pins), gpiochip3 = TLMM f100000.pinctrl.
+
+## PM8550 gpio11 (candidate AVDD gate from the pinctrl node name): input, low, pull-down => not driven
+ gpio11: in   low  normal  vin-0 pull-down 10uA              push-pull  low     atest-1 dtest-0
+
+## TLMM
+ gpio20  : out high func0 2mA no pull
+ gpio21  : out high func0 2mA no pull
+ gpio86  : in  low  func1 2mA no pull
+ gpio87  : in  low  func0 2mA pull down
+ gpio108 : in  low  func0 2mA no pull
+ gpio125 : out high func0 2mA no pull
+ gpio186 : egpio
+ gpio187 : out high func0 2mA no pull
+ gpio202 : in  low  func0 2mA pull down

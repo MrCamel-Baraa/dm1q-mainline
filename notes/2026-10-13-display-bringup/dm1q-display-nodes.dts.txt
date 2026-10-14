@@ -1,5 +1,5 @@
 /*
- * DRAFT display nodes for dm1q.dts (NOT merged into dts/dm1q/dm1q.dts -- no panel driver exists yet, docs/09).
+ * Display nodes as merged into dts/dm1q/dm1q.dts for package r7 (docs/09); kept here as the reviewed draft.
  * Append to a COPY of dm1q.dts to compile-check:
  *   cat dts/dm1q/dm1q.dts notes/2026-10-13-display-bringup/dm1q-display-nodes.dts.txt > /tmp/dm1q-disp.dts
  *   cd dts/dm1q && cpp -nostdinc -I ../../../_scratch/linux-mainline/arch/arm64/boot/dts/qcom \
@@ -11,8 +11,9 @@
  *   GPIOs 125 / 86 / 187 / 20 / 21, supply voltages     downstream DT, quoted in
  *                                                       notes/2026-10-13-display-bringup/dt-panel-*.txt
  *   vdda (L3E) / vdds (L1E)                             downstream fixup tables + same as gts9uwifi and sm8550-qrd
- *   AVDD gate = PM8550 gpio 11                          INFERENCE (pinctrl node name display_panel_avdd_default,
- *                                                       the regulator node itself carries no gpio property)
+ *   AVDD (ELVDD 5.5 V)                                  NOT modelled: the live pin dump (notes/2026-10-13-display-bringup/live-pin-state.txt)
+ *                                                       shows PM8550 gpio11 as input/low/pull-down and TLMM 202 as input/low
+ *                                                       while the panel is lit, so no GPIO drives it; source unknown (docs/09)
  *   compatible "samsung,s6e3fac-amb606aw01"             OUR OWN name, no binding exists upstream
  */
 
@@ -52,18 +53,6 @@
 		regulator-boot-on;
 		pinctrl-0 = <&panel_vddr_default>;
 		pinctrl-names = "default";
-	};
-
-	/* AMOLED ELVDD 5.5 V, ramp 233 us in the downstream node. Gate GPIO is an INFERENCE (see header). */
-	display_avdd: regulator-display-avdd {
-		compatible = "regulator-fixed";
-		regulator-name = "display_panel_avdd";
-		regulator-min-microvolt = <5500000>;
-		regulator-max-microvolt = <5500000>;
-		gpio = <&pm8550_gpios 11 GPIO_ACTIVE_HIGH>;
-		enable-active-high;
-		regulator-boot-on;
-		startup-delay-us = <233>;
 	};
 };
 
@@ -112,18 +101,6 @@
 	};
 };
 
-&pm8550_gpios {
-	display_panel_avdd_default: display-panel-avdd-default-state {
-		pins = "gpio11";
-		function = "normal";
-		input-disable;
-		output-enable;
-		bias-disable;
-		power-source = <1>;
-		qcom,drive-strength = <3>;
-	};
-};
-
 &mdss {
 	status = "okay";
 };
@@ -139,7 +116,6 @@
 		vdd3-supply = <&panel_vdd3>;
 		vci-supply = <&panel_vci>;
 		vddr-supply = <&panel_vddr>;
-		avdd-supply = <&display_avdd>;
 
 		/* Pin is low = reset asserted (XBL log: states 0, 0, 1 then 10 ms). */
 		reset-gpios = <&tlmm 125 GPIO_ACTIVE_LOW>;
