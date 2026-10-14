@@ -1,0 +1,643 @@
+From: dm1q mainline port <dm1q-mainline@example.com>
+Subject: [PATCH] drm/panel: add Samsung S6E3FAC AMB606AW01 panel driver
+
+DSI command-mode AMOLED panel of the Samsung Galaxy S23 (dm1q): 1080x2340,
+120 Hz, 4 lanes, DSC 1.1 (2 slices of 540x117, 8 bpc, 8 bpp).
+
+The init sequence is what the Samsung bootloader sends on the wire for this
+panel (its log, notes/2026-10-13-display-bringup/xbl-display-init.txt),
+cross-checked against the command scripts of Samsung's downstream devicetree.
+Gamma/ACL/IRC/mdnie/VRR handling is not ported; brightness uses DCS 0x51
+(11 bit, 0x07ff = full). The DSC parameters are left to the msm DSI host, which
+derives exactly the PPS Samsung sends (checked by hand, docs/09). The 120 Hz
+mode reproduces Samsung's 951.08 Mbit/s lane rate through dsi_host.c.
+
+Structure follows panel-samsung-ana38407.c of the gts9uwifi port.
+
+Not tested on hardware at the time of writing.
+
+Signed-off-by: dm1q mainline port <dm1q-mainline@example.com>
+---
+diff --git a/Documentation/devicetree/bindings/display/panel/samsung,s6e3fac-amb606aw01.yaml b/Documentation/devicetree/bindings/display/panel/samsung,s6e3fac-amb606aw01.yaml
+new file mode 100644
+index 0000000..6da6abb
+--- /dev/null
++++ b/Documentation/devicetree/bindings/display/panel/samsung,s6e3fac-amb606aw01.yaml
+@@ -0,0 +1,81 @@
++# SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/display/panel/samsung,s6e3fac-amb606aw01.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Samsung S6E3FAC DDIC with AMB606AW01 AMOLED panel
++
++maintainers:
++  - dm1q mainline port <dm1q-mainline@example.com>
++
++description:
++  6.1 inch 1080x2340 AMOLED panel of the Samsung Galaxy S23 (SM-S911B),
++  driven by the S6E3FAC display driver IC over four DSI lanes in command
++  mode with DSC.
++
++allOf:
++  - $ref: panel-common.yaml#
++
++properties:
++  compatible:
++    const: samsung,s6e3fac-amb606aw01
++
++  reg:
++    maxItems: 1
++
++  vdd3-supply:
++    description: 1.8 V supply (panel_vdd3)
++
++  vci-supply:
++    description: 3.0 V supply (panel_vci)
++
++  vddr-supply:
++    description: 1.3 V supply (panel_vddr)
++
++  reset-gpios: true
++  te-gpios: true
++  port: true
++
++required:
++  - compatible
++  - reg
++  - vdd3-supply
++  - vci-supply
++  - vddr-supply
++  - reset-gpios
++  - port
++
++unevaluatedProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/gpio/gpio.h>
++
++    dsi {
++        #address-cells = <1>;
++        #size-cells = <0>;
++
++        panel@0 {
++            compatible = "samsung,s6e3fac-amb606aw01";
++            reg = <0>;
++
++            vdd3-supply = <&panel_vdd3>;
++            vci-supply = <&panel_vci>;
++            vddr-supply = <&panel_vddr>;
++
++            reset-gpios = <&tlmm 125 GPIO_ACTIVE_LOW>;
++            te-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
++
++            pinctrl-0 = <&sde_dsi_active>, <&sde_te>;
++            pinctrl-1 = <&sde_dsi_suspend>, <&sde_te>;
++            pinctrl-names = "default", "sleep";
++
++            port {
++                panel_in: endpoint {
++                    remote-endpoint = <&mdss_dsi0_out>;
++                };
++            };
++        };
++    };
++...
+diff --git a/drivers/gpu/drm/panel/Kconfig b/drivers/gpu/drm/panel/Kconfig
+index cbdf7b8..3ec6c43 100755
+--- a/drivers/gpu/drm/panel/Kconfig
++++ b/drivers/gpu/drm/panel/Kconfig
+@@ -995,6 +995,19 @@ config DRM_PANEL_SAMSUNG_S6D7AA0
+ 	select DRM_MIPI_DSI
+ 	select VIDEOMODE_HELPERS
+ 
++config DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01
++	tristate "Samsung S6E3FAC AMB606AW01 DSI command mode panel"
++	depends on GPIOLIB
++	depends on OF
++	depends on DRM_MIPI_DSI
++	depends on BACKLIGHT_CLASS_DEVICE
++	select DRM_DISPLAY_HELPER
++	select DRM_DISPLAY_DSC_HELPER
++	help
++	  Say Y or M here if you want to enable support for the
++	  Samsung S6E3FAC DDIC with the AMB606AW01 AMOLED panel
++	  (found in the Samsung Galaxy S23, 1080x2340, DSC).
++
+ config DRM_PANEL_SAMSUNG_S6E3FC2X01
+ 	tristate "Samsung S6E3FC2X01 DSI panel controller"
+ 	depends on GPIOLIB
+diff --git a/drivers/gpu/drm/panel/Makefile b/drivers/gpu/drm/panel/Makefile
+index 3b523cf..70acc64 100755
+--- a/drivers/gpu/drm/panel/Makefile
++++ b/drivers/gpu/drm/panel/Makefile
+@@ -96,6 +96,7 @@ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6D16D0) += panel-samsung-s6d16d0.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6D27A1) += panel-samsung-s6d27a1.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6D7AA0) += panel-samsung-s6d7aa0.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3FA7) += panel-samsung-s6e3fa7.o
++obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01) += panel-samsung-s6e3fac-amb606aw01.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3FC2X01) += panel-samsung-s6e3fc2x01.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3HA2) += panel-samsung-s6e3ha2.o
+ obj-$(CONFIG_DRM_PANEL_SAMSUNG_S6E3HA8) += panel-samsung-s6e3ha8.o
+diff --git a/drivers/gpu/drm/panel/panel-samsung-s6e3fac-amb606aw01.c b/drivers/gpu/drm/panel/panel-samsung-s6e3fac-amb606aw01.c
+new file mode 100644
+index 0000000..ee72e6c
+--- /dev/null
++++ b/drivers/gpu/drm/panel/panel-samsung-s6e3fac-amb606aw01.c
+@@ -0,0 +1,494 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * DRM panel driver for the Samsung S6E3FAC DDIC with the AMB606AW01 AMOLED
++ * panel, as fitted to the Galaxy S23 (SM-S911B, "dm1q").
++ *
++ * 1080x2340, 120 Hz, DSI command mode (TE), 4 lanes, DSC 1.1 (2 slices of
++ * 540x117, 8 bpc, 8 bpp).
++ *
++ * The init sequence is the one the Samsung bootloader (XBL) sends on the wire
++ * for this panel, cross-checked against the command scripts in Samsung's
++ * downstream devicetree (POWER_ON_PRE_SETTING, DSC_SETTING, ...). Samsung's
++ * gamma/ACL/IRC/mdnie/VRR machinery is not ported: the sequence is the fixed
++ * 120 Hz one and brightness goes through the standard DCS 0x51 path.
++ *
++ * The structure (supplies, delayed display-on, DSC through drm_dsc_config,
++ * raw backlight) follows panel-samsung-ana38407.c of the gts9uwifi port.
++ */
++
++#include <linux/backlight.h>
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/regulator/consumer.h>
++
++#include <drm/display/drm_dsc.h>
++#include <drm/display/drm_dsc_helper.h>
++#include <drm/drm_mipi_dsi.h>
++#include <drm/drm_modes.h>
++#include <drm/drm_panel.h>
++#include <drm/drm_probe_helper.h>
++
++/*
++ * DCS 0x51 has 11 significant bits on these DDICs; 0x07ff is "full brightness"
++ * in Samsung's own power-on sequence and values above it wrap (gts9uwifi).
++ */
++#define S6E3FAC_MAX_BRIGHTNESS		0x07ff
++
++/* DDI id as read by the bootloader: lcd_id = 0x810225 (DCS 0xda, 0xdb, 0xdc). */
++static const u8 s6e3fac_expected_id[3] = { 0x81, 0x02, 0x25 };
++
++struct s6e3fac {
++	struct drm_panel panel;
++	struct mipi_dsi_device *dsi;
++	struct drm_dsc_config dsc;
++	struct regulator *vdd3;
++	struct regulator *vci;
++	struct regulator *vddr;
++	struct gpio_desc *reset_gpio;
++};
++
++static inline struct s6e3fac *to_s6e3fac(struct drm_panel *panel)
++{
++	return container_of(panel, struct s6e3fac, panel);
++}
++
++/*
++ * Samsung "gpara": 0xb0 <offset hi> <offset lo> <reg> selects the byte offset
++ * inside register <reg> for the write to <reg> that follows.
++ */
++#define s6e3fac_gpara(ctx, hi, lo, reg, data...)				\
++	do {									\
++		mipi_dsi_dcs_write_seq_multi(ctx, 0xb0, hi, lo, reg);		\
++		mipi_dsi_dcs_write_seq_multi(ctx, reg, data);			\
++	} while (0)
++
++/* Level keys: F0/FC unlock with 5a 5a, 9f unlocks with a5 a5; the reverse locks. */
++static void s6e3fac_keys_unlock(struct mipi_dsi_multi_context *dsi_ctx)
++{
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0x9f, 0xa5, 0xa5);
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xf0, 0x5a, 0x5a);
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xfc, 0x5a, 0x5a);
++}
++
++static void s6e3fac_keys_lock(struct mipi_dsi_multi_context *dsi_ctx)
++{
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xfc, 0xa5, 0xa5);
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0xf0, 0xa5, 0xa5);
++	mipi_dsi_dcs_write_seq_multi(dsi_ctx, 0x9f, 0x5a, 0x5a);
++}
++
++/*
++ * Rails, in the order of Samsung's supply-entries: panel_vdd3 (1.8 V), then
++ * panel_vci (3.0 V, 1 ms), then panel_vddr (1.3 V, 12 ms). The 5.5 V AVDD
++ * (ELVDD) is not controlled from here: no GPIO drives it as far as the
++ * bootloader's pin state shows (docs/09).
++ */
++static int s6e3fac_power_on(struct s6e3fac *ctx)
++{
++	int ret;
++
++	ret = regulator_enable(ctx->vdd3);
++	if (ret)
++		return ret;
++
++	ret = regulator_enable(ctx->vci);
++	if (ret)
++		goto err_vdd3;
++	usleep_range(1000, 1500);
++
++	ret = regulator_enable(ctx->vddr);
++	if (ret)
++		goto err_vci;
++	msleep(12);
++
++	return 0;
++
++err_vci:
++	regulator_disable(ctx->vci);
++err_vdd3:
++	regulator_disable(ctx->vdd3);
++	return ret;
++}
++
++static void s6e3fac_power_off(struct s6e3fac *ctx)
++{
++	/* post-off sleeps from the same supply-entries: vddr 10 ms, vci 1 ms */
++	regulator_disable(ctx->vddr);
++	msleep(10);
++	regulator_disable(ctx->vci);
++	usleep_range(1000, 1500);
++	regulator_disable(ctx->vdd3);
++}
++
++static void s6e3fac_reset(struct s6e3fac *ctx)
++{
++	/* XBL: pin low for ~2 ms, then high; first packet follows >= 10 ms later. */
++	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++	usleep_range(2000, 3000);
++	gpiod_set_value_cansleep(ctx->reset_gpio, 0);
++	msleep(15);
++}
++
++static int s6e3fac_on(struct s6e3fac *ctx)
++{
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++	struct drm_dsc_picture_parameter_set pps;
++	u8 id[3] = {};
++
++	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
++
++	/* XBL reads the id right after reset, before any key is unlocked. */
++	mipi_dsi_dcs_read(ctx->dsi, 0xda, &id[0], 1);
++	mipi_dsi_dcs_read(ctx->dsi, 0xdb, &id[1], 1);
++	mipi_dsi_dcs_read(ctx->dsi, 0xdc, &id[2], 1);
++	if (memcmp(id, s6e3fac_expected_id, sizeof(id)))
++		dev_warn(&ctx->dsi->dev,
++			 "panel id %02x %02x %02x, expected %02x %02x %02x; sending the S6E3FAC sequence anyway\n",
++			 id[0], id[1], id[2], s6e3fac_expected_id[0],
++			 s6e3fac_expected_id[1], s6e3fac_expected_id[2]);
++	else
++		dev_info(&ctx->dsi->dev, "panel id %02x %02x %02x\n", id[0], id[1], id[2]);
++
++	s6e3fac_keys_unlock(&dsi_ctx);
++
++	mipi_dsi_dcs_exit_sleep_mode_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 10);
++
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0xac, 0xf6, 0x25);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x09, 0xf6, 0x22);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x0f, 0xf6, 0x01);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf4, 0x44);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x60, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++	mipi_dsi_msleep(&dsi_ctx, 110);
++
++	/* TE on (vblank), VRR 120HS */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x35, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xb9, 0x61, 0x00, 0x01, 0x00, 0x00, 0x01,
++				     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x04, 0x94,
++				     0x00, 0x00, 0x00, 0x00, 0x00, 0x10);
++
++	/* page address: 1080 x 2340 */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x2a, 0x00, 0x00, 0x04, 0x37);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x2b, 0x00, 0x00, 0x09, 0x23);
++
++	/* FFC set 0 (951 Mbps) */
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x36, 0xc5, 0x11);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x3e, 0xc5, 0x40, 0xf1, 0x3f, 0x99);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x56, 0xc5, 0x40, 0xf1, 0x3f, 0x99);
++
++	/* ECC / error flag */
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x02, 0xf8, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xe5, 0x15);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x3d, 0xf4, 0x10);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xed, 0x00, 0x40, 0x42, 0x01);
++
++	/*
++	 * DSC: compression mode, then the PPS as a real PPS packet generated
++	 * from the drm_dsc_config the DSI host has filled in (prepare runs after
++	 * the host is up: prepare_prev_first).
++	 */
++	mipi_dsi_compression_mode_multi(&dsi_ctx, true);
++	drm_dsc_pps_payload_pack(&pps, &ctx->dsc);
++	mipi_dsi_picture_parameter_set_multi(&dsi_ctx, &pps);
++
++	/* fixed TE */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xbd, 0x21, 0x81);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x2f, 0xbd, 0x00, 0x02);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++
++	/* async 120HS */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf2, 0x01);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x08, 0xf2, 0x00, 0x0c);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x8b, 0x98,
++		      0x09, 0x40, 0x09, 0x40, 0x09, 0x40, 0x09, 0x40, 0x09, 0x40,
++		      0x09, 0x40, 0x09, 0x40, 0x09, 0x40, 0x09, 0x40, 0x09, 0x40,
++		      0x09, 0x40, 0x08, 0x54, 0x08, 0x54, 0x01, 0x7a, 0x01, 0x7a,
++		      0x01, 0x7a);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x60, 0x00);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++
++	/* DIA, sandstorm and friends */
++	s6e3fac_gpara(&dsi_ctx, 0x01, 0x95, 0x92, 0x02);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x0e, 0x94, 0x01);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x19, 0xa3, 0x01);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x1a, 0xcb, 0x12);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x2e, 0xcb, 0x12);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x33, 0xf2, 0xf0);
++
++	/* AOR and friends */
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x4e, 0x98, 0x00);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x4e, 0x98, 0x00, 0x01, 0x7a);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x51, 0x98, 0x01);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x01, 0xbd, 0x81);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x04, 0xbd, 0x03);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x30, 0xbd, 0x02);
++
++	/* ACL 15 % */
++	s6e3fac_gpara(&dsi_ctx, 0x01, 0x47, 0x98, 0x55, 0x80, 0x01);
++	s6e3fac_gpara(&dsi_ctx, 0x01, 0x56, 0x98, 0x00, 0x1f);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x55, 0x02);
++
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x09, 0x87, 0x00, 0x00, 0x00);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x85, 0x93, 0x00);
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x01, 0xb1, 0x1e);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++
++	s6e3fac_gpara(&dsi_ctx, 0x00, 0x0d, 0x94, 0x70, 0x0f);
++
++	/* brightness: dimming on, full normal range */
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x53, 0x28);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x51, 0x07, 0xff);
++
++	/*
++	 * IRC (moderato). Byte 5 is 0x01 as the bootloader sent it on this
++	 * unit; Samsung's DT lists 0x0f there, the rest is the DT table.
++	 */
++	s6e3fac_gpara(&dsi_ctx, 0x02, 0x79, 0x92,
++		      0x65, 0xff, 0x01, 0x00, 0x80, 0x01, 0xff, 0x10, 0xb8, 0xff,
++		      0x10, 0xff, 0x64, 0x86, 0x0b, 0x06, 0x06, 0x06, 0x1b, 0x1b,
++		      0x1b, 0x24, 0x24, 0x24, 0x2a, 0x2a, 0x2a, 0x2d, 0x2d, 0x2d,
++		      0x9b, 0x2f, 0xe0, 0x18, 0x64);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0xf7, 0x0f);
++
++	/*
++	 * Display-on and the key lock are left for enable(): the stock panel
++	 * declares samsung,delayed-display-on, and gts9uwifi saw coloured noise
++	 * when 0x29 was sent before the DPU/DSI stream was ready.
++	 */
++	return dsi_ctx.accum_err;
++}
++
++static int s6e3fac_enable(struct drm_panel *panel)
++{
++	struct s6e3fac *ctx = to_s6e3fac(panel);
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
++	mipi_dsi_dcs_set_display_on_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 20);
++	s6e3fac_keys_lock(&dsi_ctx);
++
++	return dsi_ctx.accum_err;
++}
++
++static int s6e3fac_disable(struct drm_panel *panel)
++{
++	struct s6e3fac *ctx = to_s6e3fac(panel);
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	/* POWER_OFF_SETTTING: 9f a5 a5, 28, 10, wait 120 ms, 9f 5a 5a (the 10 is in unprepare) */
++	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x9f, 0xa5, 0xa5);
++	mipi_dsi_dcs_set_display_off_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 20);
++
++	return dsi_ctx.accum_err;
++}
++
++static int s6e3fac_prepare(struct drm_panel *panel)
++{
++	struct s6e3fac *ctx = to_s6e3fac(panel);
++	int ret;
++
++	ret = s6e3fac_power_on(ctx);
++	if (ret)
++		return ret;
++
++	s6e3fac_reset(ctx);
++
++	ret = s6e3fac_on(ctx);
++	if (ret) {
++		dev_err(&ctx->dsi->dev, "panel init failed: %d\n", ret);
++		gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++		s6e3fac_power_off(ctx);
++		return ret;
++	}
++
++	return 0;
++}
++
++static int s6e3fac_unprepare(struct drm_panel *panel)
++{
++	struct s6e3fac *ctx = to_s6e3fac(panel);
++	struct mipi_dsi_multi_context dsi_ctx = { .dsi = ctx->dsi };
++
++	ctx->dsi->mode_flags |= MIPI_DSI_MODE_LPM;
++	mipi_dsi_dcs_enter_sleep_mode_multi(&dsi_ctx);
++	mipi_dsi_msleep(&dsi_ctx, 120);
++	mipi_dsi_dcs_write_seq_multi(&dsi_ctx, 0x9f, 0x5a, 0x5a);
++
++	gpiod_set_value_cansleep(ctx->reset_gpio, 1);
++	usleep_range(2000, 3000);
++	s6e3fac_power_off(ctx);
++
++	return 0;
++}
++
++/*
++ * Samsung's 120 Hz timing (fhd120hs): htotal 1232, vtotal 2580. With DSC the
++ * msm DSI host derives its byte clock from this mode: it shrinks hdisplay to
++ * 360 pixels (1080 * 8 bpp / 24), so pclk = 381.4272 MHz * 512 / 1232 =
++ * 158.5152 MHz and the lane rate is 6 * pclk = 951.09 Mbit/s, the 951.08 Mbit/s
++ * of Samsung's panel-clockrate.
++ */
++static const struct drm_display_mode s6e3fac_mode = {
++	.clock = (1080 + 30 + 92 + 30) * (2340 + 72 + 84 + 84) * 120 / 1000,
++	.hdisplay = 1080,
++	.hsync_start = 1080 + 30,
++	.hsync_end = 1080 + 30 + 92,
++	.htotal = 1080 + 30 + 92 + 30,
++	.vdisplay = 2340,
++	.vsync_start = 2340 + 72,
++	.vsync_end = 2340 + 72 + 84,
++	.vtotal = 2340 + 72 + 84 + 84,
++	.width_mm = 64,
++	.height_mm = 140,
++};
++
++static int s6e3fac_get_modes(struct drm_panel *panel,
++			     struct drm_connector *connector)
++{
++	return drm_connector_helper_get_modes_fixed(connector, &s6e3fac_mode);
++}
++
++static const struct drm_panel_funcs s6e3fac_panel_funcs = {
++	.prepare = s6e3fac_prepare,
++	.enable = s6e3fac_enable,
++	.disable = s6e3fac_disable,
++	.unprepare = s6e3fac_unprepare,
++	.get_modes = s6e3fac_get_modes,
++};
++
++static int s6e3fac_bl_update_status(struct backlight_device *bl)
++{
++	struct mipi_dsi_device *dsi = bl_get_data(bl);
++	u16 brightness = backlight_get_brightness(bl);
++	int ret;
++
++	dsi->mode_flags &= ~MIPI_DSI_MODE_LPM;
++	ret = mipi_dsi_dcs_set_display_brightness_large(dsi, brightness);
++	dsi->mode_flags |= MIPI_DSI_MODE_LPM;
++
++	return ret;
++}
++
++static const struct backlight_ops s6e3fac_bl_ops = {
++	.update_status = s6e3fac_bl_update_status,
++};
++
++static struct backlight_device *s6e3fac_create_backlight(struct mipi_dsi_device *dsi)
++{
++	const struct backlight_properties props = {
++		.type = BACKLIGHT_RAW,
++		.brightness = S6E3FAC_MAX_BRIGHTNESS,
++		.max_brightness = S6E3FAC_MAX_BRIGHTNESS,
++	};
++	struct device *dev = &dsi->dev;
++
++	return devm_backlight_device_register(dev, dev_name(dev), dev, dsi,
++					      &s6e3fac_bl_ops, &props);
++}
++
++static int s6e3fac_probe(struct mipi_dsi_device *dsi)
++{
++	struct device *dev = &dsi->dev;
++	struct s6e3fac *ctx;
++	int ret;
++
++	ctx = devm_drm_panel_alloc(dev, struct s6e3fac, panel,
++				   &s6e3fac_panel_funcs, DRM_MODE_CONNECTOR_DSI);
++	if (IS_ERR(ctx))
++		return PTR_ERR(ctx);
++
++	ctx->vdd3 = devm_regulator_get(dev, "vdd3");
++	if (IS_ERR(ctx->vdd3))
++		return dev_err_probe(dev, PTR_ERR(ctx->vdd3), "failed to get vdd3\n");
++
++	ctx->vci = devm_regulator_get(dev, "vci");
++	if (IS_ERR(ctx->vci))
++		return dev_err_probe(dev, PTR_ERR(ctx->vci), "failed to get vci\n");
++
++	ctx->vddr = devm_regulator_get(dev, "vddr");
++	if (IS_ERR(ctx->vddr))
++		return dev_err_probe(dev, PTR_ERR(ctx->vddr), "failed to get vddr\n");
++
++	ctx->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(ctx->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(ctx->reset_gpio),
++				     "failed to get reset gpio\n");
++
++	ctx->dsi = dsi;
++	mipi_dsi_set_drvdata(dsi, ctx);
++
++	dsi->lanes = 4;
++	dsi->format = MIPI_DSI_FMT_RGB888;
++	dsi->mode_flags = MIPI_DSI_MODE_LPM | MIPI_DSI_CLOCK_NON_CONTINUOUS;
++
++	/* the PPS needs the DSC parameters the DSI host fills in, so the host must be up first */
++	ctx->panel.prepare_prev_first = true;
++
++	ctx->panel.backlight = s6e3fac_create_backlight(dsi);
++	if (IS_ERR(ctx->panel.backlight))
++		return dev_err_probe(dev, PTR_ERR(ctx->panel.backlight),
++				     "failed to create backlight\n");
++
++	drm_panel_add(&ctx->panel);
++
++	/* Geometry from Samsung's DSC_SETTING; the DSI host derives the rest. */
++	ctx->dsc.dsc_version_major = 1;
++	ctx->dsc.dsc_version_minor = 1;
++	ctx->dsc.slice_height = 117;
++	ctx->dsc.slice_width = 540;
++	ctx->dsc.slice_count = 2;
++	ctx->dsc.bits_per_component = 8;
++	ctx->dsc.bits_per_pixel = 8 << 4;
++	ctx->dsc.block_pred_enable = true;
++	ctx->dsc.pic_width = 1080;
++	ctx->dsc.pic_height = 2340;
++	dsi->dsc = &ctx->dsc;
++
++	ret = mipi_dsi_attach(dsi);
++	if (ret < 0) {
++		drm_panel_remove(&ctx->panel);
++		return dev_err_probe(dev, ret, "failed to attach to DSI host\n");
++	}
++
++	return 0;
++}
++
++static void s6e3fac_remove(struct mipi_dsi_device *dsi)
++{
++	struct s6e3fac *ctx = mipi_dsi_get_drvdata(dsi);
++	int ret;
++
++	ret = mipi_dsi_detach(dsi);
++	if (ret < 0)
++		dev_err(&dsi->dev, "failed to detach from DSI host: %d\n", ret);
++
++	drm_panel_remove(&ctx->panel);
++}
++
++static const struct of_device_id s6e3fac_of_match[] = {
++	{ .compatible = "samsung,s6e3fac-amb606aw01" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, s6e3fac_of_match);
++
++static struct mipi_dsi_driver s6e3fac_driver = {
++	.probe = s6e3fac_probe,
++	.remove = s6e3fac_remove,
++	.driver = {
++		.name = "panel-samsung-s6e3fac-amb606aw01",
++		.of_match_table = s6e3fac_of_match,
++	},
++};
++module_mipi_dsi_driver(s6e3fac_driver);
++
++MODULE_DESCRIPTION("Samsung S6E3FAC AMB606AW01 (Galaxy S23) DSI panel driver");
++MODULE_LICENSE("GPL");

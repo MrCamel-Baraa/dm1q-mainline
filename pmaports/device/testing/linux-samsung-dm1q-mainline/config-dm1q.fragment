@@ -63,3 +63,15 @@ CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
 # silently drops the driver symbol when its menu is off.
 CONFIG_INPUT_TOUCHSCREEN=y
 CONFIG_TOUCHSCREEN_FTS2BA61Y=m
+# --- display (2026-10-14; docs/09): native MDSS/DPU + DSI + panel. DRM_MSM and
+# SM_DISPCC_8550 stay modules (pmaports base already has them as =m; set
+# explicitly so a base change cannot silently drop them). =y would force
+# QCOM_LLCC=y and make a failing msm probe an initcall problem instead of a
+# udev one; rationale in docs/09 section 8. DRM_SIMPLEDRM=y stays as the
+# fallback framebuffer. The panel driver is add-s6e3fac-amb606aw01-panel.patch
+# (kernel/patches/0003-*); olddefconfig drops a symbol whose menu is off, so
+# it is set here explicitly.
+CONFIG_DRM_MSM=m
+CONFIG_SM_DISPCC_8550=m
+CONFIG_DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01=m
+CONFIG_DRM_SIMPLEDRM=y

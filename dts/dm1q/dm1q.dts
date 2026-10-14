@@ -1198,3 +1198,134 @@
  *   docs/05-dm1q-real-hardware-values.md) but not wired up since nothing
  *   in this file consumes them yet.
  */
+
+/*
+ * ---- display: MDSS/DPU + DSI0 + S6E3FAC panel (docs/09, package r7) ----
+ * Review notes and provenance of every value: notes/2026-10-13-display-bringup/dm1q-display-nodes.dts.txt
+ */
+
+/ {
+	/* Panel rails: GPIO-gated fixed regulators in Samsung's DT (fixed_regulator@0/1/2, all regulator-boot-on). */
+	panel_vdd3: regulator-panel-vdd3 {
+		compatible = "regulator-fixed";
+		regulator-name = "panel_vdd3";
+		regulator-min-microvolt = <1800000>;
+		regulator-max-microvolt = <1800000>;
+		gpio = <&tlmm 21 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+		pinctrl-0 = <&panel_vdd3_default>;
+		pinctrl-names = "default";
+	};
+
+	panel_vci: regulator-panel-vci {
+		compatible = "regulator-fixed";
+		regulator-name = "panel_vci";
+		regulator-min-microvolt = <3000000>;
+		regulator-max-microvolt = <3000000>;
+		gpio = <&tlmm 20 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+		pinctrl-0 = <&panel_vci_default>;
+		pinctrl-names = "default";
+	};
+
+	panel_vddr: regulator-panel-vddr {
+		compatible = "regulator-fixed";
+		regulator-name = "panel_vddr";
+		regulator-min-microvolt = <1300000>;
+		regulator-max-microvolt = <1300000>;
+		gpio = <&tlmm 187 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		regulator-boot-on;
+		pinctrl-0 = <&panel_vddr_default>;
+		pinctrl-names = "default";
+	};
+};
+
+&tlmm {
+	panel_vdd3_default: panel-vdd3-default-state {
+		pins = "gpio21";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	panel_vci_default: panel-vci-default-state {
+		pins = "gpio20";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	panel_vddr_default: panel-vddr-default-state {
+		pins = "gpio187";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-disable;
+	};
+
+	/* Same shape as sm8550-qrd's sde_te; dm1q's live pinctrl dump shows gpio86 mdp_vsync, pull-down, 2 mA. */
+	sde_te: sde-te-state {
+		pins = "gpio86";
+		function = "mdp_vsync";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+
+	sde_dsi_active: sde-dsi-active-state {
+		pins = "gpio125";
+		function = "gpio";
+		drive-strength = <8>;
+		bias-disable;
+	};
+
+	sde_dsi_suspend: sde-dsi-suspend-state {
+		pins = "gpio125";
+		function = "gpio";
+		drive-strength = <2>;
+		bias-pull-down;
+	};
+};
+
+&mdss {
+	status = "okay";
+};
+
+&mdss_dsi0 {
+	vdda-supply = <&vreg_l3e_1p2>;
+	status = "okay";
+
+	panel@0 {
+		compatible = "samsung,s6e3fac-amb606aw01";
+		reg = <0>;
+
+		vdd3-supply = <&panel_vdd3>;
+		vci-supply = <&panel_vci>;
+		vddr-supply = <&panel_vddr>;
+
+		/* Pin is low = reset asserted (XBL log: states 0, 0, 1 then 10 ms). */
+		reset-gpios = <&tlmm 125 GPIO_ACTIVE_LOW>;
+		te-gpios = <&tlmm 86 GPIO_ACTIVE_HIGH>;
+
+		pinctrl-0 = <&sde_dsi_active>, <&sde_te>;
+		pinctrl-1 = <&sde_dsi_suspend>, <&sde_te>;
+		pinctrl-names = "default", "sleep";
+
+		port {
+			panel0_in: endpoint {
+				remote-endpoint = <&mdss_dsi0_out>;
+			};
+		};
+	};
+};
+
+&mdss_dsi0_out {
+	data-lanes = <0 1 2 3>;
+	remote-endpoint = <&panel0_in>;
+};
+
+&mdss_dsi0_phy {
+	vdds-supply = <&vreg_l1e_0p88>;
+	status = "okay";
+};
