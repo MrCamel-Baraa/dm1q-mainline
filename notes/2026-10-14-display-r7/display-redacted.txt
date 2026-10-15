@@ -1,0 +1,199 @@
+# Live display state of the RUNNING r7 kernel (#8-samsung-dm1q-mainline), first boot with msm, 2026-10-14,
+# from `collect-phone-state.sh display-r7 --display`. Redacted: the raw kernel command line is dropped, clock
+# rows and the long dmesg are replaced by the display-related dmesg lines below. Raw capture: not committed.
+
+
+== 1. kernel
+release: 7.3.0-rc3
+cmdline: (dropped; flags below)
+cmdline has clk_ignore_unused
+cmdline has pd_ignore_unused
+cmdline has regulator_ignore_unused
+
+== 2. running kernel config (display-related)
+CONFIG_MODULE_SIG_FORMAT=y
+CONFIG_MODULE_SIG=y
+# CONFIG_MODULE_SIG_FORCE is not set
+CONFIG_MODULE_SIG_ALL=y
+CONFIG_MODULE_SIG_HASH="sha512"
+CONFIG_SYSFB_SIMPLEFB=y
+CONFIG_PINCTRL_MSM=y
+CONFIG_PINCTRL_SM8550=y
+CONFIG_REGULATOR_FIXED_VOLTAGE=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_DRM_DISPLAY_HELPER=m
+CONFIG_DRM_DISPLAY_DP_HELPER=y
+CONFIG_DRM_DISPLAY_DSC_HELPER=y
+CONFIG_DRM_DISPLAY_HDCP_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_AUDIO_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_CEC_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_CEC_NOTIFIER_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_HELPER=y
+CONFIG_DRM_DISPLAY_HDMI_STATE_HELPER=y
+CONFIG_DRM_PANEL_BRIDGE=y
+CONFIG_DRM_MSM=m
+# CONFIG_DRM_PANEL_SAMSUNG_AMS581VF01 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_AMS639RQ08 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E88A0_AMS427AP24 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E88A0_AMS452EF01 is not set
+CONFIG_DRM_PANEL_SAMSUNG_ATNA33XC20=m
+# CONFIG_DRM_PANEL_SAMSUNG_DB7430 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_LD9040 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_LTL106HL02 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E3FA7 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D16D0 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D27A1 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6D7AA0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01=m
+CONFIG_DRM_PANEL_SAMSUNG_S6E3FC2X01=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E3HA2 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E3HA8=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E63J0X03 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E63M0 is not set
+# CONFIG_DRM_PANEL_SAMSUNG_S6E8AA0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_S6E8AA5X01_AMS561RA01=m
+# CONFIG_DRM_PANEL_SAMSUNG_S6E8FC0 is not set
+CONFIG_DRM_PANEL_SAMSUNG_SOFEF00=m
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
+CONFIG_SM_DISPCC_8550=m
+CONFIG_SM_GCC_8550=y
+CONFIG_SM_GPUCC_8550=m
+CONFIG_ARM_SMMU=y
+CONFIG_QCOM_IOMMU=y
+CONFIG_QCOM_COMMAND_DB=y
+CONFIG_QCOM_LLCC=m
+CONFIG_QCOM_UBWC_CONFIG=m
+CONFIG_PHY_QCOM_QMP=y
+CONFIG_INTERCONNECT_QCOM_SM8550=y
+CONFIG_LOCK_DOWN_KERNEL_FORCE_NONE=y
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_INTEGRITY is not set
+# CONFIG_LOCK_DOWN_KERNEL_FORCE_CONFIDENTIALITY is not set
+CONFIG_MODULE_SIG_KEY="certs/signing_key.pem"
+CONFIG_MODULE_SIG_KEY_TYPE_RSA=y
+# CONFIG_MODULE_SIG_KEY_TYPE_ECDSA is not set
+
+== 3. display modules
+on disk under /lib/modules/7.3.0-rc3:
+kernel/drivers/clk/qcom/dispcc-sm8550.ko.zst
+kernel/drivers/clk/qcom/gpucc-sm8550.ko.zst
+kernel/drivers/gpu/drm/display/drm_display_helper.ko.zst
+kernel/drivers/gpu/drm/msm/msm.ko.zst
+kernel/drivers/gpu/drm/panel/panel-samsung-s6e3fac-amb606aw01.ko.zst
+kernel/drivers/soc/qcom/llcc-qcom.ko.zst
+loaded:
+panel_samsung_s6e3fac_amb606aw01    20480  0
+msm                  1597440  1
+ubwc_config            24576  1 msm
+drm_gpuvm              49152  1 msm
+drm_exec               16384  2 msm,drm_gpuvm
+gpu_sched              69632  1 msm
+drm_dp_aux_bus         16384  1 msm
+drm_display_helper    245760  2 panel_samsung_s6e3fac_amb606aw01,msm
+gpucc_sm8550           20480  2
+dispcc_sm8550          45056  15
+llcc_qcom              61440  1 msm
+
+== 4. DRM / fbdev
+card1: driver=msm_dpu
+card1-DSI-1: status=connected enabled=enabled
+    mode 1080x2340
+card1-Writeback-1: status=unknown enabled=disabled
+fb0: name=msmdrmfb size=1080,2340 bpp=32 stride=4352
+backlight ae94000.dsi.0: 2047/2047
+
+== 5. display platform devices
+ae00000.display-subsystem: msm-mdss
+ae01000.display-controller: msm_dpu
+ae94000.dsi: msm_dsi
+ae95000.phy: msm_dsi_phy
+af00000.clock-controller: disp_cc-sm8550
+3d90000.clock-controller: gpu_cc-sm8550
+3da0000.iommu: arm-smmu
+3d00000.gpu: absent
+3d6a000.gmu: no driver
+framebuffer0: absent
+simple-framebuffer.0: absent
+
+== 6a. deferred probes
+6ae0000.codec	platform: supplier 6d44000.codec not ready
+6aa0000.codec	platform: supplier 6d44000.codec not ready
+6b00000.codec	platform: supplier 6d44000.codec not ready
+6ac0000.codec	platform: supplier 6d44000.codec not ready
+6d44000.codec	va_macro: unable to get macro clock
+6e80000.pinctrl	
+
+== 6b. clocks (display / GPU / DSI)
+== 6c. regulators (panel rails, DSI/PHY supplies)
+    vreg_l1e_0p88                 4    4      0  normal   880mV     0mA   880mV   912mV 
+       ae95000.phy-vdds           1                                98mA     0mV     0mV
+    vreg_l3e_1p2                  4    4      0  normal  1200mV     0mA  1200mV  1200mV 
+       ae94000.dsi-vdda           1                                16mA     0mV     0mV
+       spi0.0-avdd                1                                 0mA     0mV     0mV
+ panel_vdd3                       1    1      0 unknown  1800mV     0mA  1800mV  1800mV 
+    ae94000.dsi.0-vdd3            1                                 0mA     0mV     0mV
+ panel_vddr                       1    1      0 unknown  1300mV     0mA  1300mV  1300mV 
+    ae94000.dsi.0-vddr            1                                 0mA     0mV     0mV
+ panel_vci                        1    1      0 unknown  3000mV     0mA  3000mV  3000mV 
+    ae94000.dsi.0-vci             1                                 0mA     0mV     0mV
+
+== 6d. panel GPIO state (TLMM 20 21 86 125 187; PM8550 gpio11)
+ gpio11: in   low  normal  vin-0 pull-down 10uA              push-pull  low     atest-1 dtest-0
+ gpio20  : out high func0 2mA no pull
+ gpio21  : out high func0 2mA no pull
+ gpio86  : in  low  func1 2mA pull down
+ gpio87  : in  low  func0 2mA pull down
+ gpio108 : in  low  func0 2mA no pull
+ gpio125 : out high func0 8mA no pull
+ gpio186 : egpio
+ gpio187 : out high func0 2mA no pull
+ gpio202 : in  low  func0 2mA pull down
+
+== 6e. dmesg (display related)
+== 6e. dmesg (display related, from the boot log)
+[    0.000000] Linux version 7.3.0-rc3 (pmos@Anonymous) (Alpine clang version 23.1.3, LLD 23.1.3) #8-samsung-dm1q-mainline SMP PREEMPT Wed Oct 14 18:34:27 UTC 202
+[    0.070637] /soc@0/display-subsystem@ae00000/dsi@ae94000: Fixed dependency cycle(s) with /soc@0/display-subsystem@ae00000/display-controller@ae01000
+[    0.070723] /soc@0/display-subsystem@ae00000/display-controller@ae01000: Fixed dependency cycle(s) with /soc@0/display-subsystem@ae00000/dsi@ae94000
+[    0.070809] /soc@0/display-subsystem@ae00000/dsi@ae94000/panel@0: Fixed dependency cycle(s) with /soc@0/display-subsystem@ae00000/dsi@ae94000
+[    0.070875] /soc@0/display-subsystem@ae00000/dsi@ae94000: Fixed dependency cycle(s) with /soc@0/display-subsystem@ae00000/dsi@ae94000/panel@0
+[    0.071023] /soc@0/clock-controller@af00000: Fixed dependency cycle(s) with /soc@0/display-subsystem@ae00000/phy@ae95000
+[    0.071089] /soc@0/display-subsystem@ae00000/phy@ae95000: Fixed dependency cycle(s) with /soc@0/clock-controller@af00000
+[    0.073900] /soc@0/display-subsystem@ae00000: Fixed dependency cycle(s) with /soc@0/clock-controller@af00000
+[    0.081932] probe of regulator-panel-vdd3 with driver reg-fixed-voltage returned -517 after 0 usecs
+[    0.081953] probe of regulator-panel-vci with driver reg-fixed-voltage returned -517 after 0 usecs
+[    0.081956] probe of regulator-panel-vddr with driver reg-fixed-voltage returned -517 after 0 usecs
+[    0.120257] [drm] Initialized simpledrm 1.0.0 for b8000000.framebuffer on minor 0
+[    0.131933] Console: switching to colour frame buffer device 67x73
+[    0.136883] simple-framebuffer b8000000.framebuffer: [drm] fb0: simpledrmdrmfb frame buffer device
+[    0.136950] probe of b8000000.framebuffer with driver simple-framebuffer returned 0 after 16882 usecs
+[    0.275692] probe of regulator-panel-vdd3 with driver reg-fixed-voltage returned 0 after 315 usecs
+[    0.276290] probe of regulator-panel-vddr with driver reg-fixed-voltage returned 0 after 398 usecs
+[    0.276713] probe of regulator-panel-vci with driver reg-fixed-voltage returned 0 after 277 usecs
+[    0.315266] platform ae00000.display-subsystem: Adding to iommu group 4
+[    7.395150] probe of mdss_gdsc with driver genpd_provider returned 0 after 20 usecs
+[    7.395183] probe of mdss_int2_gdsc with driver genpd_provider returned 0 after 9 usecs
+[    7.398260] disp_cc_mdss_mdp_clk_src: rcg didn't update its configuration.
+[    7.398274] WARNING: drivers/clk/qcom/clk-rcg2.c:136 at update_config+0xe4/0xf8, CPU#6: (udev-worker)/1250
+[    7.398312] pc : update_config+0xe4/0xf8
+[    7.398314] lr : update_config+0xe0/0xf8
+[    7.398339]  update_config+0xe4/0xf8 (P)
+[    7.398353]  disp_cc_sm8550_probe+0x1d4/0x2c4 [dispcc_sm8550]
+[    7.423252] probe of af00000.clock-controller with driver disp_cc-sm8550 returned 0 after 29616 usecs
+[    7.677661] probe of ae01000.display-controller with driver msm_dpu returned -517 after 7 usecs
+[    7.680852] probe of ae94000.dsi with driver msm_dsi returned -517 after 17 usecs
+[    7.685465] probe of ae95000.phy with driver msm_dsi_phy returned 0 after 1452 usecs
+[    7.686843] probe of ae00000.display-subsystem with driver msm-mdss returned 0 after 33426 usecs
+[    7.693416] probe of ae01000.display-controller with driver msm_dpu returned 0 after 499 usecs
+[    7.698031] probe of ae94000.dsi with driver msm_dsi returned 0 after 3379 usecs
+[    8.061498] msm_dpu ae01000.display-controller: bound ae94000.dsi (ops dsi_ops [msm])
+[    8.095892] Console: switching to colour dummy device 80x25
+[    8.099940] [drm:dpu_kms_hw_init:1168] dpu hardware revision:0x90000000
+[    8.119017] [drm] Initialized msm 1.13.0 for ae01000.display-controller on minor 1
+[    8.119099] msm_dpu ae01000.display-controller: no GPU device was found
+[    8.195121] panel-samsung-s6e3fac-amb606aw01 ae94000.dsi.0: panel id 81 02 25
+[    8.381403] Console: switching to colour frame buffer device 67x73
+[    8.381434] fb0: sys_imageblit: framebuffer is not in virtual address space.
+[    8.404810] fb0: sys_fillrect: framebuffer is not in virtual address space.
+[    8.407898] msm_dpu ae01000.display-controller: [drm] fb0: msmdrmfb frame buffer device
+[    8.408151] probe of ae94000.dsi.0 with driver panel-samsung-s6e3fac-amb606aw01 returned 0 after 347057 usecs
+[   31.714787] regulator: Not disabling unused regulators
