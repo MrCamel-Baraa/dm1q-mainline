@@ -1,0 +1,23 @@
+card: card1
+== info
+crtcs 2: 103 104
+encoders 2: 35(crtc 103 possible 0x3) 37(crtc 0 possible 0x3)
+fb size range 0x0 .. 16383x16383
+connector 36 type=DSI-1 connection=1(connected) size_mm=64x140 encoder=35 modes=1
+  mode 1080x2340@120 clock=381427 htotal=1232 vtotal=2580 type=0x8
+== bars (watch the panel)
+showing bars 1080x2340 pitch=4352 on connector 36 crtc 103 for 12 s
+done
+== red
+showing red 1080x2340 pitch=4352 on connector 36 crtc 103 for 5 s
+done
+== green
+showing green 1080x2340 pitch=4352 on connector 36 crtc 103 for 5 s
+done
+== blue
+showing blue 1080x2340 pitch=4352 on connector 36 crtc 103 for 5 s
+done
+== white
+showing white 1080x2340 pitch=4352 on connector 36 crtc 103 for 5 s
+done
+done

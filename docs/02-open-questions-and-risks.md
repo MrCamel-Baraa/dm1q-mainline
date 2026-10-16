@@ -371,3 +371,17 @@ here with their answer and source, and are also reflected in 00-overview.md.
    into dts/dm1q/dm1q.dts, package r7 prepared with `DRM_MSM=m` (decision and comparison: docs/09 section 8),
    `collect-phone-state.sh --display` added. Not built, not flashed. Open: AVDD source, packet type (DCS vs
    generic long write), IRC byte, running r6 config/cmdline, first light itself (docs/09 sections 10-11).
+   **UPDATE 2026-10-15: FIRST LIGHT CONFIRMED (docs/09 sections 13-14).** r7 built and flashed: msm bound, DSI-1
+   connected 1080x2340@120, `panel id 81 02 25`, no DSI/DPU errors. Pixel test (`drm-fill`, user-reported, evidence
+   `notes/2026-10-15-drm-test/`): colour bars + grey gradient, red, green, blue, white, console restored, no flicker
+   or noise. This closes the DCS-vs-generic-write question (DCS works), the DSC topology question (2 encoders into
+   one DSI works) and the display half of this item; the "only the bootloader framebuffer" statement above is
+   history. Still open: AVDD source (unexplained), IRC byte 5, brightness range/default, warm-reboot and suspend/resume,
+   MDP clock under load (dispcc `rcg didn't update its configuration` WARN, harmless so far), 60 Hz/VRR modes, GPU
+   (`&gpu` disabled), upstreaming.
+   **New in r7 (open, cause is INFERENCE):** 20 `arm-smmu 15000000.iommu: Unhandled context fault` lines (cbfrsynra
+   0x1c00, cb=4, iova 0xb80xxxxx, 0.33-5.5 s; 0 in the r6 baseline `notes/2026-10-12-v12-touch`), consistent with
+   `&mdss` joining an SMMU group while the bootloader scans out the splash buffer at 0xb8000000. Proposed DT fix
+   (identity-mapped splash region via `iommu-addresses` + `&mdss` `memory-region`) not applied or tested.
+   Boot-log noise (5625 lines in `notes/2026-10-15-drm-test/dmesg.txt`, of which 4471 are `initcall_debug`
+   lines) is being cleaned up; plan in docs/09 section 15.
