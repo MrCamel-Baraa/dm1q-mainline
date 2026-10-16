@@ -42,7 +42,14 @@ echo " disp_cc_mdss_byte0_clk   1  1  0  118886400" > "$F/dbg/clk/clk_summary"
 echo "panel_vci   1  1  0  3000mV" > "$F/dbg/regulator/regulator_summary"
 printf ' gpio20  : out high func0 2mA no pull\n gpio125 : out high func0 2mA no pull\n gpio202 : in  low  func0 2mA pull down\n gpio21  : out high func0 2mA no pull\n gpio11: in   low  normal  vin-0 pull-down 10uA\n gpio1 : out  high normal\n' > "$F/dbg/gpio"
 printf 'msm 1 0\nsnd 1 0\n' > "$F/lsmod.txt"
-printf '[1.0] msm_dpu ae01000.display-controller: bound\n[2.0] unrelated line\n[3.0] panel-samsung-s6e3fac-amb606aw01 ae94000.dsi.0: panel id 81 02 25\n' > "$F/dmesg.txt"
+printf '[1.0] msm_dpu ae01000.display-controller: bound\n[2.0] unrelated line\n[3.0] panel-samsung-s6e3fac-amb606aw01 ae94000.dsi.0: panel id 81 02 25\n[0.3] arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402\n[0.4] arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402\n' > "$F/dmesg.txt"
+# section 7: one group with a direct region (and one without), splash DT nodes (octal escapes: dash-safe)
+mkdir -p "$F/sys/kernel/iommu_groups/4/devices" "$F/sys/kernel/iommu_groups/5/devices" "$F/proc/device-tree/reserved-memory/splash_region" "$F/proc/device-tree/soc@0/display-subsystem@ae00000"
+touch "$F/sys/kernel/iommu_groups/4/devices/ae00000.display-subsystem"
+printf '0x0000000000000000 0x00000000b7ffffff reserved\n0x00000000b8000000 0x00000000baafffff direct\n' > "$F/sys/kernel/iommu_groups/4/reserved_regions"
+printf '0x00000000fffff000 0x00000000ffffffff msi\n' > "$F/sys/kernel/iommu_groups/5/reserved_regions"
+printf '\000\000\000\123\270\000\000\000' > "$F/proc/device-tree/reserved-memory/splash_region/iommu-addresses"
+printf '\000\000\000\123' > "$F/proc/device-tree/soc@0/display-subsystem@ae00000/memory-region"
 
 run_full() { # shell
 	env SYSFS="$F/sys" DEBUGFS="$F/dbg" PROC="$F/proc" DMESG="$F/bin/dmesg" LSMOD="$F/bin/lsmod" MODROOT="$F/mod" UNAME_R=7.3.0-rc3-dm1q ZCAT=zcat "$1" "$HERE/phone-display-probe.sh" > "$F/out" 2>&1
@@ -94,6 +101,15 @@ for sh in dash bash; do
 	expect "$F/out" "dmesg filtered in" "msm_dpu"
 	expect "$F/out" "dmesg panel id" "panel id 81 02 25"
 	reject "$F/out" "dmesg unrelated dropped" "unrelated line"
+	expect "$F/out" "smmu fault count" "smmu context faults in dmesg: 2"
+	expect "$F/out" "non-direct warning count" "non-direct resv warnings in dmesg: 0"
+	expect "$F/out" "direct group listed" "iommu group 4 has direct regions; devices: ae00000\\.display-subsystem"
+	expect "$F/out" "direct region line" "0x00000000b8000000 0x00000000baafffff direct"
+	reject "$F/out" "group without direct region not listed" "iommu group 5"
+	reject "$F/out" "reserved (non-direct) line not listed" "b7ffffff reserved"
+	expect "$F/out" "splash iommu-addresses hex" "iommu-addresses: +00 00 00 53 b8 00 00 00"
+	expect "$F/out" "splash reg absent reported" "splash_region/reg: absent"
+	expect "$F/out" "mdss memory-region hex" "memory-region: +00 00 00 53"
 	expect "$F/out" "ends with done" "^done$"
 
 	echo "== $sh, scenario bare"
@@ -104,6 +120,9 @@ for sh in dash bash; do
 	expect "$B/out" "fb0 reported" "fb0: name=simpledrmdrmfb"
 	expect "$B/out" "no deferred file message" "no devices_deferred"
 	expect "$B/out" "cmdline without flags" "cmdline lacks clk_ignore_unused"
+	expect "$B/out" "bare: zero smmu faults" "smmu context faults in dmesg: 0"
+	expect "$B/out" "bare: no direct group" "no iommu group with a direct region"
+	expect "$B/out" "bare: DT nodes absent" "splash_region/iommu-addresses: absent"
 	expect "$B/out" "ends with done (bare)" "^done$"
 done
 

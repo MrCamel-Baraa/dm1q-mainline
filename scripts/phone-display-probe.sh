@@ -90,5 +90,22 @@ grep -E '^ gpio(20|21|86|87|108|125|186|187|202) |^ gpio11:' "$DEBUGFS/gpio" 2>/
 
 say "6e. dmesg (display related)"
 "$DMESG" 2>/dev/null | grep -iE 'drm|msm_|dpu|mdss|dsi|simpledrm|simple-framebuffer|dispcc|gpucc|3da0000|panel|llcc|fb0|aperture|backlight|s6e3fac' | head -150
+say "7. IOMMU: context faults, direct (identity) reserved regions, splash DT nodes (docs/09 section 15.3)"
+echo "smmu context faults in dmesg: $("$DMESG" 2>/dev/null | grep -c 'Unhandled context fault')"
+echo "non-direct resv warnings in dmesg: $("$DMESG" 2>/dev/null | grep -c 'treating non-direct mapping')"
+ndirect=0
+for g in "$SYSFS"/kernel/iommu_groups/*; do
+	[ -r "$g/reserved_regions" ] || continue
+	grep -q ' direct' "$g/reserved_regions" || continue
+	ndirect=1
+	echo "iommu group $(basename "$g") has direct regions; devices: $(ls "$g/devices" 2>/dev/null | tr '\n' ' ')"
+	grep ' direct' "$g/reserved_regions" | sed 's/^/    /'
+done
+[ "$ndirect" = 1 ] || echo "no iommu group with a direct region"
+DTR="$PROC/device-tree/reserved-memory/splash_region"
+for p in "$DTR/reg" "$DTR/iommu-addresses" "$PROC"/device-tree/soc*/display-subsystem@ae00000/memory-region; do
+	if [ -r "$p" ]; then echo "${p#"$PROC"}: $(od -An -v -tx1 "$p" 2>/dev/null | tr -s ' \n' ' ')"; else echo "${p#"$PROC"}: absent"; fi
+done
+
 echo
 echo "done"
