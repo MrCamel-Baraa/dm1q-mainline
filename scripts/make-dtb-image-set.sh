@@ -15,7 +15,12 @@
 #      the one just compiled; show what differs from the reference DTB
 #
 # Usage: scripts/make-dtb-image-set.sh --dts <file.dts> --out <dir> [--ref-set <dir with vendor_boot.img + boot.img>]
-#        [--apk <kernel apk>] [--new-kernel]
+#        [--apk <kernel apk>] [--new-kernel] [--cmdline-mode quiet|debug|ref]
+#   --cmdline-mode  how the vendor cmdline is derived from the reference vendor_boot's (2026-10-16, log clean-up):
+#                   quiet (default): `initcall_debug` removed, `loglevel=4` (the ring buffer still keeps everything; only
+#                                    the console is quieter -- `dmesg` shows it all). WARN() traces are level 4: NOT on screen.
+#                   debug:           `initcall_debug` present and `loglevel=7` -- the verbose cmdline for hang debugging
+#                   ref:             the reference's cmdline unchanged (the behaviour before 2026-10-16)
 #   --apk         default: the r5 APK (kernel #6, carries the PCIe BDF-to-SID fix; since 2026-10-11 the baseline,
 #                 and the rootfs' module tree is r5's -- an r4 kernel would refuse every module, docs/07 15.12)
 #   --new-kernel  the kernel is EXPECTED to differ from the reference's (reported, not a failure)
@@ -31,7 +36,7 @@ KSRC="${KSRC:-$HOME/.cache/dm1q-kernel-src/full/linux-7.3-rc3}"
 KOUT="${KOUT:-$HOME/.cache/dm1q-kernel-src/out-real}"
 APK="${APK:-$HOME/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r5.apk}"
 REF="$REPO/../_scratch/pmos-v10-r5-pcifix"
-DTS="" OUT="" NEWK=0
+DTS="" OUT="" NEWK=0 CMODE=quiet
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--dts) DTS="$2"; shift 2 ;;
@@ -39,6 +44,7 @@ while [ $# -gt 0 ]; do
 	--ref-set) REF="$2"; shift 2 ;;
 	--apk) APK="$2"; shift 2 ;;
 	--new-kernel) NEWK=1; shift ;;
+	--cmdline-mode) CMODE="$2"; shift 2 ;;
 	*) echo "unknown arg: $1" >&2; exit 2 ;;
 	esac
 done
@@ -69,7 +75,19 @@ VMLINUZ="$(ls "$W"/apk/boot/vmlinuz* 2>/dev/null | head -1)"
 mkdir -p "$W/ref"; unpack_bootimg --boot_img "$REF/vendor_boot.img" --out "$W/ref" > "$W/ref/unpack.txt"
 CMDLINE="$(sed -n 's/^vendor command line args: //p' "$W/ref/unpack.txt")"
 [ -n "$CMDLINE" ] || { echo "could not read the reference cmdline" >&2; exit 1; }
-echo "cmdline: $CMDLINE"
+echo "reference cmdline: $CMDLINE"
+case "$CMODE" in
+ref) ;;
+quiet)
+	CMDLINE="$(printf '%s' "$CMDLINE" | sed -E 's/(^| )initcall_debug( |$)/\1\2/g; s/loglevel=[0-9]+/loglevel=4/; s/  +/ /g; s/^ //; s/ $//')"
+	grep -q 'loglevel=4' <<<"$CMDLINE" || CMDLINE="loglevel=4 $CMDLINE" ;;
+debug)
+	CMDLINE="$(printf '%s' "$CMDLINE" | sed -E 's/loglevel=[0-9]+/loglevel=7/')"
+	grep -q 'loglevel=7' <<<"$CMDLINE" || CMDLINE="loglevel=7 $CMDLINE"
+	grep -q -w 'initcall_debug' <<<"$CMDLINE" || CMDLINE="$(printf '%s' "$CMDLINE" | sed -E 's/loglevel=7/loglevel=7 initcall_debug/')" ;;
+*) echo "--cmdline-mode must be quiet, debug or ref" >&2; exit 2 ;;
+esac
+echo "cmdline ($CMODE): $CMDLINE"
 
 echo "== 4. make-boot-images.sh"
 bash "$HERE/make-boot-images.sh" --image "$VMLINUZ" --dtb "$DTB" --out "$OUT" --cmdline "$CMDLINE"

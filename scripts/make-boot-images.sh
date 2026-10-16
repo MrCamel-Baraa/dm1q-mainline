@@ -32,7 +32,10 @@ set -euo pipefail
 
 STOCK_DIR="${STOCK_DIR:-$(dirname "$0")/../../_scratch/boot-backup-20260920/unpacked-vendor}"
 # v12's vendor cmdline. pmOS userspace may need extra args (see docs/06).
-CMDLINE='console=tty0 fbcon=font:TER16x32 loglevel=7 log_buf_len=4M initcall_debug clk_ignore_unused pd_ignore_unused regulator_ignore_unused androidboot.hardware=qcom androidboot.memcg=1 androidboot.usbcontroller=a600000.dwc3 printk.devkmsg=on loop.max_part=7 bootconfig'
+# Default is the quiet cmdline (2026-10-16 log clean-up: no initcall_debug, loglevel=4; the ring buffer keeps everything,
+# only console printing is quieter). `--debug` restores the verbose v12 cmdline for hang debugging.
+CMDLINE_DEBUG='console=tty0 fbcon=font:TER16x32 loglevel=7 log_buf_len=4M initcall_debug clk_ignore_unused pd_ignore_unused regulator_ignore_unused androidboot.hardware=qcom androidboot.memcg=1 androidboot.usbcontroller=a600000.dwc3 printk.devkmsg=on loop.max_part=7 bootconfig'
+CMDLINE='console=tty0 fbcon=font:TER16x32 loglevel=4 log_buf_len=4M clk_ignore_unused pd_ignore_unused regulator_ignore_unused androidboot.hardware=qcom androidboot.memcg=1 androidboot.usbcontroller=a600000.dwc3 printk.devkmsg=on loop.max_part=7 bootconfig'
 IMAGE="" DTB="" OUT="" INITRAMFS=""
 
 while [ $# -gt 0 ]; do
@@ -43,6 +46,7 @@ while [ $# -gt 0 ]; do
 	--initramfs) INITRAMFS="$2"; shift 2 ;;
 	--stock-dir) STOCK_DIR="$2"; shift 2 ;;
 	--cmdline) CMDLINE="$2"; shift 2 ;;
+	--debug) CMDLINE="$CMDLINE_DEBUG"; shift ;;
 	*) echo "unknown arg: $1" >&2; exit 2 ;;
 	esac
 done
