@@ -204,13 +204,27 @@ this step. INFERENCE: if apk-tools cannot follow the pmOS `301` to `mirror.nura.
 lines at `https://mirror.nura.eco/postmarketos/...` directly. The https change is a rootfs-local edit (the file comes from the
 image build); a persistent fix for reinstalls belongs in the pmbootstrap config used to build the rootfs, TODO.
 
+### 6.2 Result of the https switch (run 2026-10-17 ~17:33 local, `notes/2026-10-17-apk-https/`)
+
+FACT:
+- `/etc/apk/repositories` on the phone is now all `https://` (original in `/etc/apk/repositories.dm1q-orig`).
+- **`apk update` works over https**: `OK: 37536 distinct packages available`, all five indexes fresh (pmOS main 2026-10-17 11:03 UTC,
+  systemd extra-repo 2026-10-16 09:33 UTC, Alpine edge main/community/testing `v20260805-4298/4288/4300`; the `v20260805` is the
+  Alpine edge branch-point label, not a stale date, the git-describe counter moved from 39xx to 42xx). apk-tools 3.0.8 follows the
+  pmOS 301 to `mirror.nura.eco` and only prints `WARNING: Permanently redirected to https://mirror.nura.eco:443/...` (resolves the
+  INFERENCE of 6.1; no need to edit the pmOS URLs).
+- **Bug in my script (found by this run):** `phone-apk-https.sh` treated any `WARNING` as a failed update, so it printed
+  `UPDATE-STATUS: FAILED` and skipped the simulation although the update had succeeded. Fixed: success is now a final `OK:` line and
+  no `unrecognized|ERROR|UNTRUSTED|N unavailable` marker; the PC test stub now emits the redirect WARNING so it would have caught
+  this. The script is idempotent, so rerunning the same command only repeats the update and runs the simulation.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
   **preflight run and read (section 5)**; apk network diagnosis script, test and `--apknet` flag.
 - Route decision: A (`apk add` over Wi-Fi, systemd path, pipewire backend pinned, manual `systemctl start plasma-mobile.service`).
-  The blocker is understood (ISP middlebox vs plain http, section 6.1); the https fix is written and tested on the PC, not yet run.
-- TODO: run `--apk-https` (fix apk, fresh simulation); the install; the TWRP initramfs fix before the
+  The blocker is fixed on the phone (ISP middlebox vs plain http, sections 6.1-6.2); apk update works over https.
+- TODO: rerun `--apk-https` (fresh simulation, script bug fixed); the install; the TWRP initramfs fix before the
   first reboot; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).

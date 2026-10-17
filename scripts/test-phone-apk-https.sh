@@ -26,6 +26,7 @@ update)
 		echo "WARNING: updating http://x/APKINDEX.tar.gz: HTTP: unrecognized server error"
 		echo "0 unavailable, 5 stale; 37545 distinct packages available"
 	else
+		echo "WARNING: Permanently redirected to https://mirror.nura.eco:443/postmarketos/main/aarch64/APKINDEX.tar.gz"
 		echo "OK: 41000 distinct packages available"
 	fi ;;
 add)
@@ -66,7 +67,8 @@ for sh in dash bash; do
 	expect "$H/root/etc/apk/repositories" "https lines present" "^https://mirror\\.postmarketos\\.org/postmarketos/main$"
 	expect "$H/root/etc/apk/repositories" "already-https line kept" "^https://already\\.example/x$"
 	if cmp -s "$W/orig" "$H/root/etc/apk/repositories.dm1q-orig"; then ok "backup equals the original"; else bad "backup differs from the original"; fi
-	expect "$H/out" "update ok" "UPDATE-STATUS: OK"
+	expect "$H/out" "update ok (a 'Permanently redirected' WARNING is not a failure)" "UPDATE-STATUS: OK"
+	expect "$H/out" "redirect warning shown" "Permanently redirected"
 	expect "$H/out" "simulation printed" "Installing kwin"
 	expect "$H/out" "summary counts" "installs: 3  upgrades: 1  purges: 0"
 	expect "$H/out" "pulseaudio count line" "pulseaudio lines: 0"

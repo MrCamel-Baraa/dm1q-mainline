@@ -39,10 +39,12 @@ sec "2 apk update"
 if command -v "$APK" >/dev/null 2>&1; then
 	UPD="$("$APK" update 2>&1)"
 	echo "$UPD"
-	if echo "$UPD" | grep -qE 'WARNING|ERROR|unrecognized'; then
-		echo "UPDATE-STATUS: FAILED (see lines above)"; UPDATE_OK=0
-	else
+	# success = a final "OK: N distinct packages available" line and no real error marker. A WARNING alone is not a
+	# failure: apk prints "Permanently redirected" for the pmOS mirror (301 to mirror.nura.eco) and still updates.
+	if echo "$UPD" | grep -qE '^OK:' && ! echo "$UPD" | grep -qE 'unrecognized|ERROR|UNTRUSTED|[1-9][0-9]* unavailable'; then
 		echo "UPDATE-STATUS: OK"; UPDATE_OK=1
+	else
+		echo "UPDATE-STATUS: FAILED (see lines above)"; UPDATE_OK=0
 	fi
 else
 	echo "  (no apk)"; UPDATE_OK=0
