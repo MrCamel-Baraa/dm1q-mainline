@@ -218,13 +218,50 @@ FACT:
   no `unrecognized|ERROR|UNTRUSTED|N unavailable` marker; the PC test stub now emits the redirect WARNING so it would have caught
   this. The script is idempotent, so rerunning the same command only repeats the update and runs the simulation.
 
+### 6.3 Fresh simulation with the pipewire backend pinned (run 2026-10-17 ~17:34 local, `notes/2026-10-17-apk-https2/`)
+
+FACT (`apk add --simulate postmarketos-base-ui-audio-backend-pipewire postmarketos-ui-plasma-mobile`, fresh indexes): **821 operations =
+810 installs + 11 upgrades, 0 purges, no errors or conflicts, 2761.0 MiB, ending at 1155 packages**; 812 packages to download.
+- Versions: plasma-mobile 6.8.0, plasma-workspace/kwin `99996.8.0` (pmOS systemd extra-repo), plasma-keyboard and plasma-nano 6.8.0,
+  postmarketos-base-ui 62 (+ `-audio-backend-pipewire` 62-r0), postmarketos-base-ui-plasma 3-r2, postmarketos-ui-plasma-mobile 6-r10,
+  xorg-server 999921.1.23, postmarketos-usb-moded 11-r0 (+ developer default profile, usb-moded-notify, umtprd, usb-signaller).
+- Upgrades (11): pipewire, pipewire-lang, pipewire-udev, pipewire-systemd 1.6.8-r5 -> 1.6.9-r0; hwdata-pci 0.411 -> 0.412; mesa, mesa-gbm,
+  mesa-dri-gallium, mesa-gles, mesa-egl 26.2.3-r1 -> 26.2.4-r1; libmm-glib. No kernel, firmware, device-package or postmarketos-base change.
+- **Pinning the backend worked:** no pulseaudio daemon is installed (the 4 `pulseaudio` lines are `pulseaudio-utils` and `pulseaudio-qt`,
+  each once as a download and once as an install); `pipewire-pulse` and `pipewire-alsa` come in instead.
+- 45 simulated installs are `-systemd`/`-udev` subpackages; `-udev` ones (feedbackd, gmobile, libfprint, libmtp, fuse3, libmbim,
+  iio-sensor-proxy, modemmanager, alsa-utils, ddcutil) land in `/usr/lib/udev`, which is on the mkinitfs trigger list: the initramfs
+  regeneration is certain.
+
+## 8. The install (script ready, not run yet)
+
+Script `scripts/phone-plasma-install.sh` (test `scripts/test-phone-plasma-install.sh`: 38 checks pass under bash, ~15 s; dash not
+installed on the PC; `shellcheck -s sh` clean), collector flag `--plasma-install`:
+
+    bash scripts/collect-phone-state.sh plasma-install --plasma-install
+
+What it does on the phone, in order: guards (repositories https-only, >= 6 GB free on `/`, `/boot` has room for mkinitfs to rewrite
+`initramfs-extra`) -> snapshot in `/root/dm1q-plasma` (boot listing, sha256 and a COPY of the working `/boot/initramfs-extra` as
+`initramfs-extra.pre-plasma` on the rootfs, not in the small nested /boot; package list; enabled units; apk triggers) -> **masks
+`usb-moded.service`** (precaution, INFERENCE: it may take over the ncm gadget that carries our ssh; undo with `systemctl unmask`) ->
+`apk add postmarketos-base-ui-audio-backend-pipewire postmarketos-ui-plasma-mobile`, **detached** (nohup + setsid, log
+`/root/dm1q-plasma/install.log`, so a dropped ssh cannot kill apk half way; running the same command again follows or finishes it and
+never starts a second install) -> after-state: whether `initramfs-extra` changed (expected: yes), whether the new file has usr-merge
+symlinks, unit states, USB gadget still listed, `systemctl cat plasma-mobile.service`, `/etc/default_user`, package file lists ->
+disables `plasma-mobile.service`/`display-manager.service` only if the install left them enabled. It does not start the UI and does
+not reboot. Expected duration 15-40 min (about 2.7 GB over the home line).
+
+**Hard rule after it (docs/06 rule 3): do not boot the system.** Reboot to TWRP, run `bash scripts/fix-phone-initramfs-extra.sh`
+(dry run) and then `--yes`, and only then reboot into the system. The saved `initramfs-extra.pre-plasma` is the rollback copy.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
   **preflight run and read (section 5)**; apk network diagnosis script, test and `--apknet` flag.
 - Route decision: A (`apk add` over Wi-Fi, systemd path, pipewire backend pinned, manual `systemctl start plasma-mobile.service`).
   The blocker is fixed on the phone (ISP middlebox vs plain http, sections 6.1-6.2); apk update works over https.
-- TODO: rerun `--apk-https` (fresh simulation, script bug fixed); the install; the TWRP initramfs fix before the
+- DONE: fresh simulation read (6.3); install script, test and `--plasma-install` flag written (section 8).
+- TODO: run the install (section 8); the TWRP initramfs fix before the
   first reboot; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).
