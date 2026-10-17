@@ -174,13 +174,43 @@ link; DNS or captive-portal behaviour on the home network; a mirror-side problem
 fallback is a local package repository: INFERENCE (not designed yet), build or mirror the 825 packages on the PC and serve them to
 the phone over the USB network, but that needs the PC offline from the internet while installing, so it is the last resort.
 
+### 6.1 Result (run 2026-10-17 ~17:30 local, `notes/2026-10-17-apknet/`, raw, uncommitted): root cause found
+
+FACT:
+- **The ISP's middlebox hijacks plain HTTP.** `wget -S` against `http://dl-cdn.alpinelinux.org/...` and
+  `http://mirror.postmarketos.org/...` both got `HTTP/1.1 307 Temporary Redirect`, `Via: 1.0 middlebox`, `Location:
+  http://megaplusredirection.tedata.net/VDSL-Redirection_100.html`, which answers `200 OK` with an 8674-byte HTML page. apk
+  therefore receives HTML instead of an index: `HTTP: unrecognized server error` for all five repositories.
+- **HTTPS is not touched:** `https://dl-cdn.alpinelinux.org/...APKINDEX.tar.gz` returned `200 OK` (532406 bytes, fresh: Last-Modified
+  2026-10-17 09:38 UTC); `https://mirror.postmarketos.org/...` returned `301` to `https://mirror.nura.eco/postmarketos/main/...` and then
+  `200 OK` (106571 bytes, Last-Modified 2026-10-17 11:03 UTC). busybox wget follows that redirect; apk-tools 3.0.8 following it is
+  INFERENCE until `apk update` over https succeeds.
+- Everything else is fine: phone clock correct (Sat 2026-10-17 14:30 UTC), default route via 192.168.1.1 on wlan0 (MTU 1500, gateway ping
+  16-27 ms, 1.1.1.1 ping 65-70 ms, 1400-byte ping OK), DNS via systemd-resolved (`127.0.0.53`) answers for both mirrors (IPv6 answers shown),
+  no proxy variables, apk-tools 3.0.8-r0, `/var/cache/apk` holds the stale indexes (Sep 28 and Oct 11) plus a local `iw-6.17-r0.apk`.
+  `/proc/net/wireless` is absent (no signal figures; cfg80211 without wext).
+- The earlier world-file observation fits: `iw` and `linux-firmware-ath11k` came from local apks because http repositories never worked
+  on this network.
+
+Fix (not applied yet): switch all repository URLs to `https://`. Script `scripts/phone-apk-https.sh` (test
+`scripts/test-phone-apk-https.sh`, passes under bash; dash not installed on the PC; shellcheck clean), collector flag `--apk-https`:
+
+    bash scripts/collect-phone-state.sh apk-https --apk-https
+
+It edits `/etc/apk/repositories` (http:// to https://; the original is kept once as `repositories.dm1q-orig`), runs `apk update`, and
+only if that succeeds runs `apk add --simulate postmarketos-base-ui-audio-backend-pipewire postmarketos-ui-plasma-mobile` with a
+summary (counts, pulseaudio lines, key package versions). Nothing is installed and no trigger runs, so rule 3 does not apply to
+this step. INFERENCE: if apk-tools cannot follow the pmOS `301` to `mirror.nura.eco`, the fallback is to point the two pmOS
+lines at `https://mirror.nura.eco/postmarketos/...` directly. The https change is a rootfs-local edit (the file comes from the
+image build); a persistent fix for reinstalls belongs in the pmbootstrap config used to build the rootfs, TODO.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
   **preflight run and read (section 5)**; apk network diagnosis script, test and `--apknet` flag.
-- Route decision: still A (`apk add` over Wi-Fi, systemd path, pipewire backend pinned, manual `systemctl start plasma-mobile.service`),
-  **blocked until `apk update` works** on the phone.
-- TODO: run `--apknet` and fix apk; re-run the simulation on a fresh index; the install; the TWRP initramfs fix before the
+- Route decision: A (`apk add` over Wi-Fi, systemd path, pipewire backend pinned, manual `systemctl start plasma-mobile.service`).
+  The blocker is understood (ISP middlebox vs plain http, section 6.1); the https fix is written and tested on the PC, not yet run.
+- TODO: run `--apk-https` (fix apk, fresh simulation); the install; the TWRP initramfs fix before the
   first reboot; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).
