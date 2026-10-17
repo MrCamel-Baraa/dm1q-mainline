@@ -406,6 +406,10 @@ these as ready to `pmbootstrap build` without running that first.
   'sleep' applet/symlink) -- cosmetic, the flusher is backgrounded so it did
   not block boot; low-priority fix is to call it as 'busybox sleep' like
   the rest of the script already does for other commands.
+  **UPDATE 2026-10-17: not cosmetic after all.** After `switch_root` the loop kept running in
+  the deleted initramfs and flooded the text console forever (no /tmp, no busybox, no sleep =
+  busy loop). Fixed in the script (silenced, ends when /dtbo-logger.sh disappears), tested on
+  the PC, patched init_boot built but not flashed: docs/09 section 16.
   Not yet characterized from inside pmOS itself: boot time end-to-end,
   whether udevd/mdev actually populated /dev fully, disk space headroom
   (root is 4 GiB), swap, and of course display/touch/WLAN (still no driver
