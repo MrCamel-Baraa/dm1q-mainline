@@ -1,0 +1,31 @@
+== backlight devices
+ae94000.dsi.0: type=raw max=2047 brightness=2047 actual=2047
+using: ae94000.dsi.0
+max_brightness=2047 original brightness=2047
+white screen on card1 for ~58s (drm-fill)
+== coarse sweep (4s each)
+step 1: wrote 2047 (100%) -> brightness=2047 actual=2047
+step 2: wrote 1535 (75%) -> brightness=1535 actual=1535
+step 3: wrote 1023 (50%) -> brightness=1023 actual=1023
+step 4: wrote 511 (25%) -> brightness=511 actual=511
+step 5: wrote 245 (12%) -> brightness=245 actual=245
+step 6: wrote 122 (6%) -> brightness=122 actual=122
+== fine run at the dark end (2s each)
+step 7: wrote 64 (raw 64) -> brightness=64 actual=64
+step 8: wrote 48 (raw 48) -> brightness=48 actual=48
+step 9: wrote 32 (raw 32) -> brightness=32 actual=32
+step 10: wrote 24 (raw 24) -> brightness=24 actual=24
+step 11: wrote 16 (raw 16) -> brightness=16 actual=16
+step 12: wrote 12 (raw 12) -> brightness=12 actual=12
+step 13: wrote 8 (raw 8) -> brightness=8 actual=8
+step 14: wrote 6 (raw 6) -> brightness=6 actual=6
+step 15: wrote 4 (raw 4) -> brightness=4 actual=4
+step 16: wrote 3 (raw 3) -> brightness=3 actual=3
+step 17: wrote 2 (raw 2) -> brightness=2 actual=2
+step 18: wrote 1 (raw 1) -> brightness=1 actual=1
+step 19: wrote 0 (off?) -> brightness=0 actual=0
+== back to the original
+restored brightness=2047
+== new kernel lines about the panel (none is good)
+(none)
+done
