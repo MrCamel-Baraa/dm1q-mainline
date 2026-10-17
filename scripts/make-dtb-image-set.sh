@@ -17,10 +17,10 @@
 # Usage: scripts/make-dtb-image-set.sh --dts <file.dts> --out <dir> [--ref-set <dir with vendor_boot.img + boot.img>]
 #        [--apk <kernel apk>] [--new-kernel] [--cmdline-mode quiet|debug|ref]
 #   --cmdline-mode  how the vendor cmdline is derived from the reference vendor_boot's (2026-10-16, log clean-up):
-#                   quiet (default): `initcall_debug` removed, `loglevel=4` (the ring buffer still keeps everything; only
+#                   quiet:           `initcall_debug` removed, `loglevel=4` (the ring buffer still keeps everything; only
 #                                    the console is quieter -- `dmesg` shows it all). WARN() traces are level 4: NOT on screen.
 #                   debug:           `initcall_debug` present and `loglevel=7` -- the verbose cmdline for hang debugging
-#                   ref:             the reference's cmdline unchanged (the behaviour before 2026-10-16)
+#                   ref (default):   the reference's cmdline unchanged (Baraa wants the early kernel log kept)
 #   --apk         default: the r5 APK (kernel #6, carries the PCIe BDF-to-SID fix; since 2026-10-11 the baseline,
 #                 and the rootfs' module tree is r5's -- an r4 kernel would refuse every module, docs/07 15.12)
 #   --new-kernel  the kernel is EXPECTED to differ from the reference's (reported, not a failure)
@@ -36,7 +36,7 @@ KSRC="${KSRC:-$HOME/.cache/dm1q-kernel-src/full/linux-7.3-rc3}"
 KOUT="${KOUT:-$HOME/.cache/dm1q-kernel-src/out-real}"
 APK="${APK:-$HOME/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r5.apk}"
 REF="$REPO/../_scratch/pmos-v10-r5-pcifix"
-DTS="" OUT="" NEWK=0 CMODE=quiet
+DTS="" OUT="" NEWK=0 CMODE=ref
 while [ $# -gt 0 ]; do
 	case "$1" in
 	--dts) DTS="$2"; shift 2 ;;
