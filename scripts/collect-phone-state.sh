@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -38,6 +38,8 @@
 #                managers, free space, apk triggers, UI packages, DRM/input/backlight, sessions, and an `apk add --simulate`
 #                of postmarketos-ui-plasma-mobile; the only write is `apk update`, which needs the phone's Wi-Fi internet;
 #                adds plasma-preflight.txt, which prints no SSIDs/MACs/passwords but is still not for committing raw).
+#   --apknet     also run scripts/phone-apknet-diag.sh (docs/10 section 5: read-only; why `apk update` fails on the phone:
+#                clock, route/DNS/MTU, ICMP, HTTP/HTTPS fetch of the index files with headers, `apk update -vv`; adds apknet.txt).
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -45,7 +47,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -58,6 +60,7 @@ for a in "$@"; do
 	--drm-test) DRM_TEST=1 ;;
 	--backlight) BACKLIGHT=1 ;;
 	--plasma-preflight) PLASMA_PRE=1 ;;
+	--apknet) APKNET=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -92,6 +95,9 @@ push_scripts() {
 	fi
 	if [ "$DISPLAY_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-display-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the display probe failed"; exit 1; }
+	fi
+	if [ "$APKNET" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-apknet-diag.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the apk network diagnosis failed"; exit 1; }
 	fi
 	if [ "$PLASMA_PRE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-plasma-preflight.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the Plasma preflight failed"; exit 1; }
@@ -174,6 +180,10 @@ if [ "$DISPLAY_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-display-probe.sh 2>&1 | tee /tmp/dm1q-collect/display.txt"
 fi
+if [ "$APKNET" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-apknet-diag.sh 2>&1 | tee /tmp/dm1q-collect/apknet.txt"
+fi
 if [ "$PLASMA_PRE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-plasma-preflight.sh 2>&1 | tee /tmp/dm1q-collect/plasma-preflight.txt"
@@ -205,6 +215,7 @@ RMSG=""
 [ "$RELOAD" = 1 ] && RMSG="; the reload step takes ~30 s"
 [ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
 [ "$TOUCH" = 1 ] && RMSG="$RMSG; the touch probe takes ~10 s"
+[ "$APKNET" = 1 ] && RMSG="$RMSG; the apk network diagnosis takes ~2 min (it fetches index files and runs apk update -vv)"
 [ "$PLASMA_PRE" = 1 ] && RMSG="$RMSG; the Plasma preflight takes ~1 min (apk update + simulation need the phone's Wi-Fi internet)"
 [ "$DRM_TEST" = 1 ] && RMSG="$RMSG; the DRM pattern test takes ~35 s: WATCH THE PHONE SCREEN"
 [ "$BACKLIGHT" = 1 ] && RMSG="$RMSG; the backlight sweep takes ~1 min: WATCH THE PHONE SCREEN (white, getting dimmer)"
@@ -215,7 +226,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
