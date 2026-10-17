@@ -43,7 +43,7 @@ pkgver=7.3_rc3
 # with its three GPIO rails. Kernel code and config changed: the rootfs module
 # tree must be refreshed (scripts/refresh-phone-modules.sh) before booting it.
 # r7 reports "#8-samsung-dm1q-mainline".
-pkgrel=7
+pkgrel=8
 pkgdesc="Mainline kernel for Samsung Galaxy S23 (dm1q)"
 arch="aarch64"
 _carch="arm64"
@@ -152,5 +152,5 @@ d54ea7ab441f0ba0626a58febbb06047aa5e7715a0356303e0e74296fbca07a3cb8a65e76f0ea22b
 39b8eb692f7d4059b63ee3b7ceca7649754a6281c0fc849f1fded1a6827533607f0eb311f4ce7eaea58c194d385bb9e758b22e7a1961decd0c281c905bdf2f4f  add-fts2ba61y-touchscreen.patch
 b7ae70b5062f22a2200b82681ff68519db0887b77c6bbccc99c81446058fd13dc19ba2cb83fb9faf41bd12c9c37b1b81a1e48f994dc10160a55d495c428cf2c1  add-s6e3fac-amb606aw01-panel.patch
 f8c9eccacb7c856f1f9d5fca55ee8d9f25fa2e43512c91289ca8b62ba1210bb21d9fddba7eda4dc79c5db4096606c994dfd6800e4b8433c1921f195e9f176088  config-dm1q.fragment
-fc1b5513ea8812a9ac113bb03f4c0fa4b1bf0b6a3487dd1ed790aec9e1ab01f08e7e865285185b135f7c4198ed60842b287948046234e4d8a93a59f03407aeb0  sm8550-samsung-dm1q.dts
+ba36b8fd368827425632831fc103a01743eade2e901b77eb366ba7a1ae1c4b6414a9b96be66432a876e13828582226b333b89109f2a923866e7284f7da411fd7  sm8550-samsung-dm1q.dts
 "

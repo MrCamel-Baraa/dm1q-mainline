@@ -382,6 +382,6 @@ here with their answer and source, and are also reflected in 00-overview.md.
    **New in r7 (open, cause is INFERENCE):** 20 `arm-smmu 15000000.iommu: Unhandled context fault` lines (cbfrsynra
    0x1c00, cb=4, iova 0xb80xxxxx, 0.33-5.5 s; 0 in the r6 baseline `notes/2026-10-12-v12-touch`), consistent with
    `&mdss` joining an SMMU group while the bootloader scans out the splash buffer at 0xb8000000. Proposed DT fix
-   (identity-mapped splash region via `iommu-addresses` + `&mdss` `memory-region`) not applied or tested.
+   (identity-mapped splash region via `iommu-addresses` + `&mdss` `memory-region`) applied and tested on hardware 2026-10-16 (DT-only, v17): faults 20 -> 3 (all within ~1.5 ms of the group join), `direct` region present, no warnings, msm + panel id fine; merged into the canonical DTS 2026-10-17, package r8 not built yet (docs/09 15.3).
    Boot-log noise (5625 lines in `notes/2026-10-15-drm-test/dmesg.txt`, of which 4471 are `initcall_debug`
-   lines) is being cleaned up; plan in docs/09 section 15.
+   lines); the endless text on the console after a successful boot was the `dtbo-logger.sh` background loop running in the deleted initramfs: fixed in the script, tested on the PC, patched init_boot built, not flashed (docs/09 section 16).

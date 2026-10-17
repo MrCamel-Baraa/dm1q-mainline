@@ -1,0 +1,26 @@
+# v17 (splash identity map) on hardware, 2026-10-16 ~21:00. Excerpts of the raw capture (raw files stay uncommitted).
+# Flashed image: the quiet-cmdline build of pmos-v17-splash-iommu (cmdline loglevel=4, no initcall_debug); its DTB is the one now in dts/dm1q/dm1q.dts (sha256 e07938a3e255fe283457..).
+
+## phone-display-probe.sh section 7
+== 7. IOMMU: context faults, direct (identity) reserved regions, splash DT nodes (docs/09 section 15.3)
+smmu context faults in dmesg: 3
+non-direct resv warnings in dmesg: 0
+iommu group 4 has direct regions; devices: ae00000.display-subsystem 
+    0x00000000b8000000 0x00000000baafffff direct
+/device-tree/reserved-memory/splash_region/reg:  00 00 00 00 b8 00 00 00 00 00 00 00 02 b0 00 00 
+/device-tree/reserved-memory/splash_region/iommu-addresses:  00 00 00 34 00 00 00 00 b8 00 00 00 00 00 00 00 02 b0 00 00 
+/device-tree/soc@0/display-subsystem@ae00000/memory-region:  00 00 00 d4 
+
+done
+
+## arm-smmu context faults in dmesg (r7 before the fix: 20, first 0.335 s, last 5.49 s)
+[    0.183064] arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402, iova=0xb830f400, fsynr=0x3b0021, cbfrsynra=0x1c00, cb=4
+[    0.183573] arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402, iova=0xb83f8b00, fsynr=0x3b0021, cbfrsynra=0x1c00, cb=4
+[    0.184033] arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402, iova=0xb84cc100, fsynr=0x3b0021, cbfrsynra=0x1c00, cb=4
+
+## display joins its iommu group (the faults are right after this line)
+562:[    0.181647] platform ae00000.display-subsystem: Adding to iommu group 4
+
+## msm / panel
+[    8.045973] [drm] Initialized msm 1.13.0 for ae01000.display-controller on minor 1
+[    8.118268] panel-samsung-s6e3fac-amb606aw01 ae94000.dsi.0: panel id 81 02 25
