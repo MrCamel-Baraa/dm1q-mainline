@@ -26,6 +26,7 @@ drvname() { # $1 = device dir -> bound driver name or "no driver"
 say "1. kernel"
 echo "release: $UNAME_R"
 echo "cmdline: $(cat "$PROC/cmdline" 2>/dev/null)"
+echo "kernel.printk (console, default, minimum, boot-default loglevel): $(cat "$PROC/sys/kernel/printk" 2>/dev/null || echo unreadable)"
 for w in clk_ignore_unused pd_ignore_unused regulator_ignore_unused; do
 	if grep -q "$w" "$PROC/cmdline" 2>/dev/null; then echo "cmdline has $w"; else echo "cmdline lacks $w"; fi
 done

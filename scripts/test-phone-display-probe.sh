@@ -27,6 +27,7 @@ mkdir -p "$F/proc" "$F/sys/class/drm/card0-DSI-1" "$F/sys/class/graphics/fb0" "$
 	"$F/dbg/clk" "$F/dbg/regulator" "$F/mod/7.3.0-rc3-dm1q/kernel/drivers/gpu/drm/msm" \
 	"$F/mod/7.3.0-rc3-dm1q/kernel/drivers/gpu/drm/panel" "$F/sys/drivers-real/msm"
 echo "console=ttyMSM0 clk_ignore_unused pd_ignore_unused" > "$F/proc/cmdline"
+mkdir -p "$F/proc/sys/kernel"; printf '4\t4\t1\t7\n' > "$F/proc/sys/kernel/printk"
 printf 'CONFIG_DRM_MSM=m\nCONFIG_DRM_SIMPLEDRM=y\n# CONFIG_DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01 is not set\nCONFIG_UNRELATED=y\nCONFIG_SM_DISPCC_8550=m\n' | gzip > "$F/proc/config.gz"
 touch "$F/mod/7.3.0-rc3-dm1q/kernel/drivers/gpu/drm/msm/msm.ko.zst" "$F/mod/7.3.0-rc3-dm1q/kernel/drivers/gpu/drm/panel/panel-samsung-s6e3fac-amb606aw01.ko.zst"
 mkdir -p "$F/sys/class/drm/card0"; ln -s "$F/sys/drivers-real/msm" "$F/sys/class/drm/card0/dev-driver-target"
@@ -77,6 +78,7 @@ for sh in dash bash; do
 	echo "== $sh, scenario full"
 	run_full "$sh" || bad "$sh exits non-zero"
 	expect "$F/out" "cmdline flags seen" "cmdline has clk_ignore_unused"
+	expect "$F/out" "kernel.printk shown" "kernel\\.printk .*: 4[[:space:]]+4[[:space:]]+1[[:space:]]+7"
 	expect "$F/out" "missing flag reported" "cmdline lacks regulator_ignore_unused"
 	expect "$F/out" "config lines kept" "CONFIG_DRM_MSM=m"
 	expect "$F/out" "'not set' line kept" "# CONFIG_DRM_PANEL_SAMSUNG_S6E3FAC_AMB606AW01 is not set"
@@ -120,6 +122,7 @@ for sh in dash bash; do
 	expect "$B/out" "fb0 reported" "fb0: name=simpledrmdrmfb"
 	expect "$B/out" "no deferred file message" "no devices_deferred"
 	expect "$B/out" "cmdline without flags" "cmdline lacks clk_ignore_unused"
+	expect "$B/out" "bare: kernel.printk unreadable" "kernel\\.printk .*: unreadable"
 	expect "$B/out" "bare: zero smmu faults" "smmu context faults in dmesg: 0"
 	expect "$B/out" "bare: no direct group" "no iommu group with a direct region"
 	expect "$B/out" "bare: DT nodes absent" "splash_region/iommu-addresses: absent"
