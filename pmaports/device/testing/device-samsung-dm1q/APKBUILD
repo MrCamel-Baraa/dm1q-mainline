@@ -9,7 +9,7 @@ maintainer="dm1q mainline port <baraa.amr.elgamal@gmail.com>"
 pkgname=device-samsung-dm1q
 pkgdesc="Samsung Galaxy S23"
 pkgver=1
-pkgrel=1
+pkgrel=2
 url="https://postmarketos.org"
 license="MIT"
 arch="aarch64"
@@ -25,7 +25,10 @@ depends="
 	sfdisk
 "
 makedepends="devicepkg-dev"
-source="deviceinfo"
+source="
+	deviceinfo
+	10-dm1q-console.conf
+"
 
 build() {
 	devicepkg_build "$startdir" "$pkgname"
@@ -33,10 +36,16 @@ build() {
 
 package() {
 	devicepkg_package "$startdir" "$pkgname"
+
+	# console loglevel after boot (docs/09 section 16.1): the cmdline stays at loglevel=7
+	# for the early log, userspace lowers it so late kernel lines stop painting over the login prompt
+	install -Dm644 "$srcdir"/10-dm1q-console.conf \
+		"$pkgdir"/etc/sysctl.d/10-dm1q-console.conf
 }
 
 # PLACEHOLDER -- not a real checksum. Run `abuild checksum` in this
 # directory once this package is actually tested with pmbootstrap.
 sha512sums="
 b85c04740561a1c0d370929dd803b35aed19c532a72c9c11ed83572fcbfb37df1c1ed3f908676a6c87b1443ed77da46878b8a159f2a927e40bfce132b35b7b62  deviceinfo
+ec1f9ccb6835744192be88eb08cc1381f5ec5e6a8cdc0205d9ab3bf3865ae0cf9e2c060244a3e627c466bd215fc9685560bc7e2e8112947da139a70d482ae64c  10-dm1q-console.conf
 "
