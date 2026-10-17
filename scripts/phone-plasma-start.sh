@@ -1,0 +1,126 @@
+#!/bin/sh
+# Controlled FIRST START of Plasma Mobile on the phone (docs/10 section 9). Runs on the phone as root
+# (sudo sh phone-plasma-start.sh), POSIX sh / busybox ash. Starts plasma-mobile.service BY HAND (it is not enabled at boot),
+# watches it for DUR seconds while YOU use the phone, collects the evidence, then stops it again and gives the console back.
+#
+#   DUR=240   seconds to keep the session up before collecting (default 240)
+#   KEEP=0    1 = leave the session running at the end (default: stop it and restore getty on tty1)
+#
+# Safety: the unit has OnFailure=getty@tty1 and Restart=always (restart every 5 s); this script aborts the window early after
+# 3 restarts (crash loop) and ALWAYS stops the unit again on exit, on Ctrl-C and on a dropped ssh (trap), unless KEEP=1.
+# If the screen hangs completely, the phone can still be reset with power + volume-down. It changes no files; it only starts
+# and stops units. It does not touch /boot, so docs/06 rule 3 does not apply.
+#
+# While it runs, on the phone: touch the screen, press the power key (short), the volume keys, open the quick settings
+# (swipe down), move the brightness slider, open the on-screen keyboard (a text field), then wait for the script to finish.
+#
+# Test overrides (scripts/test-phone-plasma-start.sh): ROOT, SYSTEMCTL, JOURNALCTL, LOGINCTL, PS, PGREP, SUDO, DMESG, POLL, DUR, KEEP.
+ROOT="${ROOT:-}"
+SYSTEMCTL="${SYSTEMCTL:-systemctl}"; JOURNALCTL="${JOURNALCTL:-journalctl}"; LOGINCTL="${LOGINCTL:-loginctl}"
+PS="${PS:-ps}"; PGREP="${PGREP:-pgrep}"; SUDO="${SUDO:-sudo}"; DMESG="${DMESG:-dmesg}"
+POLL="${POLL:-10}"; DUR="${DUR:-240}"; KEEP="${KEEP:-0}"
+UNIT=plasma-mobile.service
+UID_UI=10000
+BL="$ROOT/sys/class/backlight/ae94000.dsi.0"
+
+sec() { echo; echo "=== $1"; }
+have() { command -v "$1" >/dev/null 2>&1; }
+sc() { if have "$SYSTEMCTL"; then "$SYSTEMCTL" "$@" 2>&1; else echo "  (no systemctl)"; fi; }
+prop() { sc show -p "$1" --value "$UNIT" | head -n 1; }
+hottest() {
+	m=0
+	for t in "$ROOT"/sys/class/thermal/thermal_zone*/temp; do
+		[ -r "$t" ] || continue
+		v="$(cat "$t" 2>/dev/null)"; [ -n "$v" ] && [ "$v" -gt "$m" ] && m="$v"
+	done
+	echo "$((m / 1000)) C"
+}
+psall() { "$PS" -eo pid,ppid,user,args 2>/dev/null || "$PS" aux 2>/dev/null || "$PS" 2>&1; }  # busybox / procps differ
+nproc_of() { "$PGREP" "$1" 2>/dev/null | wc -l | tr -d ' '; }
+memused() { awk '/^MemTotal/ {t=$2} /^MemAvailable/ {a=$2} END { printf "%d MB", (t - a) / 1024 }' "$ROOT/proc/meminfo" 2>/dev/null; }
+
+STARTED=0
+stopit() {
+	[ "$STARTED" = 1 ] || return 0
+	STARTED=0
+	if [ "$KEEP" = 1 ]; then echo "KEEP=1: the session is left running (stop it with: systemctl stop $UNIT; systemctl start getty@tty1.service)"; return 0; fi
+	echo "--- stopping $UNIT and restoring getty on tty1"
+	sc stop "$UNIT"
+	sc start getty@tty1.service
+}
+trap 'stopit; exit 130' INT TERM HUP
+trap 'stopit' EXIT
+
+sec "1 preflight"
+echo "uptime: $(cut -d' ' -f1 "$ROOT/proc/uptime" 2>/dev/null) s since boot; kernel: $(uname -r 2>/dev/null)"
+if [ ! -e "$ROOT/usr/lib/systemd/system/$UNIT" ]; then echo "$UNIT is not installed: abort"; echo "done"; exit 1; fi
+echo "$UNIT: enabled=$(sc is-enabled "$UNIT" | tr '\n' ' ') active=$(sc is-active "$UNIT" | tr '\n' ' ')"
+echo "getty@tty1: active=$(sc is-active getty@tty1.service | tr '\n' ' ')"
+echo "/etc/default_user: $(cat "$ROOT/etc/default_user" 2>/dev/null || echo '(absent: the generator falls back to uid/gid 10000)')"
+echo "ui user: $(grep "^[^:]*:[^:]*:$UID_UI:" "$ROOT/etc/passwd" 2>/dev/null)"
+echo "usb-moded: $(sc is-enabled usb-moded.service | tr '\n' ' ')  usb-signaller: enabled=$(sc is-enabled usb-signaller.service | tr '\n' ' ') active=$(sc is-active usb-signaller.service | tr '\n' ' ')"
+echo "baseline: load $(cut -d' ' -f1-3 "$ROOT/proc/loadavg" 2>/dev/null), mem used $(memused), hottest $(hottest)"
+[ -d "$BL" ] && echo "backlight before: $(cat "$BL/brightness" 2>/dev/null)/$(cat "$BL/max_brightness" 2>/dev/null)"
+ls -l "$ROOT/dev/dri" 2>&1
+if [ "$(sc is-active "$UNIT" | tr -d '\n')" = active ]; then echo "$UNIT is already running: not starting a second time; will only observe and collect"; else :; fi
+T0="$(date '+%Y-%m-%d %H:%M:%S')"
+echo "T0: $T0"
+
+sec "2 start (watch the screen now)"
+if [ "$(sc is-active "$UNIT" | tr -d '\n')" != active ]; then
+	sc start "$UNIT"
+	STARTED=1
+fi
+
+sec "3 monitoring for ${DUR}s (poll ${POLL}s). USE THE PHONE: touch, power key, volume keys, quick settings, brightness slider, keyboard."
+W=0; ABORT=""
+while [ "$W" -lt "$DUR" ]; do
+	sleep "$POLL"; W=$((W + POLL))
+	NR="$(prop NRestarts)"
+	echo "t=${W}s state=$(prop ActiveState)/$(prop SubState) pid=$(prop MainPID) restarts=${NR:-?} kwin=$(nproc_of kwin_wayland) load=$(cut -d' ' -f1 "$ROOT/proc/loadavg" 2>/dev/null) mem=$(memused) hot=$(hottest)"
+	if [ -n "$NR" ] && [ "$NR" -ge 3 ] 2>/dev/null; then ABORT="crash loop: $NR restarts"; echo "ABORT: $ABORT"; break; fi
+done
+
+sec "4 evidence"
+echo "--- unit state"
+sc status "$UNIT" --no-pager -n 0 | head -20
+echo "--- journal of $UNIT since T0 (first 250 lines)"
+"$JOURNALCTL" -u "$UNIT" --since "$T0" --no-pager 2>&1 | head -250
+echo "--- journal warnings and errors since T0, all units (first 150 lines)"
+"$JOURNALCTL" --since "$T0" -p warning --no-pager 2>&1 | head -150
+echo "--- processes"
+psall | grep -E 'kwin|plasma|startplasma|maliit|keyboard|kded|krunner|pipewire|powerdevil|upower|ModemManager|NetworkManager|usb-' | grep -v grep | cut -c1-200
+KP="$("$PGREP" -o kwin_wayland 2>/dev/null)"
+if [ -n "$KP" ]; then
+	echo "--- kwin_wayland pid $KP"
+	echo "environment (selected):"
+	tr '\0' '\n' < "$ROOT/proc/$KP/environ" 2>/dev/null | grep -E '^(QT_|KWIN|MESA|XDG_|WAYLAND|LIBGL|LIBSEAT|LANG|DBUS_SESSION)' | sort
+	echo "open DRM / input fds:"
+	for f in "$ROOT/proc/$KP"/fd/*; do readlink "$f" 2>/dev/null; done | grep -E '^/dev/(dri|input)' | sort | uniq -c
+	grep -E 'VmRSS|Threads' "$ROOT/proc/$KP/status" 2>/dev/null
+else
+	echo "no kwin_wayland process found"
+fi
+echo "--- sessions"
+if have "$LOGINCTL"; then "$LOGINCTL" list-sessions 2>&1; "$LOGINCTL" list-seats 2>&1; fi
+echo "--- kscreen-doctor -o as the UI user (outputs, scale, rotation)"
+UI_NAME="$(awk -F: -v u="$UID_UI" '$3 == u { print $1; exit }' "$ROOT/etc/passwd" 2>/dev/null)"
+if have "$SUDO" && have kscreen-doctor; then
+	"$SUDO" -u "${UI_NAME:-user}" env XDG_RUNTIME_DIR="/run/user/$UID_UI" WAYLAND_DISPLAY=wayland-0 kscreen-doctor -o 2>&1 | head -30
+else
+	echo "  (no sudo or kscreen-doctor)"
+fi
+echo "--- backlight after: $(cat "$BL/brightness" 2>/dev/null)/$(cat "$BL/max_brightness" 2>/dev/null)"
+echo "--- kernel messages since boot about msm / dpu / smmu faults / touch (last 60 matching lines)"
+"$DMESG" 2>/dev/null | grep -iE 'msm|dpu|drm|smmu.*(fault|unhandled)|fts|sec_|input' | tail -n 60
+echo "--- number of arm-smmu faults since boot: $("$DMESG" 2>/dev/null | grep -ciE 'arm-smmu.*(fault|unhandled)')"
+echo "--- top"
+if have top; then top -bn1 2>/dev/null | head -18; fi
+echo "--- final: load $(cut -d' ' -f1-3 "$ROOT/proc/loadavg" 2>/dev/null), mem used $(memused), hottest $(hottest)"
+[ -n "$ABORT" ] && echo "RESULT: aborted early ($ABORT)" || echo "RESULT: window of ${DUR}s completed"
+
+sec "5 stop"
+stopit
+echo "unit after: active=$(sc is-active "$UNIT" | tr '\n' ' ')  getty@tty1: $(sc is-active getty@tty1.service | tr '\n' ' ')"
+echo
+echo "done"

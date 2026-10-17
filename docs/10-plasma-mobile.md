@@ -254,6 +254,50 @@ not reboot. Expected duration 15-40 min (about 2.7 GB over the home line).
 **Hard rule after it (docs/06 rule 3): do not boot the system.** Reboot to TWRP, run `bash scripts/fix-phone-initramfs-extra.sh`
 (dry run) and then `--yes`, and only then reboot into the system. The saved `initramfs-extra.pre-plasma` is the rollback copy.
 
+### 8.1 Result (run 2026-10-17 ~22:2x-22:35 local, `notes/2026-10-17-plasma-install/`, raw, uncommitted)
+
+FACT:
+- Guards passed (203 GB free; `/boot` 313 MB free for a 11.8 MB initramfs-extra). `initramfs-extra.pre-plasma` saved (sha256 b952b26f...).
+- **apk add finished with rc=0: 1155 packages (was 345), 2761.0 MiB**, exactly as simulated; all triggers ran.
+- **The mkinitfs trigger fired as predicted:** `/boot/initramfs-extra` 11 828 461 -> 12 228 225 bytes (sha256 now fbd141f1...), `/boot/initramfs`
+  and `/boot/sm8550-samsung-dm1q.dtb` in the nested boot filesystem were rewritten too (same dtb size 121 890 B; the boot chain uses
+  the images flashed from TWRP, so those two copies are not what boots). The new initramfs-extra had the usr-merge symlinks
+  `bin -> usr/bin`, `lib -> usr/lib`, `sbin -> usr/bin` (the known breakage).
+- **TWRP fix applied** (PC side, `~/.cache/dm1q-phone`): two runs at 22:38:54 (dry run) and 22:39:20 (`--yes`), each with a full 512 MiB backup of the
+  nested boot partition; the FIXED file has no top-level `bin`/`lib`/`sbin` symlinks (only `usr/sbin -> bin`, same as the Oct 4 fix). Whether the phone then
+  booted the system is confirmed by the next collector run (section 9), not by this paragraph.
+- Units after the install (packages' presets): enabled `plasma-mobile.service` (alias `display-manager.service`; **the script disabled both again**, the
+  alias symlink in /etc/systemd/system was removed), `ModemManager.service`, `bluetooth.service`, `alsa-restore/alsa-state`, `udisks2.service` (graphical.target),
+  `usb-signaller.service` (basic.target; INFERENCE: with `usb-moded` masked it may still act on the USB gadget, to be checked in the journal after the next
+  boot), user units `usb-moded-notify`, `fbd-alert-slider`, `gnome-keyring-daemon`. `usb-moded.service` is masked by our precaution (the unit file does not exist in
+  the package list, only `umtprd` config + `usb-signaller` TOML + a generator `umtprd-config-generator`), so the INFERENCE that usb-moded
+  takes over the gadget is moot for this package set; `usb-signaller` is the thing to watch. After the install and before the reboot: `usb0` 172.16.42.1/16 up,
+  gadget `g1` UDC `a600000.usb` function `ncm.usb0` unchanged, `wlan0` 192.168.1.11 (the MAC did not change during the install; the random-MAC conf only applies
+  from the next NetworkManager connection).
+- **Session unit (FACT, `systemctl cat plasma-mobile.service`):** `Conflicts=getty@tty1.service`, `After=getty@tty1.service ... session-c1.scope`,
+  `OnFailure=getty@tty1.service`, `ExecStart=/usr/bin/startplasmamobile`, `PAMName=login`, `TTYPath=/dev/tty1` (+ reset/vhangup/disallocate),
+  `XDG_SEAT=seat0`, `XDG_VTNR=tty1`, `LANG=C.UTF-8`, `Restart=always`, `RestartSec=5s`, `TimeoutStartSec=30`, `Alias=display-manager.service`; the unit says `User=1000`
+  but the generator drop-in `/run/systemd/generator/plasma-mobile.service.d/10-user.conf` sets `User=10000`/`Group=10000` (`/etc/default_user` is absent, so the
+  fallback is used) = our `user`. So the session is a real logind session on seat0/tty1 with seat device ACLs, not an ssh session; no group changes needed
+  (INFERENCE until the first start shows libinput/DRM access).
+
+## 9. First start by hand (script ready, not run yet)
+
+Script `scripts/phone-plasma-start.sh` (test `scripts/test-phone-plasma-start.sh`: 36 checks pass under bash incl. crash-loop abort and SIGTERM trap;
+dash not installed on the PC; `shellcheck -s sh` clean), collector flags `--plasma-start[=SECONDS]` and `--plasma-keep`:
+
+    bash scripts/collect-phone-state.sh plasma-start --plasma-start=240
+
+It starts `plasma-mobile.service` by hand (no autostart), watches it for SECONDS (default 240) printing a status line every 10 s (state, restarts, kwin
+process count, load, memory, hottest SoC temperature), aborts the window early after 3 restarts (crash loop), then collects: unit status, the unit's journal
+since T0 (first 250 lines), warnings/errors of all units, the process list, kwin_wayland's environment (selected variables), its open DRM/input fds, logind
+sessions/seats, `kscreen-doctor -o` as the UI user (outputs, scale, rotation), backlight value, filtered dmesg (msm/dpu/drm/arm-smmu faults/touch) and the
+smmu fault count, `top`, and then stops the UI and restores getty on tty1 (also on Ctrl-C, SIGTERM and a dropped ssh) unless `--plasma-keep`. It changes no files. No
+environment tuning is applied on purpose: the first run shows what KWin picks by itself on a KMS-only device (renderD128 exists without a GPU; llvmpipe vs a
+failure); `KWIN_DRM_DEVICES`, `QT_QUICK_BACKEND=software` and the software-compositor fallbacks are the prepared next steps (handoff step 3).
+While it runs, on the phone: touch the screen, short power key, volume keys, swipe down for quick settings, move the brightness slider, open a text field for the
+on-screen keyboard.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
@@ -261,7 +305,7 @@ not reboot. Expected duration 15-40 min (about 2.7 GB over the home line).
 - Route decision: A (`apk add` over Wi-Fi, systemd path, pipewire backend pinned, manual `systemctl start plasma-mobile.service`).
   The blocker is fixed on the phone (ISP middlebox vs plain http, sections 6.1-6.2); apk update works over https.
 - DONE: fresh simulation read (6.3); install script, test and `--plasma-install` flag written (section 8).
-- TODO: run the install (section 8); the TWRP initramfs fix before the
-  first reboot; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
+- DONE: install run, rc=0, 1155 packages; TWRP initramfs fix applied (section 8.1); first-start script, test and flags written (section 9).
+- TODO: confirm the phone boots the system and ssh/USB networking is intact (usb-signaller check); first start by hand (section 9); usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).

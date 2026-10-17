@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-keep]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -48,6 +48,11 @@
 #                saves the working initramfs-extra, does NOT start the UI and does NOT reboot. The install regenerates
 #                /boot/initramfs-extra: DO NOT boot the system afterwards, go to TWRP and run scripts/fix-phone-initramfs-extra.sh
 #                first (docs/06 rule 3). Adds plasma-install.txt.
+#   --plasma-start[=SECONDS]  also run scripts/phone-plasma-start.sh (docs/10 section 9): starts plasma-mobile.service BY HAND, you use the
+#                phone for SECONDS (default 240) while it logs, then it collects journal/process/DRM/kscreen evidence and stops the UI
+#                again (console restored). Aborts early on a crash loop; a dropped ssh or Ctrl-C also stops it. Adds plasma-start.txt.
+#                WATCH THE PHONE SCREEN and touch it, press the keys, move the brightness slider, open the keyboard.
+#   --plasma-keep  with --plasma-start: leave the UI running at the end instead of stopping it.
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -55,7 +60,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -71,6 +76,9 @@ for a in "$@"; do
 	--apknet) APKNET=1 ;;
 	--apk-https) APK_HTTPS=1 ;;
 	--plasma-install) PLASMA_INSTALL=1 ;;
+	--plasma-start) PLASMA_START=240 ;;
+	--plasma-start=*) PLASMA_START="${a#--plasma-start=}"; case "$PLASMA_START" in ''|*[!0-9]*) echo "--plasma-start=SECONDS needs a number" >&2; exit 2 ;; esac ;;
+	--plasma-keep) PLASMA_KEEP=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -105,6 +113,9 @@ push_scripts() {
 	fi
 	if [ "$DISPLAY_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-display-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the display probe failed"; exit 1; }
+	fi
+	if [ -n "$PLASMA_START" ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-plasma-start.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the Plasma start script failed"; exit 1; }
 	fi
 	if [ "$PLASMA_INSTALL" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-plasma-install.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the Plasma install script failed"; exit 1; }
@@ -196,6 +207,10 @@ if [ "$DISPLAY_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-display-probe.sh 2>&1 | tee /tmp/dm1q-collect/display.txt"
 fi
+if [ -n "$PLASMA_START" ]; then
+	BODY="$BODY
+DUR=$PLASMA_START KEEP=$PLASMA_KEEP sh /tmp/phone-plasma-start.sh 2>&1 | tee /tmp/dm1q-collect/plasma-start.txt"
+fi
 if [ "$PLASMA_INSTALL" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-plasma-install.sh 2>&1 | tee /tmp/dm1q-collect/plasma-install.txt"
@@ -239,6 +254,7 @@ RMSG=""
 [ "$RELOAD" = 1 ] && RMSG="; the reload step takes ~30 s"
 [ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
 [ "$TOUCH" = 1 ] && RMSG="$RMSG; the touch probe takes ~10 s"
+[ -n "$PLASMA_START" ] && RMSG="$RMSG; THE PLASMA MOBILE FIRST START runs ${PLASMA_START}s: WATCH THE PHONE SCREEN and use it (touch, keys, brightness slider, keyboard); the UI is stopped again at the end unless --plasma-keep"
 [ "$PLASMA_INSTALL" = 1 ] && RMSG="$RMSG; THE PLASMA MOBILE INSTALL takes 15-40 min and changes the system: stay on the USB network, do NOT reboot the phone into the system afterwards (TWRP + fix-phone-initramfs-extra.sh first)"
 [ "$APK_HTTPS" = 1 ] && RMSG="$RMSG; the apk https step downloads ~7 MB of indexes and runs a simulation (~1-2 min); it edits /etc/apk/repositories"
 [ "$APKNET" = 1 ] && RMSG="$RMSG; the apk network diagnosis takes ~2 min (it fetches index files and runs apk update -vv)"
@@ -252,7 +268,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
