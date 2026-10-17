@@ -42,6 +42,8 @@ Current daily driver on the device: crDroid (fully unlocked/modifiable bootloade
   is the Samsung S6E3FAC; init sequence, DSC parameters, rails and GPIOs recorded; panel driver (kernel patch
   0003) and DT nodes written, package r7 (`DRM_MSM=m`) built and flashed. **First light confirmed 2026-10-15**:
   native panel shows colour bars, solids and the console (section 14, `notes/2026-10-15-drm-test/`)
+- `docs/10-plasma-mobile.md` — Plasma Mobile on the phone (started 2026-10-17): what the UI package pulls in
+  (usb-moded, NetworkManager, mkinitfs triggers), the read-only phone preflight and the install route; no install done yet
 - `pmaports/` — local pmaports-style device (`device-samsung-dm1q`) and
   kernel (`linux-samsung-dm1q-mainline`) packages, structurally templated
   on the gts9uwifi reference; see docs/06 for status (unbuilt skeleton,
