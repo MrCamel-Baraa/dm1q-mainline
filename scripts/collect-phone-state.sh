@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -31,6 +31,9 @@
 #   --drm-test   also run scripts/phone-drm-test.sh with the static helper scripts/bin/drm-fill-aarch64 (build once with
 #                `bash scripts/build-drm-fill.sh`): lists the msm DRM card's connectors, then SHOWS TEST PATTERNS on the
 #                panel (bars 12 s, then red/green/blue/white 5 s each, ~35 s) -- watch the phone; adds drm-test.txt.
+#   --backlight  also run scripts/phone-backlight-test.sh (docs/09 section 17): shows solid white (drm-fill, same helper as
+#                --drm-test) and sweeps the panel's brightness 100 % -> raw 1 -> 0, then restores it (~1 min) -- watch the
+#                phone; adds backlight.txt.
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -38,7 +41,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -49,6 +52,7 @@ for a in "$@"; do
 	--touch) TOUCH=1 ;;
 	--display) DISPLAY_PROBE=1 ;;
 	--drm-test) DRM_TEST=1 ;;
+	--backlight) BACKLIGHT=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -64,7 +68,7 @@ if [ "$FRESH" = 1 ] || [ -n "$REGDUMP" ]; then
 fi
 SPI_BIN="$REPO/scripts/bin/spi-xfer-aarch64"
 DRM_BIN="$REPO/scripts/bin/drm-fill-aarch64"
-if [ "$DRM_TEST" = 1 ]; then
+if [ "$DRM_TEST" = 1 ] || [ "$BACKLIGHT" = 1 ]; then
 	[ -f "$DRM_BIN" ] || { echo "no $DRM_BIN -- run: bash scripts/build-drm-fill.sh   (needs clang + lld)"; exit 1; }
 fi
 if [ "$TOUCH" = 1 ]; then
@@ -86,6 +90,10 @@ push_scripts() {
 	fi
 	if [ "$DRM_TEST" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-drm-test.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the DRM test failed"; exit 1; }
+		scp "${SSH_OPTS[@]}" -q "$DRM_BIN" "$PUSER@$PHONE:/tmp/drm-fill" || { echo "scp of drm-fill failed"; exit 1; }
+	fi
+	if [ "$BACKLIGHT" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-backlight-test.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the backlight test failed"; exit 1; }
 		scp "${SSH_OPTS[@]}" -q "$DRM_BIN" "$PUSER@$PHONE:/tmp/drm-fill" || { echo "scp of drm-fill failed"; exit 1; }
 	fi
 	if [ "$TOUCH" = 1 ]; then
@@ -162,6 +170,10 @@ if [ "$DRM_TEST" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-drm-test.sh /tmp/drm-fill 2>&1 | tee /tmp/dm1q-collect/drm-test.txt"
 fi
+if [ "$BACKLIGHT" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-backlight-test.sh /tmp/drm-fill 2>&1 | tee /tmp/dm1q-collect/backlight.txt"
+fi
 BODY="$BODY
 sh /tmp/phone-wlan-probe.sh 2>&1 | tee /tmp/dm1q-collect/probe.txt
 dmesg > /tmp/dm1q-collect/dmesg.txt 2>&1
@@ -182,6 +194,7 @@ RMSG=""
 [ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
 [ "$TOUCH" = 1 ] && RMSG="$RMSG; the touch probe takes ~10 s"
 [ "$DRM_TEST" = 1 ] && RMSG="$RMSG; the DRM pattern test takes ~35 s: WATCH THE PHONE SCREEN"
+[ "$BACKLIGHT" = 1 ] && RMSG="$RMSG; the backlight sweep takes ~1 min: WATCH THE PHONE SCREEN (white, getting dimmer)"
 [ "$FRESH" = 1 ] && RMSG="; the idle + load steps take ~1.5 min"
 echo "== collecting on the phone (sudo asks for the password once$RMSG) =="
 # everything shown is also kept in session.log, so a hang on the phone does not lose the partial output
@@ -189,7 +202,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/drm-fill' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
