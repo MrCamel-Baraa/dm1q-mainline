@@ -1,0 +1,17 @@
+# v17 final (splash identity map, verbose cmdline loglevel=7 + initcall_debug) on hardware, 2026-10-17. Excerpt of the raw display.txt (raw files stay uncommitted).
+
+## msm / panel
+[    7.661286] [drm] Initialized msm 1.13.0 for ae01000.display-controller on minor 1
+[    7.661314] msm_dpu ae01000.display-controller: no GPU device was found
+[    7.725532] panel-samsung-s6e3fac-amb606aw01 ae94000.dsi.0: panel id 81 02 25
+
+== 7. IOMMU: context faults, direct (identity) reserved regions, splash DT nodes (docs/09 section 15.3)
+smmu context faults in dmesg: 0
+non-direct resv warnings in dmesg: 0
+iommu group 4 has direct regions; devices: ae00000.display-subsystem 
+    0x00000000b8000000 0x00000000baafffff direct
+/device-tree/reserved-memory/splash_region/reg:  00 00 00 00 b8 00 00 00 00 00 00 00 02 b0 00 00 
+/device-tree/reserved-memory/splash_region/iommu-addresses:  00 00 00 34 00 00 00 00 b8 00 00 00 00 00 00 00 02 b0 00 00 
+/device-tree/soc@0/display-subsystem@ae00000/memory-region:  00 00 00 d4 
+
+done
