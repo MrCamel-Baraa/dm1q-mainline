@@ -212,3 +212,19 @@ so SCM is most likely the active one (INFERENCE, nothing on dm1q has used PAS ye
 - Expected (INFERENCE): the display comes up as before, `[drm] Initialized msm`, a `failed to load a740_sqe.fw` style error instead of `no GPU device was found`, `3d00000.gpu`
   bound to `adreno`, `/dev/dri` unchanged, no SMMU fault, GMU still unbound. Rollback: reflash v17 (`../_scratch/pmos-v17-splash-iommu`), or, if only the display is
   affected and ssh works, blacklist msm in `/etc/modprobe.d` (docs/09 section 8).
+
+### 9.4 First v19 boot, 2026-10-19 ~00:36: stuck in stage 1, NOT caused by the GPU node (FACT, `notes/2026-10-19-v19-gpu-bind-hang/dtbo-log-v19.txt`, uncommitted)
+
+- Baraa flashed v19 and reported that it "gets stuck in kernel". The stage-1 log in `dtbo@1MiB` (read from TWRP with `adb exec-out dd ... | strings`, the logger of
+  `kernel/initramfs/dtbo-logger.sh`) shows: `Extract /boot/initramfs-extra`, then `cpio: can't remove old file lib: Is a directory`, then `ERROR: udev not found!`,
+  `/init_2nd.sh: line 712: parted: not found`, and from 2.56 s an endless `couldn't open /dev/input/` loop (27904 lines by the last flush, ~25 s). The healthy boot of the same morning
+  prints `49636 blocks` at that step, two `couldn't open /dev/input/` lines, and `Switching root` at 4.86 s. No msm, adreno or gpucc line exists in the v19 log: the rootfs was never reached,
+  so **the GPU DT change has not been tested at all**. (The `3da0000.iommu ... deferred probe timeout, ignoring dependency` / `-110` at 10.98 s is just stage 1 running
+  long enough for the timeout to fire with no gpucc module loaded.)
+- Cause (FACT, `scripts/fix-phone-initramfs-extra.sh` dry run from TWRP, backup in `~/.cache/dm1q-phone/`): the `/boot/initramfs-extra` on the phone is the mkinitfs-regenerated one with the
+  usr-merge symlinks `bin`, `lib`, `sbin` (12682683 bytes, sha256 `3dfaf36aac622298...`; the baseline probe at 22:35 had the working 11833999-byte `26ef233b...`). `debugfs stat`: `initramfs`,
+  `initramfs-extra` and `sm8550-samsung-dm1q.dtb` in the nested pmOS_boot were all rewritten at **19-Oct-2026 00:25:32** by the running pmOS (the phone's own clock in TWRP is 1970), i.e. an apk /
+  mkinitfs run on the phone after the baseline and before the reboot. What ran it is not established yet (docs/06 rule 4: any apk operation touching a trigger dir). The fixed file the script
+  builds is 12269736 bytes, 291 entries (was 294).
+- Not caused by the image change: the v19 vendor ramdisk, init_boot and kernel are byte-identical to v17, which booted this morning.
+- Remedy: `scripts/fix-phone-initramfs-extra.sh --yes` from TWRP (Baraa runs it), then reboot to system and redo the v19 check. Rollback of that fix: `--yes --file <extra-phone-*.gz>`.
