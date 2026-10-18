@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -59,6 +59,10 @@
 #                clients with python3 and prints the faulting pc, its mapping and the instruction words, to be decoded with llvm-mc on the PC;
 #                runs AFTER --plasma-start so its new cores are included; adds sigill-core.txt).
 #   --plasma-keep  with --plasma-start: leave the UI running at the end instead of stopping it.
+#   --gpu        also run scripts/phone-gpu-probe.sh (docs/11 section 7: read-only; Adreno 740 state: running kernel config, GPU modules,
+#                gpu / gmu / gpucc / adreno-smmu devices and drivers, DT gpu + zap-shader nodes, zap carveout, DRM nodes, devfreq, firmware
+#                files and staging dirs with sha256, Mesa packages, initramfs-extra fingerprint, GPU clocks/genpd, GPU dmesg lines, a
+#                key=value summary; it NEVER opens /dev/dri/* -- the first open powers the GPU up; adds gpu.txt).
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -66,7 +70,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -87,6 +91,7 @@ for a in "$@"; do
 	--plasma-keep) PLASMA_KEEP=1 ;;
 	--plasma-profile=*) PLASMA_PROFILE="${a#--plasma-profile=}"; case "$PLASMA_PROFILE" in default|software|softpipe) ;; *) echo "--plasma-profile must be default, software or softpipe" >&2; exit 2 ;; esac ;;
 	--sigill-core) SIGILL_CORE=1 ;;
+	--gpu) GPU_PROBE=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -121,6 +126,9 @@ push_scripts() {
 	fi
 	if [ "$DISPLAY_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-display-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the display probe failed"; exit 1; }
+	fi
+	if [ "$GPU_PROBE" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-gpu-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the GPU probe failed"; exit 1; }
 	fi
 	if [ "$SIGILL_CORE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-sigill-core.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the SIGILL core script failed"; exit 1; }
@@ -218,6 +226,10 @@ if [ "$DISPLAY_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-display-probe.sh 2>&1 | tee /tmp/dm1q-collect/display.txt"
 fi
+if [ "$GPU_PROBE" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-gpu-probe.sh 2>&1 | tee /tmp/dm1q-collect/gpu.txt"
+fi
 if [ -n "$PLASMA_START" ]; then
 	BODY="$BODY
 DUR=$PLASMA_START KEEP=$PLASMA_KEEP PROFILE=$PLASMA_PROFILE sh /tmp/phone-plasma-start.sh 2>&1 | tee /tmp/dm1q-collect/plasma-start.txt"
@@ -274,6 +286,7 @@ RMSG=""
 [ "$APK_HTTPS" = 1 ] && RMSG="$RMSG; the apk https step downloads ~7 MB of indexes and runs a simulation (~1-2 min); it edits /etc/apk/repositories"
 [ "$APKNET" = 1 ] && RMSG="$RMSG; the apk network diagnosis takes ~2 min (it fetches index files and runs apk update -vv)"
 [ "$PLASMA_PRE" = 1 ] && RMSG="$RMSG; the Plasma preflight takes ~1 min (apk update + simulation need the phone's Wi-Fi internet)"
+[ "$GPU_PROBE" = 1 ] && RMSG="$RMSG; the GPU probe is read-only and takes a few seconds"
 [ "$DRM_TEST" = 1 ] && RMSG="$RMSG; the DRM pattern test takes ~35 s: WATCH THE PHONE SCREEN"
 [ "$BACKLIGHT" = 1 ] && RMSG="$RMSG; the backlight sweep takes ~1 min: WATCH THE PHONE SCREEN (white, getting dimmer)"
 [ "$FRESH" = 1 ] && RMSG="; the idle + load steps take ~1.5 min"
@@ -283,7 +296,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
