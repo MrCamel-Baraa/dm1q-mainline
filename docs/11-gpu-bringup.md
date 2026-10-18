@@ -12,10 +12,11 @@ document has been run on the phone yet (state at the end of the first session: r
 | Step | State |
 |---|---|
 | Upstream + analog research (this document, sections 2-5) | done 2026-10-18 |
-| Baseline probe `scripts/collect-phone-state.sh <label> --gpu` (scripts/phone-gpu-probe.sh, PC test passes) | written, NOT yet run on the phone |
-| Firmware pull from the phone's own vendor partition (TWRP) | not done |
-| DT-only image set (`&gpu` okay) | not built |
-| Power-up test, Mesa, Plasma on GPU | not done |
+| Baseline probe `scripts/collect-phone-state.sh gpu-baseline --gpu` | run 2026-10-18 22:35, results in section 9 |
+| Firmware (SQE, GMU, generic zap) on the PC from linux-firmware | done 2026-10-19, `../_scratch/dm1q-gpu-fw/` (not in the repo), section 9 |
+| Vendor-signed zap pull (TWRP) | not needed unless PAS rejects the generic one |
+| DT-only image set `../_scratch/pmos-v19-gpu-bind` (`&gpu` okay, no firmware on the phone) | built and verified on the PC 2026-10-19, NOT flashed |
+| Power-up test (S3), Mesa, Plasma on GPU | not done |
 
 ## 2. What upstream has (FACT, kernel tree `../_scratch/linux-build/full`, 7.3-rc3)
 
@@ -95,7 +96,7 @@ FACT about what that port did and saw (different device, same SoC family, same S
 5. **Custom firmware path.** `firmware_class.path` is a writable module parameter (`module_param_string(path, ..., 0644)`), searched before the
    standard directories, and honoured by both `request_firmware_direct` (zap `firmware-name` branch) and `qcom_mdt_load` (the `.bNN` pieces).
    So the blobs can live in a staging directory that is NOT on the default search path, and the power-up can be started by hand
-   from ssh (`echo DIR > /sys/module/firmware_class/parameters/path`, open a render node once, then clear the path). A TZ reset then costs one
+   from ssh (`echo DIR > /sys/module/firmware_class/parameters/path`, open a render node once, then RESTORE the saved value: on this phone it is `/lib/firmware/postmarketos`, not empty, section 9). A TZ reset then costs one
    reboot instead of a boot loop, and nothing is written under `/lib/firmware`, so no apk trigger can regenerate `/boot/initramfs-extra`
    (docs/06 rule 3 is about the apk trigger; INFERENCE that plain files elsewhere cannot fire it; the probe records the initramfs-extra
    hash so this is checked, not assumed).
@@ -129,7 +130,7 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
 - **S0 baseline (no change on the phone).** `bash scripts/collect-phone-state.sh gpu-baseline --gpu`, read `notes/<date>-gpu-baseline/gpu.txt`.
   It lists (never opens) the DRM nodes. Answers: running config (SM_GPUCC_8550, QCOM_PAS, MDT loader, FW_LOADER options), what is loaded/bound,
   whether any a740/gmu/zap file exists, whether `firmware_class.path` is empty, the initramfs-extra fingerprint, installed Mesa packages.
-- **S1 firmware on the PC (no phone write).** Get `a740_sqe.fw`, `gmu_gen70200.bin` and the generic `qcom/sm8550/a740_zap.mbn` from
+- **S1 firmware on the PC (no phone write) - DONE 2026-10-19, section 9.** Get `a740_sqe.fw`, `gmu_gen70200.bin` and the generic `qcom/sm8550/a740_zap.mbn` from
   linux-firmware (extract from the Alpine package on the PC, do NOT apk-install on the phone), into `../_scratch/dm1q-gpu-fw/` (never committed).
   Fallback only if S3 shows PAS rejecting the generic zap: TWRP + adb pull of the phone's own `a740_zap.*` from the vendor partition (tooling not written).
 - **S2 DT-only image set** `../_scratch/pmos-v19-gpu-bind`: `&gpu { status = "okay"; zap-shader { firmware-name = "qcom/sm8550/a740_zap.mbn"; }; };`
@@ -137,8 +138,9 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
   following `qcom/sm8550/Sony/yodo/...`: INFERENCE that this is the upstream convention).
   No firmware on the phone yet, so this boot can only bind. Expected (INFERENCE): `[drm] Initialized msm`, `failed to load a740_sqe.fw` (from the
   fbdev client's open), no `no GPU device was found`, `3d6a000.gmu` still unbound (normal), no SMMU fault, display unchanged. Rollback: flash v17.
-- **S3 on-demand power-up** (`phone-gpu-powerup.sh`, to be written with its PC test): stage the six files under a directory outside the default
-  search path, set `firmware_class.path`, open `renderD128` once, read dmesg and the GPU debugfs state, clear the path. First with SQE + GMU only
+- **S3 on-demand power-up** (`phone-gpu-powerup.sh`, to be written with its PC test): stage the three files (section 9) under a directory outside the default
+  search path, save the current `firmware_class.path`, point it at the staging directory, open `renderD128` once, read dmesg and the GPU debugfs
+  state, restore the saved path. First with SQE + GMU only
   (the zap file absent: expected clean -ENOENT at the zap, proves clocks/rails/GMU), then with the zap (proves PAS auth and `hw_init`).
   Reset risk is in the second step; rollback is a reboot.
 - **S4 Mesa:** `mesa-dri-gallium` is probably there already (Plasma pulled it in); add `mesa-vulkan-freedreno` only after checking
@@ -153,3 +155,60 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
 `gpu.txt` ends with a key=value summary: `gpu_driver`, `gpucc_driver`, `adreno_smmu_driver`, `render_node_present`, `firmware_*`,
 `firmware_zap_files`, `dmesg_gpu_errors`. Expected for the baseline: `gpu_driver=absent`, `render_node_present=yes` (card1's sibling exists
 without a GPU), all firmware `no`. Section 4 also prints the DT view (`DT gpu node`, `DT zap-shader child`, the carveout reg).
+
+## 9. Results so far
+
+### 9.1 Baseline probe, 2026-10-18 22:35 (`notes/2026-10-18-gpu-baseline/gpu.txt`, kernel 7.3.0-rc3 = r7, v17 DTB; all FACT)
+
+- **Search path:** `firmware_class.path` is already `/lib/firmware/postmarketos` (pmOS sets it; the kernel cmdline has no `firmware_class.path`).
+  So the staging approach of section 5 must save and restore the value, never clear it, and anything dropped into `/lib/firmware/postmarketos/`
+  would be found at the next boot (that directory is also an mkinitfs trigger dir: docs/06 rule 3). Nothing a740/gmu/zap exists anywhere.
+- **Running config:** QCOM_PAS=y (QCOM_PAS_TEE=m, `qcomtee` is loaded), QCOM_SCM=y, QCOM_TZMEM shmbridge, ARM_SMMU(_QCOM)=y,
+  QCOM_AOSS_QMP=y, QCOM_RPMHPD=y, INTERCONNECT_QCOM_SM8550=y, DRM_MSM=m (+KMS_FBDEV=y, GPU_STATE=y), SM_GPUCC_8550=m, QCOM_MDT_LOADER=m,
+  QCOM_UBWC_CONFIG=m, QCOM_LLCC=m, DRM_GPUVM/EXEC/SCHED=m, PM_DEVFREQ + simple_ondemand=y, FW_LOADER_USER_HELPER=y without FALLBACK,
+  DEV_COREDUMP=y, ARM64_SVE=y. Every Kconfig prerequisite for the Adreno path is already there; no kernel config change is needed for S2/S3.
+- **msm modules and parameters:** msm, ubwc_config, mdt_loader, drm_gpuvm, drm_exec, gpu_sched, llcc_qcom, gpucc_sm8550 are loaded.
+  msm parameters include `skip_gpu=N`, `separate_gpu_kms=N`, `disable_acd=N`, `hang_debug=N`, `enable_preemption=-1`, `fbdev=Y`
+  (what `skip_gpu` exactly skips is not read yet).
+- **Devices:** `3d00000.gpu` absent (DT `disabled`; the zap-shader child exists with memory-region phandle 0xa1 and no firmware-name;
+  `gpu-micro-code-region@9b09a000` reg = 0x9b09a000 size 0x2000, as in the live map). `3d6a000.gmu` unbound (normal, section 2). gpucc is bound
+  (`gpu_cc-sm8550`), `3da0000.iommu` is bound (`arm-smmu`, SMMUv2, 22 context banks), `ae00000.display-subsystem` bound (`msm-mdss`). The carveout is
+  not in `/proc/iomem` (no-map regions are not listed).
+- **Boot order with gpucc as a module** (dmesg): `3da0000.iommu` returns -517 from 0.12 s until gpucc loads at 7.03 s, probes OK at 7.12 s;
+  msm_dpu defers once at 7.288 and binds at 7.311; `[drm] Initialized msm 1.13.0` 7.3736; `no GPU device was found` 7.3736 (the same millisecond);
+  `fb0: msmdrmfb` 7.65. That message is printed by `adreno_load_gpu()`; it appears right after the DRM device is registered and about 280 ms before the
+  fbdev console exists, which supports section 5 point 3 (the in-kernel fbdev client's open runs `load_gpu`). With `&gpu` on, that open will try
+  the SQE load at the same moment.
+- **sync_state:** only `3d6a000.gmu` is named as pending for gcc and gpu_cc. The GMU never gets a driver of its own upstream, so this message is
+  expected to stay (R3 is smaller than assumed). The cmdline also has `clk_ignore_unused pd_ignore_unused regulator_ignore_unused`.
+- **Power:** `gpu_cc_gx_gdsc` and `gpu_cc_cx_gdsc` are off, cx and mmcx are on; all gpu_cc clocks have 0 enables except the SMMU's AHB / HLOS1 vote and the two gcc SMMU clocks.
+- **Userspace:** mesa 26.2.4 (`mesa-dri-gallium`, egl, gbm, gl, gles), `msm_dri.so` and `kgsl_dri.so` present; no `mesa-vulkan-freedreno`, no `eglinfo` /
+  `kmscube` / `vulkaninfo` / `modetest`.
+- **Fingerprint:** `/boot/initramfs-extra` 11833999 bytes, sha256 `26ef233b781e1ccd7a2b19e8d3afe2a06e7407a398799b0f59037e805c1dca3c`; the saved
+  `/root/dm1q-plasma/initramfs-extra.pre-plasma` is 11828461 bytes, `b952b26f...` (any later change to the first one without a TWRP fix is a rule 3 event).
+- **No SMMU faults, no GPU lines other than `no GPU device was found`.**
+
+### 9.2 Firmware on the PC, 2026-10-19 (from kernel.org linux-firmware, `../_scratch/dm1q-gpu-fw/`; never committed)
+
+| file | bytes | sha256 | WHENCE version |
+|---|---|---|---|
+| `qcom/a740_sqe.fw` | 76724 | `96fee336424b139100fc60b5b45a907360e4b3936d7e1d00406b9bd80ca48473` | v1.81 |
+| `qcom/gmu_gen70200.bin` | 66844 | `1a2a419c39046d3141fc5fed5aa7f971de2db40cc7a1d89693c3e26fad64dd98` | v4.01.09 (the Tab S9 Ultra's Samsung copy logged v4.1.9) |
+| `qcom/sm8550/a740_zap.mbn` | 12088 | `386bbdc25ae94a9398e33e7580eecfdcef6c472682a1e3123e1374bcffe7cde3` | v0.11 |
+
+The generic zap is a 3-program-header ELF (`QUALCOMM DSP6`): one LOAD segment of 0x430 bytes at 0x1000, plus the hash/signature segment. The loaded
+span is far below the 0x2000 carveout, so R2 is not a problem for this file (the exact loader arithmetic was not re-read, INFERENCE; a vendor-signed MDT set
+would need the same check). PAS backend: `qcom_pas_ops_register()` keeps the first backend that registers; the SCM one is built in, the TEE one is a module,
+so SCM is most likely the active one (INFERENCE, nothing on dm1q has used PAS yet: the GPU zap would be its first user).
+
+### 9.3 DT-only image set `../_scratch/pmos-v19-gpu-bind` (built 2026-10-19 00:30, NOT flashed)
+
+- Source: the canonical `dts/dm1q/dm1q.dts` plus two blocks appended in `../_scratch/pmos-v19-gpu-bind/dm1q-gpu.dts`: `&gpu { status = "okay"; };` and
+  `&gpu_zap_shader { firmware-name = "qcom/sm8550/a740_zap.mbn"; };`. Built with `make-dtb-image-set.sh --ref-set ../_scratch/pmos-v17-splash-iommu --apk <r7 apk>`;
+  RESULT: image set OK. The DTB differs from v17's in exactly two places (status okay, firmware-name); the vendor ramdisk, bootconfig, vendor cmdline and the kernel are
+  byte-identical to v17, `check-wlan-dtb.py` PASS, AVB footers OK.
+- sha256: boot.img `f6bea05e5799e19c...`, vendor_boot.img `71f8571ba72780787ce272d7bdd256d72c6d71d3ac9ca9bb6acea547158bec83`.
+- Flash: `boot` and `vendor_boot` only (as for the earlier DT-only sets, docs/09 15.3); `dtbo.img` differs from v17's but was not flashed in those tests either.
+- Expected (INFERENCE): the display comes up as before, `[drm] Initialized msm`, a `failed to load a740_sqe.fw` style error instead of `no GPU device was found`, `3d00000.gpu`
+  bound to `adreno`, `/dev/dri` unchanged, no SMMU fault, GMU still unbound. Rollback: reflash v17 (`../_scratch/pmos-v17-splash-iommu`), or, if only the display is
+  affected and ssh works, blacklist msm in `/etc/modprobe.d` (docs/09 section 8).
