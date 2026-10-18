@@ -378,6 +378,28 @@ Next run, three changes in one command (all read-only except the temporary env s
 - `--sigill-core` (`scripts/phone-sigill-core.sh`, test `scripts/test-phone-sigill-core.sh`, 28 checks pass under bash incl. a decode with `llvm-mc`): parses the stored SIGILL cores of the clients with python3
   and prints the faulting pc, its mapping, registers and 17 instruction words around it; decode them on the PC with `llvm-mc --disassemble --triple=aarch64 -mattr=+all`.
 
+### 9.3 Result of the third start: `softpipe` profile, and the decoded SIGILL (run 2026-10-18 ~09:16 local, `notes/2026-10-18-plasma-start-sp/`, raw, uncommitted)
+
+What Baraa saw (FACT): same outcome (black screen, then the login line). Decision (Baraa, 2026-10-18): **do the GPU (Adreno 740) enablement first**; handoff in `notes/2026-10-18-handoff-gpu.md`.
+
+FACT:
+- **The SIGILL is decoded.** `scripts/phone-sigill-core.sh` parsed the stored cores of `plasma-keyboard`, `kwin_wayland`, `plasmashell` and `ksplashqml`: **all four have the same faulting word `0x04a14003`** at the same offset
+  (`pc` = start of an anonymous `r-x` JIT page + 0x38/0x3c, LR = `libgallium-26.2.4.so + 0x735d4c`, EL0). `llvm-mc --disassemble --triple=aarch64` decodes it as **`index z3.s, #0, #1`, an SVE instruction**
+  (valid with `+sve`/`+sve2`/`+sme`, `invalid instruction encoding` with plain `+v8.6a,+neon,+i8mm`), sitting in a JIT prologue between scalar loads and NEON `dup v1.4s, w5` / `movi v16.4s`.
+  Together with `/proc/cpuinfo` (no `sve`/`sve2`/`bf16` in `Features`, section 9.2): **llvmpipe's LLVM JIT generates SVE code for this phone, which the kernel does not expose to userspace** (the firmware/hypervisor hides it;
+  the kernel has `CONFIG_ARM64_SVE=y`). INFERENCE for the "why": LLVM takes its CPU model from the `CPU part` lines (X3/A715/A510 all imply SVE2) instead of from the `Features` line.
+- **softpipe with `LIBGL_ALWAYS_SOFTWARE=1` does not work for KWin:** `MESA-EGL: warning: Not allowed to force software rendering when API explicitly selects a hardware device.`, `egl: failed to create dri2 screen`,
+  `kwin_scene_opengl: Error during eglInitialize "EGL_NOT_INITIALIZED"`, `Failed to create gbm device for "/dev/dri/renderD128"` and `"/dev/dri/card1"`, `Found no render device!`, `The used windowing system requires
+  compositing`, `We are going to quit KWin now as it is broken` -> kwin_wayland dumps core, the unit restarts every ~10 s (3 restarts by t=40 s, hottest 78 C, abort). INFERENCE: KWin selects the device explicitly
+  (EGL device / GBM on the DRM node), which Mesa refuses to override with `LIBGL_ALWAYS_SOFTWARE`. Untested variants: `GALLIUM_DRIVER=softpipe` with `MESA_LOADER_DRIVER_OVERRIDE=kms_swrast` and no `LIBGL_ALWAYS_SOFTWARE`.
+- `/tmp/.X11-unix` and `/tmp/.ICE-unix` existed at the start of this run (cause unknown, not created by the script this time); `/usr/lib/tmpfiles.d` has `tmp.conf` but no `*x11*` file (FACT).
+- **Housekeeping:** `coredumpctl` lists **290 SIGILL cores** (5-7 MB each, compressed, under `/var/lib/systemd/coredump`) from the three runs, i.e. roughly 1.5-2 GB, and the crash loops keep `systemd-coredump` busy. They can be deleted
+  (`sudo rm -f /var/lib/systemd/coredump/*`) now that the analysis is done; for further crash experiments a drop-in `/etc/systemd/coredump.conf.d/dm1q.conf` with `[Coredump]` / `Storage=none` avoids new ones. Not done by me.
+
+Ways to make software GL work without the GPU (all INFERENCE, none tried; the GPU path of docs/11 makes them moot for the session itself, but they matter for any CPU-only fallback, XWayland clients and Waydroid-style uses):
+(a) give LLVM a CPU model without SVE, e.g. a bind-mounted `/proc/cpuinfo` for the UI services (`BindReadOnlyPaths=`) in which the `CPU part` lines say a non-SVE core; (b) look for a Mesa gallivm override of the JIT
+CPU/feature string in Mesa 26.2 (not searched); (c) the softpipe variant above; (d) rebuild Mesa/LLVM with SVE disabled for aarch64 (a pmaports patch, heavy).
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
@@ -388,6 +410,7 @@ Next run, three changes in one command (all read-only except the temporary env s
 - DONE: install run, rc=0, 1155 packages; TWRP initramfs fix applied (section 8.1); first-start script, test and flags written (section 9).
 - DONE: first start by hand run (section 9.1): the session starts, but restarts every ~33 s because Qt Quick clients (ksplashqml, plasma-keyboard) die with SIGILL in llvmpipe's JIT; the phone boots after the TWRP fix, usb ssh fine.
 - DONE: second start with `--plasma-profile=software` (+ `KWIN_COMPOSE=Q`): KWin 6.8 has no QPainter compositor on DRM and exits (section 9.2); touch and keys confirmed (console via ttyescape, libinput inside KWin).
-- TODO: third start with `--plasma-profile=softpipe --sigill-core` (no llvmpipe JIT; instruction word of the SIGILL); tmpfiles.d snippet for `/tmp/.X11-unix`, `/tmp/.ICE-unix`; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
+- DONE: third start (`softpipe`) and the SIGILL decode (section 9.3): llvmpipe's JIT emits the SVE instruction `index z3.s, #0, #1`, which this phone's userspace cannot execute; softpipe + `LIBGL_ALWAYS_SOFTWARE` breaks KWin's EGL init. **Decision: GPU first (docs/11, handoff `notes/2026-10-18-handoff-gpu.md`); Plasma Mobile resumes after the Adreno works or after one of the software-GL variants of 9.3 is tried.**
+- TODO: tmpfiles.d snippet for `/tmp/.X11-unix`, `/tmp/.ICE-unix`; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).
