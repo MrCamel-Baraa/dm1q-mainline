@@ -8,7 +8,9 @@
 #   missing   the unit file does not exist: abort, nothing started
 #   running   the unit is already active: not started again, and NOT stopped at the end (we did not start it)
 #   term      SIGTERM during the window: the trap stops the unit and restores getty
-#   software  PROFILE=software: the temporary env script exists while the UI runs, has the two exports, and is removed at the end
+#   software  PROFILE=software: the temporary env script exists while the UI runs, has QT_QUICK_BACKEND only (no KWIN_COMPOSE), and is removed at the end
+#   softpipe  PROFILE=softpipe: three exports (software Qt Quick, LIBGL_ALWAYS_SOFTWARE, GALLIUM_DRIVER=softpipe), removed at the end
+#   badprof   an unknown profile aborts before anything is started
 #   softkeep  PROFILE=software KEEP=1: the env script stays
 #   hot       a thermal zone at 96 C aborts the window early
 # Usage: bash scripts/test-phone-plasma-start.sh
@@ -97,6 +99,9 @@ for sh in dash bash; do
 	expect "$N/out" "smmu fault counter" "number of arm-smmu faults since boot: 0"
 	expect "$N/out" "result line" "RESULT: window of 3s completed"
 	expect "$N/out" "profile reported" "^profile: default"
+	expect "$N/out" "missing X11 socket dir created" "created /tmp/.X11-unix \\(was missing\\)"
+	expect "$N/out" "missing ICE socket dir created" "created /tmp/.ICE-unix \\(was missing\\)"
+	[ "$(stat -c %a "$N/root/tmp/.X11-unix")" = 1777 ] && ok "X11 dir mode 1777" || bad "X11 dir mode is $(stat -c %a "$N/root/tmp/.X11-unix")"
 	reject "$N/out" "no env script in the default profile" "temporary env script"
 	expect "$N/out" "coredump list" "SIGILL present /usr/lib/libexec/ksplashqml"
 	expect "$N/out" "coredump info" "Signal: 4 \\(ILL\\)"
@@ -148,10 +153,29 @@ for sh in dash bash; do
 	runit "$sh" "$S" "$S/out" PROFILE=software || bad "$sh exits non-zero (software)"
 	expect "$S/out" "profile reported" "^profile: software"
 	expect "$S/out" "env script announced" "wrote the temporary env script /etc/xdg/plasma-workspace/env/90-dm1q-test\\.sh"
-	expect "$S/out" "env script content shown" "export KWIN_COMPOSE=Q"
+	expect "$S/out" "env script content shown" "export QT_QUICK_BACKEND=software"
+	reject "$S/out" "KWIN_COMPOSE is not set any more (KWin 6.8 DRM has no QPainter)" "KWIN_COMPOSE"
+	reject "$S/out" "software profile does not force softpipe" "GALLIUM_DRIVER"
 	if [ -e "$S/env-at-start" ] && grep -q 'export QT_QUICK_BACKEND=software' "$S/env-at-start"; then ok "env script existed with the exports when the unit was started"; else bad "env script missing at unit start"; fi
 	expect "$S/out" "removal announced" "removed the temporary env script"
 	[ ! -e "$S/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" ] && ok "env script removed at the end" || bad "env script left behind"
+
+	echo "== $sh, scenario softpipe profile"
+	P="$W/softpipe-$sh"; mktree "$P" 1 0 0
+	sed -i 's|^start) \[ "\$2" = plasma-mobile.service \] \&\& echo active|start) [ "$2" = plasma-mobile.service ] \&\& { cp "'"$P"'/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" "'"$P"'/env-at-start" 2>/dev/null; echo active|; s|> "'"$P"'/state" ;;|> "'"$P"'/state"; } ;;|' "$P/bin/systemctl"
+	runit "$sh" "$P" "$P/out" PROFILE=softpipe || bad "$sh exits non-zero (softpipe)"
+	expect "$P/out" "profile reported" "^profile: softpipe"
+	for v in 'export QT_QUICK_BACKEND=software' 'export LIBGL_ALWAYS_SOFTWARE=1' 'export GALLIUM_DRIVER=softpipe'; do
+		grep -qxF "$v" "$P/env-at-start" 2>/dev/null && ok "env script had '$v' when the unit started" || bad "env script lacks '$v' at unit start"
+	done
+	[ ! -e "$P/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" ] && ok "softpipe env script removed at the end" || bad "softpipe env script left behind"
+
+	echo "== $sh, scenario unknown profile"
+	U="$W/badprof-$sh"; mktree "$U" 1 0 0
+	runit "$sh" "$U" "$U/out" PROFILE=nonsense; rc=$?
+	[ "$rc" = 1 ] && ok "exit 1" || bad "exit code $rc, wanted 1"
+	expect "$U/out" "abort message" "unknown PROFILE 'nonsense'"
+	reject "$U/systemctl-calls.log" "nothing started" "^start plasma-mobile.service"
 
 	echo "== $sh, scenario software + keep"
 	SK="$W/softkeep-$sh"; mktree "$SK" 1 0 0

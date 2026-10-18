@@ -336,6 +336,48 @@ reports whether the variables reached the user manager (`systemctl --user show-e
 persistent form is a file in `/etc/xdg/plasma-workspace/env/` shipped by `device-samsung-dm1q` (to be packaged after the test). The llvmpipe SIGILL root cause stays open (it matters if software GL
 is ever needed again, e.g. XWayland clients or before the Adreno works); the GPU path (docs/11) removes llvmpipe from the picture for the session itself.
 
+### 9.2 Result of the second start: `software` profile with `KWIN_COMPOSE=Q` (run 2026-10-18 ~05:23 local, `notes/2026-10-18-plasma-start-sw/`, raw, uncommitted)
+
+What Baraa saw (FACT): still a black screen and then the same login line. He also reports (FACT) that touch and the buttons work fine on the console: he installed
+`ttyescape` (one of the plasma-mobile recommended packages, an on-screen keyboard for the tty) and has a working on-screen keyboard without a desktop environment.
+So touch and keys are confirmed outside Plasma, and the log shows the same inside KWin (below).
+
+FACT from the log:
+- **The env-script hook works:** `systemctl --user show-environment` and kwin's own environment both had `KWIN_COMPOSE=Q` and `QT_QUICK_BACKEND=software`, so
+  `/etc/xdg/plasma-workspace/env/*.sh` reaches every user service (INFERENCE of 9.1 confirmed). The same hook is the right place for a persistent setting.
+- **`KWIN_COMPOSE=Q` is a dead end on this KWin (6.8, DRM platform):** `kwin_core: Compositing forced to QPainter mode by environment variable` -> `Configured compositor not
+  supported by Platform. Falling back to defaults` -> `Attempting to load the OpenGL scene` -> `Could not fulfill the requested compositing mode in KWIN_COMPOSE: 1 . Exiting.` -> kwin_wayland
+  SIGSEGV; the wrapper restarts it about 10 times in 10 s (`KWIN_RESTART_COUNT=8` when collected), every Wayland client then aborts (SIGABRT: kded6, plasmashell, powerdevil, ...),
+  `startplasma-wayland` shuts down and the unit restarts every ~12 s (faster than in 9.1). INFERENCE: the QPainter backend no longer exists for the DRM platform in 6.8 (not checked against
+  the KWin source or changelog). The profile no longer sets it.
+- **KWin's hardware side is fine:** it opens `/dev/dri/card1` with atomic modesetting (10 planes), creates the output `DSI-1` (no EDID, expected), libinput lists `gpio-keys`, `pmic_pwrkey`, `pmic_resin`
+  as keyboards and `STMicroelectronics FTS2BA61Y Touchscreen` as a touch device; kwin_wayland holds 1 card1 fd and 3 renderD128 fds.
+- **KWin enumerates its render devices as `/dev/udmabuf: llvmpipe` and `/dev/dri/renderD128: llvmpipe`** and chooses `/dev/udmabuf` as the primary GPU. Mesa first tries the msm
+  gallium driver on renderD128 (`MESA: error: get_param:235: get-param failed! -6`, `fd_pipe_new2:34: allocation failed`, i.e. no GPU behind the render node, ENXIO) and then falls back to
+  llvmpipe. Harmless noise but it confirms the fallback chain.
+- **llvmpipe kills every GL user, KWin included:** the first-run coredump list (9.1) also holds `kwin_wayland` and `plasmashell` with `Signal: 4 (ILL) si_code: ILL_ILLOPC`, same
+  shape (frame #0 in anonymous JIT memory, frame #1 `libgallium-26.2.4.so + 0x735d4c` in every process). So `QT_QUICK_BACKEND=software` for the clients cannot be enough: KWin itself needs GL.
+- **CPU (FACT, `/proc/cpuinfo`, kernel config):** 8 cores = 3x Cortex-A510 (part 0xd46), 2x A710 (0xd47), 2x A715 (0xd4d), 1x X3 (0xd4e). `Features`: fp asimd aes pmull sha1 sha2 crc32 atomics fphp asimdhp
+  asimdrdm jscvt fcma lrcpc dcpop sha3 sm3 sm4 asimddp sha512 asimdfhm dit uscat ilrcpc flagm sb paca pacg dcpodp flagm2 frint i8mm bti: **no `sve`, no `sve2`, no `bf16`**, although
+  `CONFIG_ARM64_SVE=y` and `CONFIG_ARM64_SME=y`. dmesg also has `CPU features: SANITY CHECK: Unexpected variation in SYS_ID_AA64MMFR1_EL1` (boot CPU 0x...11212122 vs CPU3-7
+  0x...10212122) and `SYS_ID_MMFR4_EL1` on CPU5-7, then `Unsupported CPU feature variation detected`.
+  INFERENCE (strong, still unproven): Qualcomm's hypervisor/firmware hides SVE (and BF16) from EL1, LLVM picks a CPU model (X3/A715, which implies SVE2 and BF16) from the `CPU part`
+  lines, and llvmpipe's JIT emits an instruction that is illegal for userspace on this phone. The faulting instruction word will settle it (next step).
+- Fixed or understood noise: `/tmp/.X11-unix` and `/tmp/.ICE-unix` do not exist (`kwin_xwl: /tmp/.X11-unix does not exist`, `Failed to create Xwayland connection sockets`, `_IceTransmkdir`),
+  INFERENCE: the systemd package here does not ship tmpfiles `x11.conf` (the start script now prints whether it exists and creates the two directories, mode 1777, as a stopgap; a tmpfiles.d
+  snippet in `device-samsung-dm1q` is the persistent fix, TODO); `Failed to gain real time thread priority (CAP_SYS_NICE)`; `gkr-pam: couldn't unlock the login keyring`; `XDG_VTNR=tty1`.
+  This run had 0 arm-smmu faults (the single fault of 9.1 was a one-off or boot dependent: still open).
+- Temperatures were lower this time (hottest 71 C at the end, abort after the crash loop at t=40 s).
+
+Next run, three changes in one command (all read-only except the temporary env script and the two empty directories):
+
+    bash scripts/collect-phone-state.sh plasma-start-sp --plasma-start=240 --plasma-profile=softpipe --sigill-core
+
+- `--plasma-profile=softpipe` = `QT_QUICK_BACKEND=software` + `LIBGL_ALWAYS_SOFTWARE=1` + `GALLIUM_DRIVER=softpipe`: Mesa's non-JIT software rasteriser for KWin (and for anything else that needs GL), so the
+  llvmpipe JIT is not involved at all. INFERENCE: it should avoid the SIGILL; it will be slow (the panel is 1080x2340), which is acceptable for a first light.
+- `--sigill-core` (`scripts/phone-sigill-core.sh`, test `scripts/test-phone-sigill-core.sh`, 28 checks pass under bash incl. a decode with `llvm-mc`): parses the stored SIGILL cores of the clients with python3
+  and prints the faulting pc, its mapping, registers and 17 instruction words around it; decode them on the PC with `llvm-mc --disassemble --triple=aarch64 -mattr=+all`.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
@@ -345,6 +387,7 @@ is ever needed again, e.g. XWayland clients or before the Adreno works); the GPU
 - DONE: fresh simulation read (6.3); install script, test and `--plasma-install` flag written (section 8).
 - DONE: install run, rc=0, 1155 packages; TWRP initramfs fix applied (section 8.1); first-start script, test and flags written (section 9).
 - DONE: first start by hand run (section 9.1): the session starts, but restarts every ~33 s because Qt Quick clients (ksplashqml, plasma-keyboard) die with SIGILL in llvmpipe's JIT; the phone boots after the TWRP fix, usb ssh fine.
-- TODO: second start with `--plasma-profile=software` (no GL); usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
+- DONE: second start with `--plasma-profile=software` (+ `KWIN_COMPOSE=Q`): KWin 6.8 has no QPainter compositor on DRM and exits (section 9.2); touch and keys confirmed (console via ttyescape, libinput inside KWin).
+- TODO: third start with `--plasma-profile=softpipe --sigill-core` (no llvmpipe JIT; instruction word of the SIGILL); tmpfiles.d snippet for `/tmp/.X11-unix`, `/tmp/.ICE-unix`; usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).

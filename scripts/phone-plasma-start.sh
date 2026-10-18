@@ -5,18 +5,28 @@
 #
 #   DUR=240   seconds to keep the session up before collecting (default 240)
 #   KEEP=0    1 = leave the session running at the end (default: stop it and restore getty on tty1)
-#   PROFILE=default|software   software = no GL anywhere: QT_QUICK_BACKEND=software (all Qt Quick apps) and KWIN_COMPOSE=Q (KWin's
-#             QPainter compositor on dumb buffers). Applied through a TEMPORARY env script
-#             /etc/xdg/plasma-workspace/env/90-dm1q-test.sh that startplasma sources (and that is removed again at the end, unless KEEP=1).
+#   PROFILE=default|software|softpipe   applied through a TEMPORARY env script /etc/xdg/plasma-workspace/env/90-dm1q-test.sh that
+#             startplasma sources and whose variables reach every user service (removed again at the end, unless KEEP=1):
+#               default   nothing (Mesa picks llvmpipe through the msm render node's fallback)
+#               software  QT_QUICK_BACKEND=software: Qt Quick apps render on the CPU into shm buffers (no GL in the clients);
+#                         KWin still uses GL (llvmpipe)
+#               softpipe  software + LIBGL_ALWAYS_SOFTWARE=1 + GALLIUM_DRIVER=softpipe: Mesa's non-JIT software rasteriser for KWin
+#                         and everything else that needs GL (very slow, but it needs no LLVM JIT)
+#             KWIN_COMPOSE=Q is NOT offered: KWin 6.8's DRM platform answers "Configured compositor not supported by Platform"
+#             and exits (docs/10 section 9.2).
 #   MAXTEMP=95  abort the window early when the hottest thermal zone reaches this many degrees C
 #
-# Why PROFILE exists: the first run (notes/2026-10-17-plasma-start, docs/10 section 9.1) showed the Qt Quick clients (ksplashqml, plasma-keyboard)
-# dying with SIGILL inside llvmpipe's JIT code, which makes the session exit and restart every ~33 s.
+# Why PROFILE exists: the first run (notes/2026-10-17-plasma-start, docs/10 section 9.1) showed every GL client (ksplashqml, plasma-keyboard,
+# plasmashell, kwin_wayland itself) dying with SIGILL inside llvmpipe's JIT code, which makes the session exit and restart.
+#
+# It also makes sure /tmp/.X11-unix and /tmp/.ICE-unix exist (mode 1777), which systemd's tmpfiles normally creates; they were missing
+# ("kwin_xwl: /tmp/.X11-unix does not exist"). They live in /tmp and are not removed again.
 #
 # Safety: the unit has OnFailure=getty@tty1 and Restart=always (restart every 5 s); this script aborts the window early after
 # 3 restarts (crash loop) and ALWAYS stops the unit again on exit, on Ctrl-C and on a dropped ssh (trap), unless KEEP=1.
 # If the screen hangs completely, the phone can still be reset with power + volume-down. It only starts and stops units; the
-# only file it ever writes is the temporary env script of PROFILE=software (removed again). It does not touch /boot, so
+# files it ever writes are the temporary env script of PROFILE=software|softpipe (removed again) and the two socket directories
+# in /tmp. It does not touch /boot, so
 # docs/06 rule 3 does not apply.
 #
 # While it runs, on the phone: touch the screen, press the power key (short), the volume keys, open the quick settings
@@ -77,12 +87,24 @@ echo "baseline: load $(cut -d' ' -f1-3 "$ROOT/proc/loadavg" 2>/dev/null), mem us
 ls -l "$ROOT/dev/dri" 2>&1
 if [ "$(sc is-active "$UNIT" | tr -d '\n')" = active ]; then echo "$UNIT is already running: not starting a second time; will only observe and collect"; else :; fi
 echo "profile: $PROFILE"
-if [ "$PROFILE" = software ]; then
+case "$PROFILE" in
+default) ;;
+software)
 	mkdir -p "$(dirname "$ENVFILE")"
-	printf '%s\n' '# dm1q experiment profile (scripts/phone-plasma-start.sh): no GL anywhere. Temporary: removed when the test ends.' \
-		'export QT_QUICK_BACKEND=software' 'export KWIN_COMPOSE=Q' > "$ENVFILE" && ENVWRITTEN=1
-	echo "wrote the temporary env script ${ENVFILE#"$ROOT"}:"; cat "$ENVFILE"
-fi
+	printf '%s\n' '# dm1q experiment profile (scripts/phone-plasma-start.sh): Qt Quick on the CPU. Temporary: removed when the test ends.' \
+		'export QT_QUICK_BACKEND=software' > "$ENVFILE" && ENVWRITTEN=1 ;;
+softpipe)
+	mkdir -p "$(dirname "$ENVFILE")"
+	printf '%s\n' '# dm1q experiment profile (scripts/phone-plasma-start.sh): no llvmpipe JIT. Temporary: removed when the test ends.' \
+		'export QT_QUICK_BACKEND=software' 'export LIBGL_ALWAYS_SOFTWARE=1' 'export GALLIUM_DRIVER=softpipe' > "$ENVFILE" && ENVWRITTEN=1 ;;
+*) echo "unknown PROFILE '$PROFILE' (default, software, softpipe): abort"; echo "done"; exit 1 ;;
+esac
+if [ "$ENVWRITTEN" = 1 ]; then echo "wrote the temporary env script ${ENVFILE#"$ROOT"}:"; cat "$ENVFILE"; fi
+echo "--- X11 / ICE socket directories (systemd tmpfiles x11.conf normally creates them)"
+for f in "$ROOT"/usr/lib/tmpfiles.d/*x11* "$ROOT"/usr/lib/tmpfiles.d/tmp.conf; do [ -e "$f" ] && echo "tmpfiles.d: ${f##*/}"; done
+for d in /tmp/.X11-unix /tmp/.ICE-unix; do
+	if [ ! -d "$ROOT$d" ]; then mkdir -p "$ROOT$d" && chmod 1777 "$ROOT$d" && echo "created $d (was missing)"; else echo "$d exists"; fi
+done
 T0="$(date '+%Y-%m-%d %H:%M:%S')"
 echo "T0: $T0"
 
