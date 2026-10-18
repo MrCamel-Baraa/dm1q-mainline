@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-keep]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software] [--plasma-keep]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -52,6 +52,8 @@
 #                phone for SECONDS (default 240) while it logs, then it collects journal/process/DRM/kscreen evidence and stops the UI
 #                again (console restored). Aborts early on a crash loop; a dropped ssh or Ctrl-C also stops it. Adds plasma-start.txt.
 #                WATCH THE PHONE SCREEN and touch it, press the keys, move the brightness slider, open the keyboard.
+#   --plasma-profile=software  with --plasma-start: run the session with NO GL (QT_QUICK_BACKEND=software + KWIN_COMPOSE=Q) through a temporary
+#                env script that is removed at the end (the default profile changes nothing).
 #   --plasma-keep  with --plasma-start: leave the UI running at the end instead of stopping it.
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
 #
@@ -60,7 +62,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -79,6 +81,7 @@ for a in "$@"; do
 	--plasma-start) PLASMA_START=240 ;;
 	--plasma-start=*) PLASMA_START="${a#--plasma-start=}"; case "$PLASMA_START" in ''|*[!0-9]*) echo "--plasma-start=SECONDS needs a number" >&2; exit 2 ;; esac ;;
 	--plasma-keep) PLASMA_KEEP=1 ;;
+	--plasma-profile=*) PLASMA_PROFILE="${a#--plasma-profile=}"; case "$PLASMA_PROFILE" in default|software) ;; *) echo "--plasma-profile must be default or software" >&2; exit 2 ;; esac ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -209,7 +212,7 @@ sh /tmp/phone-display-probe.sh 2>&1 | tee /tmp/dm1q-collect/display.txt"
 fi
 if [ -n "$PLASMA_START" ]; then
 	BODY="$BODY
-DUR=$PLASMA_START KEEP=$PLASMA_KEEP sh /tmp/phone-plasma-start.sh 2>&1 | tee /tmp/dm1q-collect/plasma-start.txt"
+DUR=$PLASMA_START KEEP=$PLASMA_KEEP PROFILE=$PLASMA_PROFILE sh /tmp/phone-plasma-start.sh 2>&1 | tee /tmp/dm1q-collect/plasma-start.txt"
 fi
 if [ "$PLASMA_INSTALL" = 1 ]; then
 	BODY="$BODY

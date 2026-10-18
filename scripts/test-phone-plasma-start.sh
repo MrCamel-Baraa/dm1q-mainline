@@ -8,6 +8,9 @@
 #   missing   the unit file does not exist: abort, nothing started
 #   running   the unit is already active: not started again, and NOT stopped at the end (we did not start it)
 #   term      SIGTERM during the window: the trap stops the unit and restores getty
+#   software  PROFILE=software: the temporary env script exists while the UI runs, has the two exports, and is removed at the end
+#   softkeep  PROFILE=software KEEP=1: the env script stays
+#   hot       a thermal zone at 96 C aborts the window early
 # Usage: bash scripts/test-phone-plasma-start.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -31,6 +34,10 @@ mktree() { # $1 dir, $2 unit-present(1/0), $3 initially-active(1/0), $4 crashloo
 	printf 'LANG=C.UTF-8\0XDG_SEAT=seat0\0QT_QPA_PLATFORM=wayland\0HOME=/home/user\0' > "$R/proc/4242/environ"
 	ln -s /dev/dri/card1 "$R/proc/4242/fd/5"; ln -s /dev/input/event3 "$R/proc/4242/fd/6"
 	[ "$3" = 1 ] && echo active > "$D/state"
+	mkdir -p "$R/run/user/10000"; touch "$R/run/user/10000/wayland-1" "$R/run/user/10000/wayland-1.lock"
+	printf 'processor\t: 0\nCPU implementer\t: 0x41\nCPU part\t: 0xd46\nFeatures\t: fp asimd evtstrm aes pmull sha1 sha2 crc32 atomics fphp asimdhp cpuid asimdrdm lrcpc dcpop asimddp\nprocessor\t: 7\nCPU part\t: 0xd4e\n' > "$R/proc/cpuinfo"
+	printf '#!/bin/sh\ncase "$1" in list) echo "TIME PID UID GID SIG COREFILE EXE"; echo "Sat 19:47 1836 10000 10000 SIGILL present /usr/lib/libexec/ksplashqml" ;; info) echo "           Signal: 4 (ILL)"; echo "      Command Line: ksplashqml" ;; esac\n' > "$D/bin/coredumpctl"
+	chmod +x "$D/bin/coredumpctl"
 	cat > "$D/bin/systemctl" <<EOF
 #!/bin/sh
 echo "\$*" >> "$D/systemctl-calls.log"
@@ -54,7 +61,7 @@ EOF
 	printf '#!/bin/sh\necho "-- Boot journal"; echo "kwin_wayland: Using renderer llvmpipe"; echo "kwin_wayland: libinput: found touch device"\n' > "$D/bin/journalctl"
 	printf '#!/bin/sh\necho "SESSION UID USER SEAT TTY"; echo "c2 10000 user seat0 tty1"\n' > "$D/bin/loginctl"
 	printf '#!/bin/sh\necho "4242 root 0:05 /usr/bin/kwin_wayland --lockscreen"\necho "4300 user 0:02 plasmashell --no-respawn"\n' > "$D/bin/ps"
-	printf '#!/bin/sh\nif [ "$1" = -o ]; then echo 4242; else echo 4242; fi\n' > "$D/bin/pgrep"
+	printf '#!/bin/sh\necho 4242\n' > "$D/bin/pgrep"
 	printf '#!/bin/sh\nshift 2 2>/dev/null; echo "SUDO $*" >> "%s/sudo-calls.log"; echo "Output: DSI-1 enabled scale 2.5 rotation none"\n' "$D" > "$D/bin/sudo"
 	printf '#!/bin/sh\necho "[    1.0] msm_dpu ae01000.display-controller: bound"\necho "[    2.0] fts: touch ready"\n' > "$D/bin/dmesg"
 	printf '#!/bin/sh\necho "kscreen-doctor stub"\n' > "$D/bin/kscreen-doctor"
@@ -89,6 +96,15 @@ for sh in dash bash; do
 	expect "$N/out" "dmesg filtered" "msm_dpu ae01000"
 	expect "$N/out" "smmu fault counter" "number of arm-smmu faults since boot: 0"
 	expect "$N/out" "result line" "RESULT: window of 3s completed"
+	expect "$N/out" "profile reported" "^profile: default"
+	reject "$N/out" "no env script in the default profile" "temporary env script"
+	expect "$N/out" "coredump list" "SIGILL present /usr/lib/libexec/ksplashqml"
+	expect "$N/out" "coredump info" "Signal: 4 \\(ILL\\)"
+	expect "$N/out" "cpu part histogram" "CPU part[[:space:]]*: 0xd46"
+	expect "$N/out" "cpu features line" "^Features[[:space:]]*: fp asimd"
+	expect "$N/out" "kscreen-doctor tried the real socket" "^socket wayland-1:"
+	reject "$N/out" "lock file not used as a socket" "^socket wayland-1\\.lock"
+	expect "$N/out" "user environment section" "UI user's systemd environment"
 	grep -q "^start plasma-mobile.service" "$N/systemctl-calls.log" && ok "unit started" || bad "unit not started"
 	grep -q "^stop plasma-mobile.service" "$N/systemctl-calls.log" && ok "unit stopped at the end" || bad "unit not stopped"
 	grep -q "^start getty@tty1.service" "$N/systemctl-calls.log" && ok "getty restored" || bad "getty not restored"
@@ -123,6 +139,33 @@ for sh in dash bash; do
 	expect "$A/out" "already running noted" "already running: not starting a second time"
 	reject "$A/systemctl-calls.log" "not started again" "^start plasma-mobile.service"
 	reject "$A/systemctl-calls.log" "not stopped (we did not start it)" "^stop plasma-mobile.service"
+
+	echo "== $sh, scenario software profile"
+	S="$W/soft-$sh"; mktree "$S" 1 0 0
+	cat > "$S/bin/systemctl.real" < "$S/bin/systemctl"
+	# record whether the env script exists at the moment the unit is started
+	sed -i 's|^start) \[ "\$2" = plasma-mobile.service \] \&\& echo active|start) [ "$2" = plasma-mobile.service ] \&\& { cp "'"$S"'/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" "'"$S"'/env-at-start" 2>/dev/null; echo active|; s|> "'"$S"'/state" ;;|> "'"$S"'/state"; } ;;|' "$S/bin/systemctl"
+	runit "$sh" "$S" "$S/out" PROFILE=software || bad "$sh exits non-zero (software)"
+	expect "$S/out" "profile reported" "^profile: software"
+	expect "$S/out" "env script announced" "wrote the temporary env script /etc/xdg/plasma-workspace/env/90-dm1q-test\\.sh"
+	expect "$S/out" "env script content shown" "export KWIN_COMPOSE=Q"
+	if [ -e "$S/env-at-start" ] && grep -q 'export QT_QUICK_BACKEND=software' "$S/env-at-start"; then ok "env script existed with the exports when the unit was started"; else bad "env script missing at unit start"; fi
+	expect "$S/out" "removal announced" "removed the temporary env script"
+	[ ! -e "$S/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" ] && ok "env script removed at the end" || bad "env script left behind"
+
+	echo "== $sh, scenario software + keep"
+	SK="$W/softkeep-$sh"; mktree "$SK" 1 0 0
+	runit "$sh" "$SK" "$SK/out" PROFILE=software KEEP=1 || bad "$sh exits non-zero (softkeep)"
+	[ -e "$SK/root/etc/xdg/plasma-workspace/env/90-dm1q-test.sh" ] && ok "env script kept with KEEP=1" || bad "env script removed despite KEEP=1"
+	expect "$SK/out" "keep message mentions the env script" "a temporary env script, if any, stays"
+
+	echo "== $sh, scenario too hot"
+	HT="$W/hot-$sh"; mktree "$HT" 1 0 0
+	echo 96000 > "$HT/root/sys/class/thermal/thermal_zone0/temp"
+	runit "$sh" "$HT" "$HT/out" DUR=30 || bad "$sh exits non-zero (hot)"
+	expect "$HT/out" "hot abort" "ABORT: too hot: 96 C >= 95 C"
+	expect "$HT/out" "aborted result" "RESULT: aborted early \\(too hot"
+	grep -q "^stop plasma-mobile.service" "$HT/systemctl-calls.log" && ok "unit stopped after the thermal abort" || bad "unit not stopped after the thermal abort"
 
 	echo "== $sh, scenario SIGTERM during the window"
 	T="$W/term-$sh"; mktree "$T" 1 0 0

@@ -298,6 +298,44 @@ failure); `KWIN_DRM_DEVICES`, `QT_QUICK_BACKEND=software` and the software-compo
 While it runs, on the phone: touch the screen, short power key, volume keys, swipe down for quick settings, move the brightness slider, open a text field for the
 on-screen keyboard.
 
+### 9.1 Result of the first start (run 2026-10-17 ~22:47 local, 240 s window, default profile, `notes/2026-10-17-plasma-start/`, raw, uncommitted)
+
+What Baraa saw (FACT): the screen went completely black and flashed the `samsung-dm1q login:` line over and over; Plasma Mobile never appeared.
+
+FACT from the log:
+- The phone booted the system after the TWRP fix (uptime 419 s at the start of the run; usb0 ssh worked; `usb-signaller` active, `usb-moded` masked, gadget fine).
+- **The session does start**: `startplasma-wayland`, `kwin_wayland_wrapper --xwayland`, `kwin_wayland --wayland-fd 7 --socket wayland-1 --xwayland`, `kded6`, `plasmashell`,
+  `plasma-mobile-initial-start`, `org_kde_powerdevil`, `plasma-keyboard`, `kscreenlocker_greet` all ran; logind session `c5` on seat0/tty1 (kwin env `XDG_VTNR=1`, `XDG_SESSION_TYPE=wayland`).
+  Only the unit's `XDG_VTNR=tty1` is rejected by pam_systemd (`Failed to parse environment variable value 'tty1' of 'XDG_VTNR'`, harmless here, startplasma re-sets it).
+- **But `plasma-mobile.service` exits (status 0, "Deactivated successfully") about every 33 s and `Restart=always` brings it back 5 s later** (restart counter 1, 2, 3 at t=40, 80, 110 s;
+  the script aborted at 3). Each cycle drops the compositor (black screen) and getty@tty1 shows its login line in the gap: this is exactly what Baraa saw, and probably also the
+  "login prompt repeats" mystery in the early console of docs/09 (INFERENCE: a getty respawn there; not verified).
+- **Qt Quick clients crash with SIGILL (`status=4/ILL`) inside Mesa**: `ksplashqml` and `plasma-keyboard` dumped core; both stack traces have the same shape: frame #0 in anonymous memory
+  (`n/a`, i.e. JIT-generated code), frame #1 `libgallium-26.2.4.so + 0x735d4c` (the same offset in both). INFERENCE (strong, not proven): llvmpipe's LLVM JIT emitted an instruction the CPU/kernel
+  does not allow for userspace (candidate: an SVE/SVE2-class or other extension that LLVM assumes for the Cortex-X3/A715/A510 cores but the kernel or firmware does not enable). `plasma-ksplash.service` then
+  fails ("Failed to start Splash screen shown during boot"), which is the likely reason startplasma ends after ~30 s. Not yet checked: `Features` in `/proc/cpuinfo`, `CONFIG_ARM64_SVE`,
+  the faulting instruction word in a core, and what KWin itself uses (it stayed alive; no KWin log was collected in this run: only the system-unit journal and warnings).
+- Noise, not causes: `xembedsniproxy` and `gmenudbusmenuproxy` abort (X11 helpers without an X display) and restart in a loop; `ddcutil` (via powerdevil) fails to open `/dev/i2c-0` (EACCES); wireplumber
+  complains that UPower/BlueZ were not up yet. The repeated coredumps also keep `systemd-coredump` busy (visible in `top`).
+- **Heat and load**: hottest thermal zone 75-90 C during the crash loop (89 at t=40 s, 90 at the end), load 2.3, memory used 0.9-1.7 GB of 6.6 GB; software GL for 3-4 Qt Quick processes plus coredump handling.
+  INFERENCE: do not let a crash loop run for long; the script now aborts at 95 C.
+- `arm-smmu 15000000.iommu: Unhandled context fault: fsr=0x402, iova=0xb809cd00 ... cb=4` at 0.288 s: **1 fault** in this boot (docs/09 had 0 faults in the v17 run). The address lies in the
+  simplefb region `b8000000` and the time is before msm loads (7.9 s). INFERENCE: the boot images flashed now may not be the v17 splash-iommu set, or the fault is timing dependent; TODO compare
+  with docs/09 section 15 and the flashed set before concluding anything.
+- **Bugs of my script found by this run (fixed):** it used `WAYLAND_DISPLAY=wayland-0` for `kscreen-doctor` but KWin's socket is `wayland-1` (kscreen-doctor failed and core dumped), and it picked
+  `kwin_wayland_wrapper` instead of `kwin_wayland` for the fd/environment listing (so the open DRM/input fds list was empty). The script now finds the real socket(s) and uses `pgrep -n -x kwin_wayland`,
+  collects the UI user's journal (kwin/plasmashell/ksplash), the coredump summaries, CPU part/features, kernel SVE config and the user manager environment, and aborts when too hot.
+
+Next run (software profile, no GL anywhere):
+
+    bash scripts/collect-phone-state.sh plasma-start-sw --plasma-start=240 --plasma-profile=software
+
+`--plasma-profile=software` writes a TEMPORARY env script `/etc/xdg/plasma-workspace/env/90-dm1q-test.sh` (`export QT_QUICK_BACKEND=software`, `export KWIN_COMPOSE=Q`: all Qt Quick apps
+render on the CPU into shm buffers, KWin uses its QPainter compositor on dumb buffers; `KWIN_COMPOSE=Q` is the documented software compositor backend for Wayland), removes it at the end and
+reports whether the variables reached the user manager (`systemctl --user show-environment`). INFERENCE: this avoids llvmpipe's JIT entirely, so the SIGILL cannot occur; if it works, the
+persistent form is a file in `/etc/xdg/plasma-workspace/env/` shipped by `device-samsung-dm1q` (to be packaged after the test). The llvmpipe SIGILL root cause stays open (it matters if software GL
+is ever needed again, e.g. XWayland clients or before the Adreno works); the GPU path (docs/11) removes llvmpipe from the picture for the session itself.
+
 ## 7. Status
 
 - DONE: docs read; pmaports package definitions read against current `main` (8bd6c16); preflight script, test and collector flag;
@@ -306,6 +344,7 @@ on-screen keyboard.
   The blocker is fixed on the phone (ISP middlebox vs plain http, sections 6.1-6.2); apk update works over https.
 - DONE: fresh simulation read (6.3); install script, test and `--plasma-install` flag written (section 8).
 - DONE: install run, rc=0, 1155 packages; TWRP initramfs fix applied (section 8.1); first-start script, test and flags written (section 9).
-- TODO: confirm the phone boots the system and ssh/USB networking is intact (usb-signaller check); first start by hand (section 9); usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
+- DONE: first start by hand run (section 9.1): the session starts, but restarts every ~33 s because Qt Quick clients (ksplashqml, plasma-keyboard) die with SIGILL in llvmpipe's JIT; the phone boots after the TWRP fix, usb ssh fine.
+- TODO: second start with `--plasma-profile=software` (no GL); usb-moded decision; read `plasma-mobile.service`; manual session start; verification (touch, keys, backlight,
   keyboard, Wi-Fi in the UI, idle load/temperature); persistence in the device package; docs/06 and Project memory updates; GPU plan
   (`docs/11-gpu-bringup.md`).
