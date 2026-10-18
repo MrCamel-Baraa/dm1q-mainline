@@ -102,10 +102,14 @@ FACT about what that port did and saw (different device, same SoC family, same S
 
 ## 6. Risks and open questions
 
-- **R1 firmware source.** The zap shader must be signed for this phone's secure world (Qualcomm's `qcom/sm8550/a740_zap.mbn` in linux-firmware
-  is for development-fused boards: INFERENCE, would not authenticate). It has to come from this phone's own vendor partition (a logical
-  partition inside `super`; TWRP can mount it). Expected names (INFERENCE from sections 3-4): `a740_zap.mdt`, `.b00`, `.b01`, `.b02`,
-  `a740_sqe.fw`, `gmu_gen70200.bin`. Not pulled yet.
+- **R1 firmware source.** Only the **zap shader** is device-specific: it is authenticated by the secure world (PAS), and the msm source says
+  such firmware may be "signed with (potentially) device specific keys" (FACT, `adreno_gpu.c`); the Tab S9 Ultra DTS says the zap "must be
+  signed for this device's TrustZone" and uses Samsung's own (FACT). SQE and GMU microcode are loaded by the kernel directly, no
+  authentication, and are the same bytes as linux-firmware's (FACT per the gts9u staging script comment), so they can come from linux-firmware.
+  Whether linux-firmware's generic `qcom/sm8550/a740_zap.mbn` is rejected by this phone is INFERENCE: none of the gts9u files say they tried it.
+  A rejected image only logs `Unable to authorize the image` (safe), so **try the generic one first** (no TWRP trip); pull the phone's own
+  zap from the vendor partition (logical partition inside `super`, mountable in TWRP; expected names `a740_zap.mdt`, `.b00`-`.b02`) only if
+  PAS rejects it. Nothing pulled yet.
 - **R2 carveout size.** `qcom_mdt_get_size()` of the zap MDT must be <= 0x2000 (8 KiB) or the driver logs "memory region is too small" (-E2BIG). Check at pull time.
 - **R3 sync_state.** Probing gpu/gmu removes them from the "pending" lists of providers (docs/09 shows `sync_state() pending` lines for gpu_cc and
   3d6a000.gmu). Whole-provider sync_state still waits for the other consumers (cdsp, adsp, venus, camera ...), so a big change in rail/bandwidth
@@ -125,10 +129,12 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
 - **S0 baseline (no change on the phone).** `bash scripts/collect-phone-state.sh gpu-baseline --gpu`, read `notes/<date>-gpu-baseline/gpu.txt`.
   It lists (never opens) the DRM nodes. Answers: running config (SM_GPUCC_8550, QCOM_PAS, MDT loader, FW_LOADER options), what is loaded/bound,
   whether any a740/gmu/zap file exists, whether `firmware_class.path` is empty, the initramfs-extra fingerprint, installed Mesa packages.
-- **S1 firmware pull (TWRP, no phone write).** `adb` from recovery, mount the vendor partition read-only, copy the six files to
-  `../_scratch/dm1q-gpu-fw/` (never committed), print sizes and sha256. Tooling not written yet.
-- **S2 DT-only image set** `../_scratch/pmos-v19-gpu-bind`: `&gpu { status = "okay"; zap-shader { firmware-name = "qcom/sm8550/Samsung/dm1q/a740_zap.mdt"; }; };`
-  in `dts/dm1q/dm1q.dts` (path pattern follows `qcom/sm8550/Sony/yodo/...`: INFERENCE that this is the upstream convention for vendor-signed files).
+- **S1 firmware on the PC (no phone write).** Get `a740_sqe.fw`, `gmu_gen70200.bin` and the generic `qcom/sm8550/a740_zap.mbn` from
+  linux-firmware (extract from the Alpine package on the PC, do NOT apk-install on the phone), into `../_scratch/dm1q-gpu-fw/` (never committed).
+  Fallback only if S3 shows PAS rejecting the generic zap: TWRP + adb pull of the phone's own `a740_zap.*` from the vendor partition (tooling not written).
+- **S2 DT-only image set** `../_scratch/pmos-v19-gpu-bind`: `&gpu { status = "okay"; zap-shader { firmware-name = "qcom/sm8550/a740_zap.mbn"; }; };`
+  in `dts/dm1q/dm1q.dts` (generic zap first; a vendor-signed MDT set would instead need its own path such as `qcom/sm8550/Samsung/dm1q/a740_zap.mdt`,
+  following `qcom/sm8550/Sony/yodo/...`: INFERENCE that this is the upstream convention).
   No firmware on the phone yet, so this boot can only bind. Expected (INFERENCE): `[drm] Initialized msm`, `failed to load a740_sqe.fw` (from the
   fbdev client's open), no `no GPU device was found`, `3d6a000.gmu` still unbound (normal), no SMMU fault, display unchanged. Rollback: flash v17.
 - **S3 on-demand power-up** (`phone-gpu-powerup.sh`, to be written with its PC test): stage the six files under a directory outside the default
