@@ -43,8 +43,23 @@ echo "open node=\$1 hold=\$2 path=\$p" >> "\$D/open.log"
 echo "files: \$(find "\$p" -type f 2>/dev/null | sed "s|^\$p/||" | sort | tr '\n' ' ')" >> "\$D/open.log"
 sim=\$(cat "\$D/sim" 2>/dev/null)
 case "\$sim" in
+real) # the six new kernel lines of the first real sqe-gmu run on the phone, 2026-10-19
+	cat >> "\$D/dmesg.txt" <<'REAL'
+[   33.977806] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/a740_sqe.fw from new location
+[   33.978217] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/gmu_gen70200.bin from new location
+[   33.980649] [drm] Loaded GMU firmware v4.1.9
+[   33.996291] adreno 3d00000.gpu: [drm:adreno_zap_shader_load [msm]] *ERROR* Unable to load qcom/sm8550/a740_zap.mbn
+[   33.996797] msm_dpu ae01000.display-controller: [drm:adreno_load_gpu [msm]] *ERROR* gpu hw init failed: -2
+[   34.007169] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0
+REAL
+	exit 0 ;;
 killme) kill -TERM \$PPID; sleep 1; exit 0 ;;
 extra) printf 'changed' > "\$D/boot/initramfs-extra" ;;
+zaprej)
+	echo "[ 9.1] [drm] Loaded GMU firmware v4.1.9" >> "\$D/dmesg.txt"
+	echo "[ 9.2] adreno 3d00000.gpu: [drm:adreno_zap_shader_load [msm]] *ERROR* Unable to load qcom/sm8550/a740_zap.mbn" >> "\$D/dmesg.txt"
+	echo "[ 9.2] msm_dpu ae01000.display-controller: [drm:adreno_load_gpu [msm]] *ERROR* gpu hw init failed: -22" >> "\$D/dmesg.txt"
+	exit 0 ;;
 esac
 if [ "\$sim" = nopath ] || [ ! -f "\$p/qcom/a740_sqe.fw" ]; then
 	echo "[ 9.0] msm_dpu ae01000.display-controller: Direct firmware load for qcom/a740_sqe.fw failed with error -2" >> "\$D/dmesg.txt"
@@ -55,8 +70,10 @@ if [ ! -f "\$p/qcom/sm8550/a740_zap.mbn" ]; then
 	echo "[ 9.2] adreno 3d00000.gpu: Direct firmware load for qcom/sm8550/a740_zap.mbn failed with error -2" >> "\$D/dmesg.txt"
 	echo "[ 9.2] msm_dpu ae01000.display-controller: [drm:zap_shader_load_mdt [msm]] *ERROR* Unable to load qcom/sm8550/a740_zap.mbn" >> "\$D/dmesg.txt"
 	echo "[ 9.2] msm_dpu ae01000.display-controller: gpu hw init failed: -2" >> "\$D/dmesg.txt"
+	echo "[ 9.3] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0" >> "\$D/dmesg.txt"
 	exit 0
 fi
+[ "\$sim" = oobonly ] && echo "[ 9.3] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0" >> "\$D/dmesg.txt"
 [ "\$sim" = pasfail ] && echo "[ 9.3] adreno 3d00000.gpu: Unable to authorize the image" >> "\$D/dmesg.txt"
 [ "\$sim" = gmufail ] && echo "[ 9.3] adreno 3d6a000.gmu: GMU watchdog timeout while waiting for HFI" >> "\$D/dmesg.txt"
 exit 0
@@ -100,6 +117,8 @@ for sh in dash bash; do
 	expect "$O" "gmu loaded" "^gmu_firmware_loaded=yes$"
 	expect "$O" "zap missing" "^zap_missing=yes$"
 	expect "$O" "hw init failed (expected here)" "^hw_init_failed=yes$"
+	expect "$O" "OOB timeout after the zap error is the known cascade" "^oob_timeout_after_error=yes$"
+	expect "$O" "cascade is not counted as a GMU error" "^gmu_error=no$"
 	expect "$O" "no pas error" "^pas_error=no$"
 	expect "$O" "initramfs-extra unchanged" "^initramfs_extra_unchanged=yes$"
 	expect "$O" "path_restored verdict" "^path_restored=yes$"
@@ -118,11 +137,26 @@ for sh in dash bash; do
 	expect "$O" "no hw init failure" "^hw_init_failed=no$"
 	expect "$O" "full result" "^RESULT: full: no error line seen"
 
+	echo "== $sh: the real device output of 2026-10-19 (sqe-gmu)"
+	D="$W/r-$sh"; mk "$D"; echo real > "$D/sim"; run "$sh" "$D" sqe-gmu; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "exit 0" || bad "exit $rc"
+	expect "$O" "real: gmu firmware loaded" "^gmu_firmware_loaded=yes$"
+	expect "$O" "real: zap missing" "^zap_missing=yes$"
+	expect "$O" "real: cascade recognised" "^oob_timeout_after_error=yes$"
+	expect "$O" "real: no gmu error" "^gmu_error=no$"
+	expect "$O" "real: classified as designed" "^RESULT: stage sqe-gmu as designed"
+
 	echo "== $sh: failure simulations"
 	D="$W/c-$sh"; mk "$D"; echo pasfail > "$D/sim"; run "$sh" "$D" full; O="$D/out"
 	expect "$O" "PAS error detected" "^pas_error=yes$"
 	expect "$O" "FAILED result" "^RESULT: FAILED"
 	path_is_old "$D" && ok "path restored after PAS failure" || bad "path not restored"
+	D="$W/z-$sh"; mk "$D"; echo zaprej > "$D/sim"; run "$sh" "$D" full; O="$D/out"
+	expect "$O" "staged zap not accepted is called out in full mode" "^RESULT: full: the zap shader was not loaded or not accepted"
+	D="$W/d2-$sh"; mk "$D"; echo oobonly > "$D/sim"; run "$sh" "$D" full; O="$D/out"
+	expect "$O" "OOB timeout with no earlier error is a real GMU error" "^gmu_error=yes$"
+	expect "$O" "no cascade without a preceding error" "^oob_timeout_after_error=no$"
+	expect "$O" "FAILED result (oob only)" "^RESULT: FAILED"
 	D="$W/d-$sh"; mk "$D"; echo gmufail > "$D/sim"; run "$sh" "$D" full; O="$D/out"
 	expect "$O" "GMU error detected" "^gmu_error=yes$"
 	expect "$O" "FAILED result (gmu)" "^RESULT: FAILED"

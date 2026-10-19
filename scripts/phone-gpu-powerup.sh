@@ -143,7 +143,19 @@ gmu_loaded=$(yn 'Loaded GMU firmware')
 zap_missing=$(yn 'Direct firmware load for .*a740_zap.* failed|Unable to load .*a740_zap')
 pas_error=$(yn 'Unable to authorize|PAS is not available|auth_and_reset.* (fail|error)|failed to authenticate')
 hwinit_failed=$(yn 'gpu hw init failed')
-gmu_error=$(yn 'gmu.*(timeout|timed out|fail|error)|hfi.*(timeout|fail|error)|CM3 fault')
+# hw_init() returns on a zap-shader (or PAS) error WITHOUT clearing the GPU_SET OOB it set at its start, so the GMU shutdown that follows
+# repeats the handshake and times out ~10 ms later: "Timeout waiting for GMU OOB set GPU_SET" after the zap error is that cascade (the
+# first OOB was acked, i.e. the GMU was alive), not a separate GMU failure. An OOB timeout WITHOUT an earlier error line is a real one.
+first_err=$(grep -n -iE 'Unable to load|Unable to authorize|gpu hw init failed' "$NEWLOG" | head -n 1 | cut -d: -f1)
+first_oob=$(grep -n 'Timeout waiting for GMU OOB' "$NEWLOG" | head -n 1 | cut -d: -f1)
+oob_cascade=no
+if [ -n "$first_err" ] && [ -n "$first_oob" ] && [ "$first_oob" -gt "$first_err" ]; then oob_cascade=yes; fi
+GMU_PAT='gmu.*(timeout|timed out|fail|error)|hfi.*(timeout|fail|error)|CM3 fault'
+if [ "$oob_cascade" = yes ]; then
+	if grep -v 'Timeout waiting for GMU OOB' "$NEWLOG" | grep -qiE "$GMU_PAT"; then gmu_error=yes; else gmu_error=no; fi
+else
+	gmu_error=$(yn "$GMU_PAT")
+fi
 hang=$(yn 'hangcheck|gpu hang|lockup')
 faults=$(grep -c 'Unhandled context fault' "$NEWLOG")
 echo "sqe_missing=$sqe_missing"
@@ -152,6 +164,7 @@ echo "zap_missing=$zap_missing"
 echo "pas_error=$pas_error"
 echo "hw_init_failed=$hwinit_failed"
 echo "gmu_error=$gmu_error"
+echo "oob_timeout_after_error=$oob_cascade"
 echo "hang=$hang"
 echo "smmu_faults=$faults"
 if [ "$sqe_missing" = yes ]; then
@@ -159,7 +172,9 @@ if [ "$sqe_missing" = yes ]; then
 elif [ "$gmu_error" = yes ] || [ "$pas_error" = yes ] || [ "$hang" = yes ] || [ "$faults" != 0 ]; then
 	echo "RESULT: FAILED, read the new kernel log lines above"
 elif [ "$MODE" = sqe-gmu ] && [ "$zap_missing" = yes ] && [ "$gmu_loaded" = yes ]; then
-	echo "RESULT: stage sqe-gmu as designed: the GMU firmware loaded, hw_init stopped at the missing zap shader"
+	echo "RESULT: stage sqe-gmu as designed: the GMU firmware loaded and booted, hw_init stopped at the missing zap shader (an OOB timeout after that error is the upstream error path, oob_timeout_after_error above)"
+elif [ "$MODE" = full ] && [ "$zap_missing" = yes ]; then
+	echo "RESULT: full: the zap shader was not loaded or not accepted although the file was staged (zap_missing=yes means 'Unable to load ...a740_zap'): see the lines above; if it is the secure world refusing the generic signature, the phone's own vendor zap is needed (docs/11 R1)"
 elif [ "$MODE" = full ] && [ "$hwinit_failed" = no ] && [ "$zap_missing" = no ]; then
 	echo "RESULT: full: no error line seen (not proof of a working GPU: check the devfreq/interrupt lines and run the probe)"
 else

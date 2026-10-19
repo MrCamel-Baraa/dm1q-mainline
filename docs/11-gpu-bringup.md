@@ -249,3 +249,27 @@ so SCM is most likely the active one (INFERENCE, nothing on dm1q has used PAS ye
 - **No SMMU faults (0), display unchanged, ssh up, `3d6a000.gmu` still unbound with `sync_state() pending due to 3d6a000.gmu` (expected).**
 - Nothing a740/gmu/zap exists on the phone yet, `firmware_class.path` is still `/lib/firmware/postmarketos` (`gpu.txt` section 1).
 - Next: S3 `sqe-gmu` (needs the PC on the phone's network and the firmware directory from 9.2).
+
+### 9.6 S3 `sqe-gmu`, first power-up, 2026-10-19 06:25 (`notes/2026-10-19-gpu-powerup-sqe/gpu-powerup.txt`, uncommitted)
+
+FACT (the six new kernel lines, everything else unchanged: no reset, no SMMU fault, `firmware_class.path` restored to `/lib/firmware/postmarketos`, initramfs-extra hash unchanged):
+
+```
+[33.977806] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/a740_sqe.fw from new location
+[33.978217] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/gmu_gen70200.bin from new location
+[33.980649] [drm] Loaded GMU firmware v4.1.9
+[33.996291] adreno 3d00000.gpu: [drm:adreno_zap_shader_load [msm]] *ERROR* Unable to load qcom/sm8550/a740_zap.mbn
+[33.996797] msm_dpu ae01000.display-controller: [drm:adreno_load_gpu [msm]] *ERROR* gpu hw init failed: -2
+[34.007169] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0
+```
+
+- The custom `firmware_class.path` is honoured by SQE and GMU ("from new location"); the GMU firmware is v4.1.9, the same version the Tab S9 Ultra logged.
+- The zap error and `hw init failed: -2` are the designed stop (the zap file was not staged).
+- INFERENCE from the source order, read 2026-10-19 (`a6xx_gpu.c` `hw_init()`, `a6xx_gmu.c` `a6xx_gmu_shutdown()`): `hw_init()` starts with `a6xx_gmu_set_oob(GMU_OOB_GPU_SET)`; had that timed out, hw_init would
+  have returned that error before it ever reached the zap step. So the GMU booted and acked the first OOB, and hw_init got through its register programming up to the zap step without a bus error or reset.
+  The `Timeout waiting for GMU OOB set GPU_SET` 10 ms after the zap error is then the upstream error-path cascade: hw_init returns on the zap error WITHOUT clearing that OOB, and the GMU shutdown
+  (`needs_hw_init` is true) repeats the handshake, which cannot be acked a second time, then forces the GMU off. The script's classifier now recognises exactly this case
+  (`oob_timeout_after_error`); an OOB timeout with no earlier error stays a failure. The real lines are a regression fixture in `test-phone-gpu-powerup.sh` (77 checks).
+- devfreq `3d00000.gpu` reads cur 680 MHz afterwards; `gpu-irq` / `gmu` counters are still 0.
+- Not shown: that the GPU executes anything (no zap, so the CP is still in secure mode and nothing was submitted).
+- Next: S3 `full` (generic zap through PAS).
