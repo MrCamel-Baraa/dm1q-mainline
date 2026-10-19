@@ -65,6 +65,9 @@
 #                key=value summary; it NEVER opens /dev/dri/* -- the first open powers the GPU up; adds gpu.txt).
 #   --pam        also run scripts/phone-pam-probe.sh (docs/11 section 9.10: read-only; PAM files that mention selinux, their apk owners, the PAM modules that exist,
 #                pam/systemd/shadow package versions, the tail of /var/log/apk.log, the user@10000 unit and journal; adds pam.txt).
+#   --pam-fix[=check|undo]  also run scripts/phone-pam-fix.sh (docs/11 section 9.10): CHANGES /etc/pam.d (no apk): adds override files for systemd-user and
+#                systemd-run0 with the pam_selinux.so lines made optional (linux-pam 1.7.1-r4 lost that module), then starts user@10000.service once.
+#                =check shows what would change and writes nothing; =undo removes the overrides again (adds pam-fix.txt).
 #   --gpu-powerup=sqe-gmu|full  also run scripts/phone-gpu-powerup.sh (docs/11 step S3): CHANGES THE GPU STATE, powers the Adreno 740 up once.
 #                Copies the linux-firmware files from $DM1Q_GPU_FW (default ../_scratch/dm1q-gpu-fw, never committed) to /root/dm1q-gpu-fw on the
 #                phone (not under /lib/firmware, so no mkinitfs trigger), points firmware_class.path at a staging copy only for the duration of
@@ -78,7 +81,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0; PAM_FIX=''
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -101,6 +104,8 @@ for a in "$@"; do
 	--sigill-core) SIGILL_CORE=1 ;;
 	--gpu) GPU_PROBE=1 ;;
 	--pam) PAM_PROBE=1 ;;
+	--pam-fix) PAM_FIX=apply ;;
+	--pam-fix=*) PAM_FIX="${a#--pam-fix=}"; case "$PAM_FIX" in check|undo) ;; *) echo "--pam-fix takes no value, =check or =undo" >&2; exit 2 ;; esac ;;
 	--gpu-powerup=*) GPU_POWERUP="${a#--gpu-powerup=}"; case "$GPU_POWERUP" in sqe-gmu|full) ;; *) echo "--gpu-powerup must be sqe-gmu or full" >&2; exit 2 ;; esac ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
@@ -148,6 +153,9 @@ push_scripts() {
 	fi
 	if [ "$GPU_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-gpu-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the GPU probe failed"; exit 1; }
+	fi
+	if [ -n "$PAM_FIX" ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-pam-fix.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the PAM fix failed"; exit 1; }
 	fi
 	if [ "$PAM_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-pam-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the PAM probe failed"; exit 1; }
@@ -257,6 +265,10 @@ if [ "$GPU_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-gpu-probe.sh 2>&1 | tee /tmp/dm1q-collect/gpu.txt"
 fi
+if [ -n "$PAM_FIX" ]; then
+	BODY="$BODY
+sh /tmp/phone-pam-fix.sh $PAM_FIX 2>&1 | tee /tmp/dm1q-collect/pam-fix.txt"
+fi
 if [ "$PAM_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-pam-probe.sh 2>&1 | tee /tmp/dm1q-collect/pam.txt"
@@ -333,7 +345,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/phone-pam-fix.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
