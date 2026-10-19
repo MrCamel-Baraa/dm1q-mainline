@@ -138,11 +138,17 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
   following `qcom/sm8550/Sony/yodo/...`: INFERENCE that this is the upstream convention).
   No firmware on the phone yet, so this boot can only bind. Expected (INFERENCE): `[drm] Initialized msm`, `failed to load a740_sqe.fw` (from the
   fbdev client's open), no `no GPU device was found`, `3d6a000.gmu` still unbound (normal), no SMMU fault, display unchanged. Rollback: flash v17.
-- **S3 on-demand power-up** (`phone-gpu-powerup.sh`, to be written with its PC test): stage the three files (section 9) under a directory outside the default
-  search path, save the current `firmware_class.path`, point it at the staging directory, open `renderD128` once, read dmesg and the GPU debugfs
-  state, restore the saved path. First with SQE + GMU only
-  (the zap file absent: expected clean -ENOENT at the zap, proves clocks/rails/GMU), then with the zap (proves PAS auth and `hw_init`).
-  Reset risk is in the second step; rollback is a reboot.
+- **S3 on-demand power-up** (`scripts/phone-gpu-powerup.sh`, PC test `scripts/test-phone-gpu-powerup.sh` 64 checks + shellcheck, flag
+  `collect-phone-state.sh <label> --gpu-powerup=sqe-gmu|full`, written 2026-10-19): the script refuses unless `3d00000.gpu` is bound to adreno and the staged files
+  are the pinned linux-firmware ones (section 9.2), copies the files for the mode to `/root/dm1q-gpu-fw-run` (the master copy is `/root/dm1q-gpu-fw`, never under
+  `/lib/firmware`), saves `firmware_class.path`, points it at the run dir, opens `renderD128` O_RDWR for 5 s, restores the path (also on INT/TERM/HUP), removes the run dir, and
+  prints only the NEW dmesg lines plus a key=value verdict (`gmu_firmware_loaded`, `zap_missing`, `pas_error`, `hw_init_failed`, `gmu_error`, `hang`, `smmu_faults`,
+  `initramfs_extra_unchanged`, `RESULT:`). `sqe-gmu` stages SQE + GMU only: the GMU should boot and hw_init should stop at the missing zap (expected
+  `Direct firmware load for qcom/sm8550/a740_zap.mbn failed with error -2`, INFERENCE for the exact text) - proves clocks, rails, GMU and SMMU without the secure-world step.
+  `full` adds the generic zap (proves PAS and `hw_init`). The reset risk is in `full` (and, less, in the GMU boot of `sqe-gmu`); recovery is a reboot because the default path
+  never has the files. After any unexpected reset read `/sys/fs/pstore` (ramoops console is enabled, but the earlier boot logs showed ramoops header errors, so it may be empty).
+  Because the zap is requested again at every `hw_init` (every power-up after the GPU idles), a working GPU needs the zap in the standard search path for good: that is the later
+  packaging step below, not part of S3.
 - **S4 Mesa:** `mesa-dri-gallium` is probably there already (Plasma pulled it in); add `mesa-vulkan-freedreno` only after checking
   `/lib/apk/db/triggers`. `eglinfo` over GBM, then a frame.
 - **S5** `bash scripts/collect-phone-state.sh gpu-plasma --plasma-start=240` (default profile). If the GPU is blocked, record it here and try the
@@ -228,3 +234,18 @@ so SCM is most likely the active one (INFERENCE, nothing on dm1q has used PAS ye
   builds is 12269736 bytes, 291 entries (was 294).
 - Not caused by the image change: the v19 vendor ramdisk, init_boot and kernel are byte-identical to v17, which booted this morning.
 - Remedy: `scripts/fix-phone-initramfs-extra.sh --yes` from TWRP (Baraa runs it), then reboot to system and redo the v19 check. Rollback of that fix: `--yes --file <extra-phone-*.gz>`.
+
+### 9.5 v19 boot after the initramfs-extra repair, 2026-10-19 00:42 (`notes/2026-10-19-gpu-bind/`, uncommitted; all FACT)
+
+- Baraa ran `fix-phone-initramfs-extra.sh --yes` from TWRP (the file is now 12269724 bytes, sha256 `61c42f44...`), and the phone booted to the login prompt on the real panel with the `&gpu` DTB.
+  Cause of the earlier stuck boot: he had run `apk upgrade` on the phone (docs/06 rule 3). The upgrade moved Mesa 26.2.4 to 26.2.5-r0 (the probe lists mesa, mesa-dri/egl/gbm/gl/gles
+  all 26.2.5-r0, libdrm 2.4.134, vulkan-loader 1.4.360; `msm_dri.so` and `kgsl_dri.so` still present; still no `mesa-vulkan-freedreno`, no eglinfo / kmscube).
+- **The GPU binds (S2 passed):** `3d00000.gpu` bound to `adreno` ("probe of 3d00000.gpu with driver adreno returned 0" at 7.312 s, after gpucc 7.101 s and the SMMU 7.166 s), `msm_dpu: bound 3d00000.gpu`,
+  `[drm] Initialized msm 1.13.0` at 7.8657 s, `fb0: msmdrmfb` at 8.107 s. The SMMU adds `3d00000.gpu` and `3d6a000.gmu` to iommu groups 6 and 7. IRQs: `gpu-irq` (332) and `gmu` (337).
+  devfreq `3d00000.gpu` exists: governor simple_ondemand, cur 0, 220-680 MHz, 8 OPPs. `adreno 3d00000.gpu: supply vdd not found, using dummy regulator` and the same for `vddcx` (harmless: the GMU manages power).
+- **load_gpu really runs at DRM registration (confirmed):** in the same millisecond as `Initialized msm` (7.865669) the kernel prints `Direct firmware load for qcom/a740_sqe.fw failed with error -2` and
+  `failed to load a740_sqe.fw`; `no GPU device was found` is gone. So the in-kernel fbdev client's open does call `msm_open` -> `load_gpu` at every boot, as section 5 point 3 said; with the
+  firmware findable the power-up would happen by itself at boot.
+- **No SMMU faults (0), display unchanged, ssh up, `3d6a000.gmu` still unbound with `sync_state() pending due to 3d6a000.gmu` (expected).**
+- Nothing a740/gmu/zap exists on the phone yet, `firmware_class.path` is still `/lib/firmware/postmarketos` (`gpu.txt` section 1).
+- Next: S3 `sqe-gmu` (needs the PC on the phone's network and the firmware directory from 9.2).

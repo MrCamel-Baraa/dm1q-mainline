@@ -63,14 +63,20 @@
 #                gpu / gmu / gpucc / adreno-smmu devices and drivers, DT gpu + zap-shader nodes, zap carveout, DRM nodes, devfreq, firmware
 #                files and staging dirs with sha256, Mesa packages, initramfs-extra fingerprint, GPU clocks/genpd, GPU dmesg lines, a
 #                key=value summary; it NEVER opens /dev/dri/* -- the first open powers the GPU up; adds gpu.txt).
-# Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)
+#   --gpu-powerup=sqe-gmu|full  also run scripts/phone-gpu-powerup.sh (docs/11 step S3): CHANGES THE GPU STATE, powers the Adreno 740 up once.
+#                Copies the linux-firmware files from $DM1Q_GPU_FW (default ../_scratch/dm1q-gpu-fw, never committed) to /root/dm1q-gpu-fw on the
+#                phone (not under /lib/firmware, so no mkinitfs trigger), points firmware_class.path at a staging copy only for the duration of
+#                one open of the render node, restores it, and prints the new kernel log lines + a verdict (adds gpu-powerup.txt).
+#                sqe-gmu = SQE + GMU only (GMU boots, stops cleanly at the missing zap shader); full = also the zap shader (secure-world
+#                authentication: the step that could reset the phone; then just let it reboot, the default firmware path never has the files).
+# Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)  DM1Q_GPU_FW=<firmware dir for --gpu-powerup>
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
 # under /tmp/dm1q-collect (probe.txt from scripts/phone-wlan-probe.sh, dmesg.txt, journal-kernel.txt,
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -92,6 +98,7 @@ for a in "$@"; do
 	--plasma-profile=*) PLASMA_PROFILE="${a#--plasma-profile=}"; case "$PLASMA_PROFILE" in default|software|softpipe) ;; *) echo "--plasma-profile must be default, software or softpipe" >&2; exit 2 ;; esac ;;
 	--sigill-core) SIGILL_CORE=1 ;;
 	--gpu) GPU_PROBE=1 ;;
+	--gpu-powerup=*) GPU_POWERUP="${a#--gpu-powerup=}"; case "$GPU_POWERUP" in sqe-gmu|full) ;; *) echo "--gpu-powerup must be sqe-gmu or full" >&2; exit 2 ;; esac ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -113,6 +120,10 @@ fi
 if [ "$TOUCH" = 1 ]; then
 	[ -f "$SPI_BIN" ] || { echo "no $SPI_BIN -- run: bash scripts/build-spi-xfer.sh   (needs clang + lld)"; exit 1; }
 fi
+GPU_FW="${DM1Q_GPU_FW:-$REPO/../_scratch/dm1q-gpu-fw}"
+if [ -n "$GPU_POWERUP" ]; then
+	[ -d "$GPU_FW/qcom" ] || { echo "no $GPU_FW/qcom -- the linux-firmware files of docs/11 section 9.2 are needed for --gpu-powerup"; exit 1; }
+fi
 DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
 CP="/tmp/dm1q-ssh-$$"
 SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR
@@ -129,6 +140,11 @@ push_scripts() {
 	fi
 	if [ "$GPU_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-gpu-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the GPU probe failed"; exit 1; }
+	fi
+	if [ -n "$GPU_POWERUP" ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-gpu-powerup.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the GPU power-up script failed"; exit 1; }
+		ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-gpu-fw; mkdir -p /tmp/dm1q-gpu-fw' || { echo "mkdir for the GPU firmware failed"; exit 1; }
+		scp "${SSH_OPTS[@]}" -q -r "$GPU_FW/qcom" "$PUSER@$PHONE:/tmp/dm1q-gpu-fw/" || { echo "scp of the GPU firmware failed"; exit 1; }
 	fi
 	if [ "$SIGILL_CORE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-sigill-core.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the SIGILL core script failed"; exit 1; }
@@ -230,6 +246,11 @@ if [ "$GPU_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-gpu-probe.sh 2>&1 | tee /tmp/dm1q-collect/gpu.txt"
 fi
+if [ -n "$GPU_POWERUP" ]; then
+	BODY="$BODY
+mkdir -p /root/dm1q-gpu-fw && cp -r /tmp/dm1q-gpu-fw/qcom /root/dm1q-gpu-fw/
+sh /tmp/phone-gpu-powerup.sh $GPU_POWERUP 2>&1 | tee /tmp/dm1q-collect/gpu-powerup.txt"
+fi
 if [ -n "$PLASMA_START" ]; then
 	BODY="$BODY
 DUR=$PLASMA_START KEEP=$PLASMA_KEEP PROFILE=$PLASMA_PROFILE sh /tmp/phone-plasma-start.sh 2>&1 | tee /tmp/dm1q-collect/plasma-start.txt"
@@ -287,6 +308,7 @@ RMSG=""
 [ "$APKNET" = 1 ] && RMSG="$RMSG; the apk network diagnosis takes ~2 min (it fetches index files and runs apk update -vv)"
 [ "$PLASMA_PRE" = 1 ] && RMSG="$RMSG; the Plasma preflight takes ~1 min (apk update + simulation need the phone's Wi-Fi internet)"
 [ "$GPU_PROBE" = 1 ] && RMSG="$RMSG; the GPU probe is read-only and takes a few seconds"
+[ -n "$GPU_POWERUP" ] && RMSG="$RMSG; THE GPU POWER-UP TEST (mode $GPU_POWERUP) powers the GPU up once, ~15 s; if the phone resets, let it reboot (it comes back normally)"
 [ "$DRM_TEST" = 1 ] && RMSG="$RMSG; the DRM pattern test takes ~35 s: WATCH THE PHONE SCREEN"
 [ "$BACKLIGHT" = 1 ] && RMSG="$RMSG; the backlight sweep takes ~1 min: WATCH THE PHONE SCREEN (white, getting dimmer)"
 [ "$FRESH" = 1 ] && RMSG="; the idle + load steps take ~1.5 min"
@@ -296,7 +318,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
