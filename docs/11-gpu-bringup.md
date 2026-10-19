@@ -133,7 +133,11 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
   whether any a740/gmu/zap file exists, whether `firmware_class.path` is empty, the initramfs-extra fingerprint, installed Mesa packages.
 - **S1 firmware on the PC (no phone write) - DONE 2026-10-19, section 9.** Get `a740_sqe.fw`, `gmu_gen70200.bin` and the generic `qcom/sm8550/a740_zap.mbn` from
   linux-firmware (extract from the Alpine package on the PC, do NOT apk-install on the phone), into `../_scratch/dm1q-gpu-fw/` (never committed).
-  Fallback only if S3 shows PAS rejecting the generic zap: TWRP + adb pull of the phone's own `a740_zap.*` from the vendor partition (tooling not written).
+  Fallback, now needed (9.7, the secure world refused the generic zap): TWRP + adb pull of the phone's own `a740_zap.*` (+ SQE/GMU for comparison) from the vendor partition with
+  `scripts/pull-gpu-vendor-firmware.sh` (device side `scripts/twrp-find-gpu-fw.sh`; read-only: it mounts the vendor partition `-o ro` in a RAM-disk directory if TWRP has not, verifies size and
+  sha256 of every pull, unmounts again; output `../_scratch/dm1q-gpu-fw-vendor/`, never committed; PC test `scripts/test-pull-gpu-vendor-firmware.sh`, 46 checks). The expected names are INFERENCE
+  (`a740_zap.mdt` + `.b00`-`.b02`, as on the Tab S9 Ultra, or `a740_zap.mbn`); the search is `a7*_zap*`, `a740*`, `gmu_gen70*`, `a7*_sqe*` under `/vendor` to depth 6. If the phone's vendor has no zap, the
+  other source is Samsung's stock S911B firmware (super -> vendor image), which we do not have yet.
 - **S2 DT-only image set** `../_scratch/pmos-v19-gpu-bind`: `&gpu { status = "okay"; zap-shader { firmware-name = "qcom/sm8550/a740_zap.mbn"; }; };`
   in `dts/dm1q/dm1q.dts` (generic zap first; a vendor-signed MDT set would instead need its own path such as `qcom/sm8550/Samsung/dm1q/a740_zap.mdt`,
   following `qcom/sm8550/Sony/yodo/...`: INFERENCE that this is the upstream convention).
