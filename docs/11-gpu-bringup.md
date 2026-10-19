@@ -297,3 +297,22 @@ FACT (the three new kernel lines; no reset, no SMMU fault, path restored, initra
 - The OOB timeout 10 ms later is the same upstream cascade as in 9.6. The GMU and its OOB handshake work (the first OOB was acked, otherwise hw_init would not have reached the zap).
 - `scripts/phone-gpu-powerup.sh` now has `zap_init_error` and says "the secure world REFUSED the staged zap image" for this case; the three real lines are a second regression fixture (84 checks).
 - Next: pull the phone's own `a740_zap.*` (and its SQE/GMU for comparison) from the vendor partition in TWRP (`scripts/pull-gpu-vendor-firmware.sh`), then S3 `full` again with that set.
+
+### 9.8 The phone's own Adreno firmware, pulled from its vendor partition in TWRP, 2026-10-19 11:23 (`../_scratch/dm1q-gpu-fw-vendor/`, never committed; FACT)
+
+`twrp mount /vendor` mounted it (the script's own read-only mount was not needed); everything is under `/vendor/firmware/`:
+
+| file | bytes | sha256 |
+|---|---|---|
+| `a740_sqe.fw` | 76724 | `96fee336...` = **identical** to linux-firmware's |
+| `gmu_gen70200.bin` | 66844 | `1a2a419c...` = **identical** to linux-firmware's |
+| `a740_zap.mbn` | 12088 | `60cf7ab4f3d96e0992a42560ac288c053328bda5e41b4fe5e678be94ecd7ae35` (the generic one is `386bbdc2...`) |
+| `a740_zap.mdt` / `.b00` / `.b01` / `.b02` / `.elf` | 4044 / 148 / 1072 / 3896 / 5168 | the same zap as a split set and as one ELF |
+
+- Only the zap is device-specific, as section 6 R1 said. The vendor `a740_zap.mbn` has the same size, the same ELF header and the same program headers as the generic one (LOAD 0x430 at 0x1000, the hash/signature
+  segment at 0x2000). A byte comparison finds 2451 differing bytes, all between 0x2048 and 0x2b64: **only the signature and certificate segment differs; the LOAD segment (the zap code) is identical.**
+  Together with 9.7 this is strong evidence that the secure world checks the signature chain of the hash segment against the OEM (Samsung) root and refused the generic one for that reason.
+- The vendor zap is a single `.mbn`, so the v19 DT (`firmware-name = "qcom/sm8550/a740_zap.mbn"`) needs no change: no new image set, only a different file.
+- Staged for the next run as `../_scratch/dm1q-gpu-fw-vendor-run/qcom/{a740_sqe.fw,gmu_gen70200.bin,sm8550/a740_zap.mbn}` (use `DM1Q_GPU_FW=<that dir>`; the collector now sends the hashes of the pushed set to the phone
+  script as pins, wipes `/root/dm1q-gpu-fw` first so no stale zap can be used, and the phone script still refuses anything whose hash differs from what was pushed).
+- Next: S3 `full` with the vendor zap.

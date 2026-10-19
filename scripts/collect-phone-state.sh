@@ -123,6 +123,11 @@ fi
 GPU_FW="${DM1Q_GPU_FW:-$REPO/../_scratch/dm1q-gpu-fw}"
 if [ -n "$GPU_POWERUP" ]; then
 	[ -d "$GPU_FW/qcom" ] || { echo "no $GPU_FW/qcom -- the linux-firmware files of docs/11 section 9.2 are needed for --gpu-powerup"; exit 1; }
+	[ -f "$GPU_FW/qcom/a740_sqe.fw" ] && [ -f "$GPU_FW/qcom/gmu_gen70200.bin" ] || { echo "$GPU_FW/qcom needs a740_sqe.fw and gmu_gen70200.bin"; exit 1; }
+	# the phone script pins the linux-firmware hashes by default; the hashes of the set actually being pushed override them (integrity of the transfer,
+	# and it lets a vendor-signed set through: DM1Q_GPU_FW=<dir with qcom/a740_sqe.fw, qcom/gmu_gen70200.bin, qcom/sm8550/a740_zap.mbn>)
+	GPU_PINS="FW_SQE_SHA=$(sha256sum "$GPU_FW/qcom/a740_sqe.fw" | cut -d' ' -f1) FW_GMU_SHA=$(sha256sum "$GPU_FW/qcom/gmu_gen70200.bin" | cut -d' ' -f1)"
+	if [ -f "$GPU_FW/qcom/sm8550/a740_zap.mbn" ]; then GPU_PINS="$GPU_PINS FW_ZAP_SHA=$(sha256sum "$GPU_FW/qcom/sm8550/a740_zap.mbn" | cut -d' ' -f1)"; fi
 fi
 DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
 CP="/tmp/dm1q-ssh-$$"
@@ -248,8 +253,8 @@ sh /tmp/phone-gpu-probe.sh 2>&1 | tee /tmp/dm1q-collect/gpu.txt"
 fi
 if [ -n "$GPU_POWERUP" ]; then
 	BODY="$BODY
-mkdir -p /root/dm1q-gpu-fw && cp -r /tmp/dm1q-gpu-fw/qcom /root/dm1q-gpu-fw/
-sh /tmp/phone-gpu-powerup.sh $GPU_POWERUP 2>&1 | tee /tmp/dm1q-collect/gpu-powerup.txt"
+rm -rf /root/dm1q-gpu-fw && mkdir -p /root/dm1q-gpu-fw && cp -r /tmp/dm1q-gpu-fw/qcom /root/dm1q-gpu-fw/
+$GPU_PINS sh /tmp/phone-gpu-powerup.sh $GPU_POWERUP 2>&1 | tee /tmp/dm1q-collect/gpu-powerup.txt"
 fi
 if [ -n "$PLASMA_START" ]; then
 	BODY="$BODY
