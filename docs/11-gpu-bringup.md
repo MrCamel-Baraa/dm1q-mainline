@@ -152,8 +152,9 @@ Each step has a rollback; the known-good set is `../_scratch/pmos-v17-splash-iom
   `Direct firmware load for qcom/sm8550/a740_zap.mbn failed with error -2`, INFERENCE for the exact text) - proves clocks, rails, GMU and SMMU without the secure-world step.
   `full` adds the generic zap (proves PAS and `hw_init`). The reset risk is in `full` (and, less, in the GMU boot of `sqe-gmu`); recovery is a reboot because the default path
   never has the files. After any unexpected reset read `/sys/fs/pstore` (ramoops console is enabled, but the earlier boot logs showed ramoops header errors, so it may be empty).
-  Because the zap is requested again at every `hw_init` (every power-up after the GPU idles), a working GPU needs the zap in the standard search path for good: that is the later
-  packaging step below, not part of S3.
+  CORRECTION 2026-10-19 (source re-read after the vendor-zap run): the zap is NOT requested at every power-up: `a6xx_zap_shader_init()` keeps a `static bool loaded` (`a6xx_gpu.c` line 1131),
+  so after one successful load the GPU runs through suspend/resume without any file on disk, and the SQE/GMU images are cached in `adreno_gpu->fw[]`. What has to be findable is the firmware at the FIRST
+  open after each boot (the fbdev client's open at ~7.8 s), so for the GPU to come up by itself the three files must sit in a standard search location before the boot: the later packaging step below.
 - **S4 Mesa:** `mesa-dri-gallium` is probably there already (Plasma pulled it in); add `mesa-vulkan-freedreno` only after checking
   `/lib/apk/db/triggers`. `eglinfo` over GBM, then a frame.
 - **S5** `bash scripts/collect-phone-state.sh gpu-plasma --plasma-start=240` (default profile). If the GPU is blocked, record it here and try the
@@ -316,3 +317,19 @@ FACT (the three new kernel lines; no reset, no SMMU fault, path restored, initra
 - Staged for the next run as `../_scratch/dm1q-gpu-fw-vendor-run/qcom/{a740_sqe.fw,gmu_gen70200.bin,sm8550/a740_zap.mbn}` (use `DM1Q_GPU_FW=<that dir>`; the collector now sends the hashes of the pushed set to the phone
   script as pins, wipes `/root/dm1q-gpu-fw` first so no stale zap can be used, and the phone script still refuses anything whose hash differs from what was pushed).
 - Next: S3 `full` with the vendor zap.
+
+### 9.9 S3 `full` with the phone's own zap, 2026-10-19 11:28 (`notes/2026-10-19-gpu-powerup-full-vendor/gpu-powerup.txt`, uncommitted): **the GPU initialises**
+
+FACT (the only three new kernel lines; no error, no fault, no reset; path restored; initramfs-extra unchanged; set pinned by the hashes of 9.8):
+
+```
+[180.760770] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/a740_sqe.fw from new location
+[180.760945] msm_dpu ae01000.display-controller: [drm:adreno_request_fw [msm]] loaded qcom/gmu_gen70200.bin from new location
+[180.762665] [drm] Loaded GMU firmware v4.1.9
+```
+
+- No `Unable to load`, no `error -22 initializing firmware`, no `gpu hw init failed`, no OOB timeout (9.6 and 9.7 had all three kinds): `hw_init()` ran to the end, so the secure world accepted the Samsung-signed zap
+  (`qcom_pas_init_image` and the authenticate-and-reset both returned 0) and the CP went through `CP_SET_SECURE_MODE` and idled (INFERENCE from the source order: any of those failing returns an error and logs a line).
+  Generic zap: refused with -22 (9.7). Vendor zap, identical code with a different signature segment (9.8): accepted. That settles the cause: the signature, not the call path.
+- The GPU is idle again afterwards (devfreq `cur_freq` 220 MHz); `gpu-irq` and `gmu` interrupt counts are still 0, since nothing has been submitted. Whether the GPU executes work is the next test.
+- The GPU now stays initialised until the next reboot (`priv->gpu` is set; the zap is cached by `loaded`), so a GL client started now needs no firmware file. After a reboot the three files have to be findable at the first open again.
