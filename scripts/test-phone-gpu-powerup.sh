@@ -53,6 +53,13 @@ real) # the six new kernel lines of the first real sqe-gmu run on the phone, 202
 [   34.007169] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0
 REAL
 	exit 0 ;;
+realfull) # the three new kernel lines of the first real full run on the phone, 2026-10-19 (generic zap refused)
+	cat >> "\$D/dmesg.txt" <<'REAL'
+[  256.808795] adreno 3d00000.gpu: error -22 initializing firmware qcom/sm8550/a740_zap.mbn
+[  256.809056] msm_dpu ae01000.display-controller: [drm:adreno_load_gpu [msm]] *ERROR* gpu hw init failed: -22
+[  256.819578] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0
+REAL
+	exit 0 ;;
 killme) kill -TERM \$PPID; sleep 1; exit 0 ;;
 extra) printf 'changed' > "\$D/boot/initramfs-extra" ;;
 zaprej)
@@ -145,6 +152,16 @@ for sh in dash bash; do
 	expect "$O" "real: cascade recognised" "^oob_timeout_after_error=yes$"
 	expect "$O" "real: no gmu error" "^gmu_error=no$"
 	expect "$O" "real: classified as designed" "^RESULT: stage sqe-gmu as designed"
+
+	echo "== $sh: the real device output of 2026-10-19 (full, generic zap refused)"
+	D="$W/rf-$sh"; mk "$D"; echo realfull > "$D/sim"; run "$sh" "$D" full; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "exit 0" || bad "exit $rc"
+	expect "$O" "realfull: zap init error detected" "^zap_init_error=yes$"
+	expect "$O" "realfull: hw init failed" "^hw_init_failed=yes$"
+	expect "$O" "realfull: cascade recognised" "^oob_timeout_after_error=yes$"
+	expect "$O" "realfull: no separate gmu error" "^gmu_error=no$"
+	expect "$O" "realfull: refusal called out" "^RESULT: full: the secure world REFUSED the staged zap image"
+	path_is_old "$D" && ok "realfull: path restored" || bad "realfull: path not restored"
 
 	echo "== $sh: failure simulations"
 	D="$W/c-$sh"; mk "$D"; echo pasfail > "$D/sim"; run "$sh" "$D" full; O="$D/out"

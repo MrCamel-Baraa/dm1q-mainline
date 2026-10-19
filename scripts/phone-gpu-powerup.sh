@@ -142,6 +142,8 @@ sqe_missing=$(yn 'Direct firmware load for .*a740_sqe\.fw failed|failed to load 
 gmu_loaded=$(yn 'Loaded GMU firmware')
 zap_missing=$(yn 'Direct firmware load for .*a740_zap.* failed|Unable to load .*a740_zap')
 pas_error=$(yn 'Unable to authorize|PAS is not available|auth_and_reset.* (fail|error)|failed to authenticate')
+# mdt_loader prints this when the secure world's PAS init_image call (signature / metadata check of the staged zap) returns an error
+zap_init_error=$(yn 'error -?[0-9]+ initializing firmware .*a740_zap')
 hwinit_failed=$(yn 'gpu hw init failed')
 # hw_init() returns on a zap-shader (or PAS) error WITHOUT clearing the GPU_SET OOB it set at its start, so the GMU shutdown that follows
 # repeats the handshake and times out ~10 ms later: "Timeout waiting for GMU OOB set GPU_SET" after the zap error is that cascade (the
@@ -162,6 +164,7 @@ echo "sqe_missing=$sqe_missing"
 echo "gmu_firmware_loaded=$gmu_loaded"
 echo "zap_missing=$zap_missing"
 echo "pas_error=$pas_error"
+echo "zap_init_error=$zap_init_error"
 echo "hw_init_failed=$hwinit_failed"
 echo "gmu_error=$gmu_error"
 echo "oob_timeout_after_error=$oob_cascade"
@@ -173,6 +176,8 @@ elif [ "$gmu_error" = yes ] || [ "$pas_error" = yes ] || [ "$hang" = yes ] || [ 
 	echo "RESULT: FAILED, read the new kernel log lines above"
 elif [ "$MODE" = sqe-gmu ] && [ "$zap_missing" = yes ] && [ "$gmu_loaded" = yes ]; then
 	echo "RESULT: stage sqe-gmu as designed: the GMU firmware loaded and booted, hw_init stopped at the missing zap shader (an OOB timeout after that error is the upstream error path, oob_timeout_after_error above)"
+elif [ "$MODE" = full ] && [ "$zap_init_error" = yes ]; then
+	echo "RESULT: full: the secure world REFUSED the staged zap image (PAS init_image returned the error above; no reset, no fault): INFERENCE the generic Qualcomm signature is not accepted by this phone, so its own vendor zap is needed (docs/11 R1)"
 elif [ "$MODE" = full ] && [ "$zap_missing" = yes ]; then
 	echo "RESULT: full: the zap shader was not loaded or not accepted although the file was staged (zap_missing=yes means 'Unable to load ...a740_zap'): see the lines above; if it is the secure world refusing the generic signature, the phone's own vendor zap is needed (docs/11 R1)"
 elif [ "$MODE" = full ] && [ "$hwinit_failed" = no ] && [ "$zap_missing" = no ]; then

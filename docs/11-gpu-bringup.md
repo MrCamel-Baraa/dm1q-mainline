@@ -14,9 +14,10 @@ document has been run on the phone yet (state at the end of the first session: r
 | Upstream + analog research (this document, sections 2-5) | done 2026-10-18 |
 | Baseline probe `scripts/collect-phone-state.sh gpu-baseline --gpu` | run 2026-10-18 22:35, results in section 9 |
 | Firmware (SQE, GMU, generic zap) on the PC from linux-firmware | done 2026-10-19, `../_scratch/dm1q-gpu-fw/` (not in the repo), section 9 |
-| Vendor-signed zap pull (TWRP) | not needed unless PAS rejects the generic one |
+| Vendor-signed zap pull (TWRP) | NEEDED: the secure world refused the generic zap (9.7); `scripts/pull-gpu-vendor-firmware.sh` |
 | DT-only image set `../_scratch/pmos-v19-gpu-bind` (`&gpu` okay, no firmware on the phone) | built and verified on the PC 2026-10-19, NOT flashed |
-| Power-up test (S3), Mesa, Plasma on GPU | not done |
+| Power-up test S3: `sqe-gmu` OK (9.6); `full` with the generic zap refused by the secure world (9.7) | done, GPU not yet executing |
+| Mesa, Plasma on GPU | not done |
 
 ## 2. What upstream has (FACT, kernel tree `../_scratch/linux-build/full`, 7.3-rc3)
 
@@ -273,3 +274,22 @@ FACT (the six new kernel lines, everything else unchanged: no reset, no SMMU fau
 - devfreq `3d00000.gpu` reads cur 680 MHz afterwards; `gpu-irq` / `gmu` counters are still 0.
 - Not shown: that the GPU executes anything (no zap, so the CP is still in secure mode and nothing was submitted).
 - Next: S3 `full` (generic zap through PAS).
+
+### 9.7 S3 `full` with the generic zap, 2026-10-19 06:29 (`notes/2026-10-19-gpu-powerup-full/gpu-powerup.txt`, uncommitted)
+
+FACT (the three new kernel lines; no reset, no SMMU fault, path restored, initramfs-extra unchanged, SQE/GMU loaded from the cache so they printed nothing new):
+
+```
+[256.808795] adreno 3d00000.gpu: error -22 initializing firmware qcom/sm8550/a740_zap.mbn
+[256.809056] msm_dpu ae01000.display-controller: [drm:adreno_load_gpu [msm]] *ERROR* gpu hw init failed: -22
+[256.819578] platform 3d6a000.gmu: [drm:a6xx_gmu_set_oob [msm]] *ERROR* Timeout waiting for GMU OOB set GPU_SET: 0x0
+```
+
+- The first line is printed by `qcom_mdt_load()` (`mdt_loader.c`, comment "Invalid firmware metadata") when `qcom_pas_init_image(13, metadata, ...)` fails: the SCM call that hands the zap's ELF header, program headers and
+  hash/signature segment to the secure world returned -22. That is before any code is copied or authenticated, so the secure world rejected the image's metadata, not its code.
+- INFERENCE: the generic linux-firmware zap is signed for development-fused Qualcomm boards and this phone's secure world does not accept that signature chain (the expected outcome, docs/11 R1). It is not proven: the same
+  SCM path accepted Samsung's own zap on the Tab S9 Ultra, but that was another kernel version, and -22 is the generic remapped SCM error, so a call-convention problem is not excluded. Loading the phone's own
+  Samsung-signed zap through the same code is the discriminator.
+- The OOB timeout 10 ms later is the same upstream cascade as in 9.6. The GMU and its OOB handshake work (the first OOB was acked, otherwise hw_init would not have reached the zap).
+- `scripts/phone-gpu-powerup.sh` now has `zap_init_error` and says "the secure world REFUSED the staged zap image" for this case; the three real lines are a second regression fixture (84 checks).
+- Next: pull the phone's own `a740_zap.*` (and its SQE/GMU for comparison) from the vendor partition in TWRP (`scripts/pull-gpu-vendor-firmware.sh`), then S3 `full` again with that set.
