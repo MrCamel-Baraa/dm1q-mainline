@@ -113,3 +113,9 @@ docs/08 2.10 (the chip never raised gpio25; the driver's soft reset does not res
 
 Read the files above, then tell Baraa in three or four lines: what the driver lacks compared with Samsung's, which hypothesis you rank first and why, and what the first phone-side script (`phone-touch-watch.sh`) will capture.
 No flash and no kernel change in the first step.
+
+## 8. Status, end of 2026-10-20
+
+- Step A is done and committed (`docs/08` section 2.12: what our driver lacks vs Samsung's `stm_spi`; H1 ranked first, H5 the likely trigger; the `spi:spi_transfer_stop` tracepoint as the no-rebuild way to see the chip's last event, not yet checked on the phone).
+- Step B (`phone-touch-watch.sh`) was NOT started: Baraa redirected the session to "later steps" 1-2 of section 5 (GPU firmware at boot, Plasma autostart). Written and PC-tested, not yet run on the phone: `scripts/phone-boot-setup.sh`, `scripts/test-phone-boot-setup.sh`, `--boot-setup=MODE` in the collector; record and order of steps in `docs/11` 9.12.
+- Consequence for touch: once Plasma starts at boot there is no tty on-screen keyboard, and the lock screen cannot authenticate (docs/11 9.12), so the touch drop-out gets more costly. Resume with Step B whenever Baraa says so.

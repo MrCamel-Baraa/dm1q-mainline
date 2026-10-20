@@ -355,3 +355,31 @@ FACT (the only three new kernel lines; no error, no fault, no reset; path restor
   The GPU had already been initialised by the earlier power-up in that boot, so the run's own power-up step printed no new kernel lines.
 - NOT verified: that the GPU executes work under the compositor. The `gpu-irq` / `gmu` interrupt counters and the devfreq frequency were not captured after the run (the only counters on file, in `gpu-powerup.txt`, were taken before Plasma started and read 0). Add them to the monitor of `phone-plasma-start.sh`.
 - The touch drop-out is NOT a GPU or Plasma problem: Baraa saw the same on the tty with the on-screen keyboard before the GPU work. It is handed over in `notes/2026-10-20-handoff-touch.md` and tracked in docs/08 2.11.
+
+### 9.12 Making it permanent: GPU firmware at boot + Plasma Mobile autostart (2026-10-20; script and PC test written, NOT run on the phone yet)
+
+Decision (Baraa, 2026-10-20 afternoon): stop powering the GPU up by hand after every reboot and start Plasma Mobile by itself; the touch work (docs/08 2.12) is paused after Step A.
+`scripts/phone-boot-setup.sh` (modes `check | gpu-fw | undo-gpu-fw | plasma | undo-plasma`; PC test `scripts/test-phone-boot-setup.sh`, 116 checks, bash only because dash is not installed here; `bash --posix -n` and
+`shellcheck -s sh -S warning` clean on the script and on the three scripts it generates; collector flag `--boot-setup=MODE`, with `DM1Q_GPU_FW=../_scratch/dm1q-gpu-fw-vendor-run`).
+
+- **No apk anywhere** (docs/06 rule 3): only plain files under `/lib/firmware/postmarketos`, `/usr/local/sbin`, `/etc/systemd/system`, `/var/lib/dm1q`, and `systemctl enable / set-default`. The script prints the sha256 of `/boot/initramfs-extra` before and after and
+  warns loudly if it changed. FACT (PC test): it never calls apk, and never calls `start`, `stop`, `restart`, `mask` or `isolate`.
+- **`gpu-fw`:** installs `qcom/a740_sqe.fw`, `qcom/gmu_gen70200.bin` and the phone's own `qcom/sm8550/a740_zap.mbn` into the kernel's DEFAULT firmware path. The default pins are the hashes of this section's 9.8 (SQE `96fee336...`, GMU `1a2a419c...`, zap `60cf7ab4...`; checked
+  against `../_scratch/dm1q-gpu-fw-vendor-run` on the PC); it refuses the generic zap (`386bbdc2...`, refused by the secure world, 9.7), a `firmware_class.path` other than `/lib/firmware/postmarketos`, and any foreign file already at those paths. The collector
+  fails early on the PC if `$DM1Q_GPU_FW` holds the generic zap (the default dir `../_scratch/dm1q-gpu-fw` does).
+- **Boot-loop breaker** (the one new risk: a TZ reset or hang at EVERY boot, instead of once after a hand-run): `dm1q-gpu-fw-guard.service` (sysinit, before udev and modules-load) leaves a marker; `dm1q-gpu-fw-ok.service` removes it 90 s after
+  `multi-user.target`. A marker still present at the next boot means the previous boot never got that far, and the guard moves the three files to `/var/lib/dm1q/gpu-fw-disabled/` (and logs it to `/dev/kmsg`), so that boot comes up WITHOUT the GPU; `gpu-fw` again puts them back.
+  FACT (PC test, the generated scripts are run for real): first boot leaves the marker, ok clears it, a boot with a stale marker moves the firmware away, a boot without a manifest does nothing. **Side effect:** rebooting within ~90 s of a boot also disables the GPU
+  (the collector warns); `check` shows `gpu_fw=disabled-by-guard` then.
+- **`plasma`:** enables `plasma-mobile.service` (alias `display-manager.service`; default target set to `graphical.target`, the previous one kept in `/var/lib/dm1q/plasma-prev-default`) plus a drop-in `10-dm1q-boot.conf`: `StartLimitBurst=4` in 180 s (the unit's own
+  `OnFailure=getty@tty1.service` then gives the console back) and an `ExecStartPre` that waits up to 15 s for `/dev/dri/renderD128`. **It refuses** unless the firmware is installed, the GPU initialised BY ITSELF in the current boot (`Loaded GMU firmware` in dmesg, no
+  `hw init failed` / `Unable to authorize` / `error -22` line), and the PAM override of 9.10 (or a real `pam_selinux.so`) is in place: without a GPU kwin falls back to llvmpipe, which dies with SIGILL in a restart loop (docs/10 9.3). It does not start the UI.
+- **Order on the phone:** (1) `--boot-setup=gpu-fw`; (2) normal reboot, wait 2 minutes; (3) `--gpu --boot-setup=check` must show `gpu_state=initialised`; (4) `--boot-setup=plasma`; (5) reboot. Undo: `--boot-setup=undo-plasma`, `--boot-setup=undo-gpu-fw`.
+
+INFERENCE, to be settled by step 3 (nothing here ran on hardware): msm loads in userspace after switch_root (the Plasma run's dmesg has `Initialized msm` at 7.7 s, the healthy stage 1 switches root at about 4.9 s, 9.4), so a file on the rootfs is visible when the fbdev client's open calls `load_gpu` (section 5 items 2 and 3); the
+zap's `firmware-name` `qcom/sm8550/a740_zap.mbn` is resolved against `/lib/firmware/postmarketos` exactly as it was against the staging dir in 9.9. Whether the secure world accepts the zap at msm-bind time as it did at a later open is the real unknown (the guard exists for it).
+
+Known problems this does NOT solve (they become visible once Plasma starts by itself):
+- **The lock screen cannot authenticate** (`kscreenlocker_greet`: `Worker not ready yet, cannot authenticate`, 9.11; handoff section 5 item 3). If the screen locks (idle timer or the power key), the UI is stuck on the lock screen; recovery from ssh: `sudo systemctl restart plasma-mobile.service`. Disabling auto-lock (`~/.config/kscreenlockerrc`, `[Daemon] Autolock=false`, `LockOnResume=false`) is the likely stop-gap; not done, not tested.
+- **Touch drop-out** (docs/08 2.11 / 2.12) is unchanged: with the UI on tty1 the on-screen keyboard of buffyboard is gone, so a dead touchscreen means a dead UI until the touch bug is fixed; the physical keys and ssh still work.
+- A later `apk upgrade` that ships a file at one of the three firmware paths would replace the vendor zap (INFERENCE: apk owns files by path, ours are unowned); `check` prints whether the apk database names them. An apk run still needs the rule-3 warning and the TWRP repair path.

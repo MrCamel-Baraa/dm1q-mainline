@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu] [--pam-fix[=check|undo]] [--gpu-powerup=sqe-gmu|full] [--boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -74,6 +74,12 @@
 #                one open of the render node, restores it, and prints the new kernel log lines + a verdict (adds gpu-powerup.txt).
 #                sqe-gmu = SQE + GMU only (GMU boots, stops cleanly at the missing zap shader); full = also the zap shader (secure-world
 #                authentication: the step that could reset the phone; then just let it reboot, the default firmware path never has the files).
+#   --boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma  also run scripts/phone-boot-setup.sh (docs/11 section 9.12): makes the GPU fix and the Plasma start
+#                permanent WITHOUT apk (plain files + systemd units; initramfs-extra is hashed before and after). gpu-fw installs the phone's own
+#                Adreno firmware (from $DM1Q_GPU_FW, which must hold qcom/sm8550/a740_zap.mbn; the phone script pins the known hashes) under
+#                /lib/firmware/postmarketos plus a boot-loop breaker that moves it away again if a boot with it does not finish; plasma enables
+#                plasma-mobile.service at boot (refuses unless the GPU came up by itself in the current boot and PAM is fixed); undo-* revert;
+#                check is read-only (adds boot-setup.txt).
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)  DM1Q_GPU_FW=<firmware dir for --gpu-powerup>
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -81,7 +87,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0; PAM_FIX=''
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0; PAM_FIX=''; BOOT_SETUP=''
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -107,6 +113,7 @@ for a in "$@"; do
 	--pam-fix) PAM_FIX=apply ;;
 	--pam-fix=*) PAM_FIX="${a#--pam-fix=}"; case "$PAM_FIX" in check|undo) ;; *) echo "--pam-fix takes no value, =check or =undo" >&2; exit 2 ;; esac ;;
 	--gpu-powerup=*) GPU_POWERUP="${a#--gpu-powerup=}"; case "$GPU_POWERUP" in sqe-gmu|full) ;; *) echo "--gpu-powerup must be sqe-gmu or full" >&2; exit 2 ;; esac ;;
+	--boot-setup=*) BOOT_SETUP="${a#--boot-setup=}"; case "$BOOT_SETUP" in check|gpu-fw|undo-gpu-fw|plasma|undo-plasma) ;; *) echo "--boot-setup must be check, gpu-fw, undo-gpu-fw, plasma or undo-plasma" >&2; exit 2 ;; esac ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -129,13 +136,18 @@ if [ "$TOUCH" = 1 ]; then
 	[ -f "$SPI_BIN" ] || { echo "no $SPI_BIN -- run: bash scripts/build-spi-xfer.sh   (needs clang + lld)"; exit 1; }
 fi
 GPU_FW="${DM1Q_GPU_FW:-$REPO/../_scratch/dm1q-gpu-fw}"
-if [ -n "$GPU_POWERUP" ]; then
+if [ -n "$GPU_POWERUP" ] || [ "$BOOT_SETUP" = gpu-fw ]; then
 	[ -d "$GPU_FW/qcom" ] || { echo "no $GPU_FW/qcom -- the linux-firmware files of docs/11 section 9.2 are needed for --gpu-powerup"; exit 1; }
 	[ -f "$GPU_FW/qcom/a740_sqe.fw" ] && [ -f "$GPU_FW/qcom/gmu_gen70200.bin" ] || { echo "$GPU_FW/qcom needs a740_sqe.fw and gmu_gen70200.bin"; exit 1; }
 	# the phone script pins the linux-firmware hashes by default; the hashes of the set actually being pushed override them (integrity of the transfer,
 	# and it lets a vendor-signed set through: DM1Q_GPU_FW=<dir with qcom/a740_sqe.fw, qcom/gmu_gen70200.bin, qcom/sm8550/a740_zap.mbn>)
 	GPU_PINS="FW_SQE_SHA=$(sha256sum "$GPU_FW/qcom/a740_sqe.fw" | cut -d' ' -f1) FW_GMU_SHA=$(sha256sum "$GPU_FW/qcom/gmu_gen70200.bin" | cut -d' ' -f1)"
 	if [ -f "$GPU_FW/qcom/sm8550/a740_zap.mbn" ]; then GPU_PINS="$GPU_PINS FW_ZAP_SHA=$(sha256sum "$GPU_FW/qcom/sm8550/a740_zap.mbn" | cut -d' ' -f1)"; fi
+fi
+if [ "$BOOT_SETUP" = gpu-fw ]; then
+	[ -f "$GPU_FW/qcom/sm8550/a740_zap.mbn" ] || { echo "gpu-fw needs the phone's own signed zap shader: $GPU_FW/qcom/sm8550/a740_zap.mbn (DM1Q_GPU_FW=<the dm1q-gpu-fw-vendor-run dir of docs/11 9.8>); the generic one is refused by the secure world"; exit 1; }
+	# the vendor-signed zap of docs/11 9.8; the phone script pins the same hash and would refuse anything else, this just fails early on the PC
+	[ "$(sha256sum "$GPU_FW/qcom/sm8550/a740_zap.mbn" | cut -d' ' -f1)" = 60cf7ab4f3d96e0992a42560ac288c053328bda5e41b4fe5e678be94ecd7ae35 ] || { echo "$GPU_FW/qcom/sm8550/a740_zap.mbn is not the phone's own signed zap (sha256 60cf7ab4...): that is the generic one, refused by the secure world. Use DM1Q_GPU_FW=$REPO/../_scratch/dm1q-gpu-fw-vendor-run"; exit 1; }
 fi
 DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
 CP="/tmp/dm1q-ssh-$$"
@@ -156,6 +168,13 @@ push_scripts() {
 	fi
 	if [ -n "$PAM_FIX" ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-pam-fix.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the PAM fix failed"; exit 1; }
+	fi
+	if [ -n "$BOOT_SETUP" ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-boot-setup.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the boot setup script failed"; exit 1; }
+		if [ "$BOOT_SETUP" = gpu-fw ]; then
+			ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-gpu-fw; mkdir -p /tmp/dm1q-gpu-fw' || { echo "mkdir for the GPU firmware failed"; exit 1; }
+			scp "${SSH_OPTS[@]}" -q -r "$GPU_FW/qcom" "$PUSER@$PHONE:/tmp/dm1q-gpu-fw/" || { echo "scp of the GPU firmware failed"; exit 1; }
+		fi
 	fi
 	if [ "$PAM_PROBE" = 1 ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-pam-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the PAM probe failed"; exit 1; }
@@ -269,6 +288,14 @@ if [ -n "$PAM_FIX" ]; then
 	BODY="$BODY
 sh /tmp/phone-pam-fix.sh $PAM_FIX 2>&1 | tee /tmp/dm1q-collect/pam-fix.txt"
 fi
+if [ -n "$BOOT_SETUP" ]; then
+	if [ "$BOOT_SETUP" = gpu-fw ]; then
+		BODY="$BODY
+rm -rf /root/dm1q-gpu-fw && mkdir -p /root/dm1q-gpu-fw && cp -r /tmp/dm1q-gpu-fw/qcom /root/dm1q-gpu-fw/"
+	fi
+	BODY="$BODY
+sh /tmp/phone-boot-setup.sh $BOOT_SETUP 2>&1 | tee /tmp/dm1q-collect/boot-setup.txt"
+fi
 if [ "$PAM_PROBE" = 1 ]; then
 	BODY="$BODY
 sh /tmp/phone-pam-probe.sh 2>&1 | tee /tmp/dm1q-collect/pam.txt"
@@ -335,6 +362,8 @@ RMSG=""
 [ "$APKNET" = 1 ] && RMSG="$RMSG; the apk network diagnosis takes ~2 min (it fetches index files and runs apk update -vv)"
 [ "$PLASMA_PRE" = 1 ] && RMSG="$RMSG; the Plasma preflight takes ~1 min (apk update + simulation need the phone's Wi-Fi internet)"
 [ "$GPU_PROBE" = 1 ] && RMSG="$RMSG; the GPU probe is read-only and takes a few seconds"
+[ -n "$BOOT_SETUP" ] && RMSG="$RMSG; THE BOOT SETUP (mode $BOOT_SETUP) writes plain files and systemd units on the phone (no apk, nothing is started or stopped), a few seconds"
+[ "$BOOT_SETUP" = gpu-fw ] && RMSG="$RMSG; after the NEXT reboot wait 2 minutes before rebooting again (the boot-loop breaker treats a boot shorter than that as a failed one)"
 [ -n "$GPU_POWERUP" ] && RMSG="$RMSG; THE GPU POWER-UP TEST (mode $GPU_POWERUP) powers the GPU up once, ~15 s; if the phone resets, let it reboot (it comes back normally)"
 [ "$DRM_TEST" = 1 ] && RMSG="$RMSG; the DRM pattern test takes ~35 s: WATCH THE PHONE SCREEN"
 [ "$BACKLIGHT" = 1 ] && RMSG="$RMSG; the backlight sweep takes ~1 min: WATCH THE PHONE SCREEN (white, getting dimmer)"
@@ -345,7 +374,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/phone-pam-fix.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/phone-pam-fix.sh /tmp/phone-boot-setup.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo
