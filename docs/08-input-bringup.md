@@ -319,3 +319,12 @@ Evidence: `notes/2026-10-13-v13-touch-driver/corners-and-failed-boot.txt`.
   /dev/input/event3` running, plus `sudo dmesg | tail -n 60`; then add the vendor init sequence (and a raw-transfer
   debugfs file so the chip can be poked without a kernel rebuild) as package r7. Not done speculatively: nothing
   proves the sequence is the cause, and every kernel change costs a rebuild and a module refresh.
+
+### 2.11 It happens again: touch works for a while, then stops (2026-10-19/20, reported by Baraa)
+
+- Baraa reports that touch works for a while and then stops responding while the keys keep working. He saw it on the tty with the on-screen keyboard (buffyboard) **before the GPU work** and again in Plasma Mobile
+  (2026-10-19 ~21:05). So it is not caused by the GPU, Plasma, kwin or the lock screen alone; it fits the unexplained failure of 2.10 (and the unverified items of 2.9: `close()`, suspend/resume, long runs).
+- What the Plasma run's logs show (`notes/2026-10-19-gpu-plasma2/`, uncommitted): no kernel error of any kind in the window (no `nobody cared`, no SPI/geni error, no hangcheck, no SMMU fault); kwin held `event0..3` open; `gpio25` reads `in high` in the capture taken
+  after Plasma stopped (not conclusive: device closed); the panel was power-cycled three times (`panel id 81 02 25` at +67, +88, +110 s); the screen locker started mid-session. The moment and the trigger are not known.
+- Hypotheses H1 to H6 (chip stops scanning / interrupt asserted but unserviced / count rises but evdev silent / userspace ignores / coupled to the panel power cycle / SPI or regulator state) and the plan (read-only `phone-touch-watch.sh`, recovery
+  experiments, only then the driver update with Samsung's init sequence) are in `notes/2026-10-20-handoff-touch.md` sections 3 and 4. Status: handed to a fresh chat, nothing measured yet.
