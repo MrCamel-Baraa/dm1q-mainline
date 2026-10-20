@@ -327,4 +327,40 @@ Evidence: `notes/2026-10-13-v13-touch-driver/corners-and-failed-boot.txt`.
 - What the Plasma run's logs show (`notes/2026-10-19-gpu-plasma2/`, uncommitted): no kernel error of any kind in the window (no `nobody cared`, no SPI/geni error, no hangcheck, no SMMU fault); kwin held `event0..3` open; `gpio25` reads `in high` in the capture taken
   after Plasma stopped (not conclusive: device closed); the panel was power-cycled three times (`panel id 81 02 25` at +67, +88, +110 s); the screen locker started mid-session. The moment and the trigger are not known.
 - Hypotheses H1 to H6 (chip stops scanning / interrupt asserted but unserviced / count rises but evdev silent / userspace ignores / coupled to the panel power cycle / SPI or regulator state) and the plan (read-only `phone-touch-watch.sh`, recovery
-  experiments, only then the driver update with Samsung's init sequence) are in `notes/2026-10-20-handoff-touch.md` sections 3 and 4. Status: handed to a fresh chat, nothing measured yet.
+  experiments, only then the driver update with Samsung's init sequence) are in `notes/2026-10-20-handoff-touch.md` sections 3 and 4. Status: handed to a fresh chat, nothing measured yet (Step A, the code comparison, is 2.12).
+
+### 2.12 Step A (PC only, 2026-10-20): what our driver lacks compared with Samsung's `stm_spi`
+
+Sources, all read in full for the paths named: our `fts2ba61y.c` (kernel patch 0002) and `../_scratch/samsung-stm-spi/stm_spi/` (`stm_core.c`, `stm_fn.c`, `stm_reg.h`). Everything in the table is FACT (read in the files); the
+readings below the table are INFERENCE. Not read yet: `stm_ts_systemreset`, `stm_ts_wait_for_echo_event`, `stm_ts_set_spi_mode`, `sec_input_handler_start`, `stm_ts_external_func`, and the display notifier (it lives in the
+sec_input core, which is not in `stm_spi/`).
+
+| Area | Samsung `stm_spi` | Ours |
+|---|---|---|
+| Event dispatch | `stm_ts_irq_thread` (core:2054): id = byte0 & 3; status, coordinate, gesture and vendor events each have a branch; unknown events are logged | `fts2ba61y_handle_event` returns unless id == coordinate: every status or vendor event is read from the FIFO and dropped, **no log line** |
+| Error status (stype 1) | id 0x01 "IC Event Queue is full" -> release all fingers; id 0x02 "ESD detected" -> `reset_work` (core:1775-1795) | ignored |
+| IC reset notice (stype 2, id 0x00, data 0x10) | logged "IC Reset" -> `reset_work` (core:1796-1805). This is the same record `49 00 10` that our soft reset produces at probe (2.7) | ignored |
+| Vendor events `F3 02` / `F3 46` | `reset_work` (core:2121-2128) | ignored |
+| `reset_work` (fn:914) | `stop_device` (disable irq, release fingers, **rails off**, pinctrl off), 35 ms, `start_device` (pinctrl on, **rails on**, 35 ms, `reinit`, chip id, SENSE_ON, enable irq) | none |
+| Init sequence (`hw_init`, core:2458; `reinit`, core:1535) | system reset, chip id, channel info, touch-function `C0 30`, force calibration `C0 13` (echo-checked), clear events `C0 62` (echo-checked), **scan mode `A0 00 <mode>` (echo-checked)**; `reinit` repeats system reset, clear events, feature setup and scan mode on every start | soft reset, ready wait, id and panel info, `C0 30` (0x61). **No calibration, no clear-events, no scan mode** |
+| `input_open` (core:2161) | `start_device`: rails on, reset + init, SENSE_ON, enable irq | SENSE_ON only |
+| `input_close` (core:2323) | `stop_device` (core:2387): disable irq, release all fingers, **rails off** (or a low-power mode) | SENSE_OFF only; rails stay on; slots are not released |
+| Suspend / resume / panel power | the handlers read here are open and close; in the vendor tree screen on/off reaches the driver through them (INFERENCE: the notifier itself was not read) | no `pm_ops`, no panel hook |
+| Empty FIFO (byte0 == 0, `get_event` core:1840) | logs "event buffer is empty", returns an error, `IRQ_HANDLED` | `get_events` returns 0, `IRQ_HANDLED`, **no log**: a level-low line stuck asserted with an empty FIFO would loop silently |
+| SPI read error | `IRQ_HANDLED` | `IRQ_NONE` (the core would print `nobody cared` and disable the irq after 99,900 of 100,000 unhandled; no such line was seen) |
+| FIFO overflow (`left` >= 31) | clear events + release all fingers | clear events, no release, `IRQ_NONE` |
+| Slot bookkeeping | `release_all_finger` on queue-full, overflow, start and stop | `INPUT_MT_DIRECT` without `DROP_UNUSED` and no release-all path: a lost release event leaves a contact active |
+
+Readings (INFERENCE):
+
+- The failure signature so far (silent, no kernel line, keys unaffected, the first occurrence with gpio25 never asserting although sensing was on) is what the code predicts if **the chip leaves scanning by itself**
+  (IC reset or ESD error) and the driver cannot notice: the event that says so is read and thrown away, nothing is logged, SENSE_ON is not re-sent. Samsung's driver contains a full power-cycle recovery for exactly these
+  two events, which says the chip does this in the field. This is H1.
+- A plausible trigger is the panel power cycle (H5): the panel driver is powered down and up under the console blank timer or DPMS, and the chip is never told. The tty case before the GPU work would fit a console blank
+  after the default 600 s; that timer value was not checked on the phone.
+- Our driver cannot show which of H1/H2/H3 it is, because it logs nothing about non-coordinate events. The decisive observation without a rebuild is the SPI traffic itself: the kernel has the `spi:spi_transfer_stop`
+  tracepoint, whose output prints the first 64 bytes of tx and rx of every transfer, so the last `0x87` event reads before the chip goes quiet would show the status record. The PC-side kernel build config
+  (`out-real/.config`, which predates the touch fragment) has `TRACEPOINTS`, `EVENT_TRACING`, `FTRACE` and `DEBUG_FS` set, and `include/trace/events/spi.h` of the 7.3-rc3 tree has the tx/rx dump; whether the phone's
+  running kernel exposes `/sys/kernel/tracing/events/spi` is NOT verified and the first script checks it.
+- Fix direction (D, only after a measurement names the cause): log and act on status events (queue full, ESD, IC reset), a recovery work item that power-cycles the rails and re-initialises, Samsung's init including scan mode,
+  rails off at close or at panel-off with a full re-init at open, release-all on error paths, `IRQ_HANDLED` with a log on an empty FIFO.
