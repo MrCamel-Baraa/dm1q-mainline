@@ -7,7 +7,7 @@
 # switches. So: run this script yourself, in a terminal, while connected to the phone; when it says
 # "done", reconnect to the internet and tell Claude, who reads the files from disk.
 #
-# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu] [--pam-fix[=check|undo]] [--gpu-powerup=sqe-gmu|full] [--boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma] [--touch-watch[=SECONDS]] [--touch-sleepwake[=SECONDS]] [--touch-recover]
+# Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu] [--pam-fix[=check|undo]] [--gpu-powerup=sqe-gmu|full] [--boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma] [--touch-watch[=SECONDS]] [--touch-sleepwake[=SECONDS]] [--touch-recover] [--touch-trace=arm|dump|disarm] [--sleep-probe] [--load-probe]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
 #                label on the same day overwrites files with the same name
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
@@ -89,6 +89,17 @@
 #   --touch-recover  with --touch-watch (implies it): if the first window shows no events, tries ONE reversible experiment at a time (unbind / bind of spi0.0 =
 #                power cycle of the chip's rails, then modprobe -r / modprobe fts2ba61y), each followed by a 15 s window, and stops at the first that brings events
 #                back. The device is always left bound; nothing is made permanent.
+#   --touch-trace=arm|dump|disarm  the touch flight recorder (docs/08 section 2.14; scripts/phone-touch-trace.sh): keeps the last SPI transfers of the touch chip in a
+#                trace buffer in RAM, so that what the chip said just before it went silent survives the failure. arm (once per boot): starts it, then a 6 s alive
+#                check (DRAG A FINGER); if touch is dead right then it is revived with a rebind so that the NEXT failure is recorded. dump (after touch died, BEFORE
+#                reviving it): READ-ONLY, saves the raw buffer (touch-trace-raw.txt) and prints the decoded records, the status records and the gap. disarm: stops it.
+#   --load-probe  also run scripts/phone-load-probe.sh (docs/08 section 2.16; READ-ONLY, runs first of all, ~10 s): a CPU snapshot for "the phone is laggy / hot": loadavg and
+#                pressure, per-CPU busy percentages over 3 s, the interrupts with the highest rate, top (processes and threads), plasma-mobile.service state and
+#                restart count, who holds a /dev/dri node, the renderer lines of the journal, GPU hang / throttling lines, cpufreq, the hottest thermal zones. Run it WHILE
+#                THE PHONE IS HOT OR LAGGY (adds load-probe.txt).
+#   --sleep-probe  also run scripts/phone-sleep-probe.sh (docs/08 section 2.15; READ-ONLY, runs early): power / cpuidle / wakeup-source configuration, the kernel-log timeline of
+#                suspend and resume, runtime PM of the display / GPU / storage, this boot's journal lines about suspend / power key / idle / powerdevil, the sleep
+#                configuration. Run it AFTER a slow wake and BEFORE rebooting (a reboot loses the kernel log; the journal only if it is volatile) (adds sleep-probe.txt).
 # Env:  PHONE=172.16.42.1  PHONE_USER=user  WAIT_PING=240 (seconds to wait for the USB network)  DM1Q_GPU_FW=<firmware dir for --gpu-powerup>
 #
 # What it does on the phone: only reads (plus module loads and the temporary modprobe blacklist), writes
@@ -96,7 +107,7 @@
 # regulator_summary.txt, gpio.txt[, reload.txt, regdump*.txt]), as root through one sudo call per login.
 # Everything shown on the terminal during the collection is also kept in session.log on the PC.
 set -u
-LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0; PAM_FIX=''; BOOT_SETUP=''; TOUCH_WATCH=''; TOUCH_SW=''; TOUCH_RECOVER=0
+LABEL=""; REBOOT=0; RELOAD=0; REGDUMP=""; FRESH=0; TOUCH=0; DISPLAY_PROBE=0; DRM_TEST=0; BACKLIGHT=0; PLASMA_PRE=0; APKNET=0; APK_HTTPS=0; PLASMA_INSTALL=0; PLASMA_START=''; PLASMA_KEEP=0; PLASMA_PROFILE=default; SIGILL_CORE=0; GPU_PROBE=0; GPU_POWERUP=''; PAM_PROBE=0; PAM_FIX=''; BOOT_SETUP=''; TOUCH_WATCH=''; TOUCH_SW=''; TOUCH_RECOVER=0; TOUCH_TRACE=''; SLEEP_PROBE=0; LOAD_PROBE=0
 for a in "$@"; do
 	case "$a" in
 	--reboot) REBOOT=1 ;;
@@ -128,6 +139,9 @@ for a in "$@"; do
 	--touch-sleepwake) TOUCH_SW=20 ;;
 	--touch-sleepwake=*) TOUCH_SW="${a#--touch-sleepwake=}"; case "$TOUCH_SW" in ''|*[!0-9]*) echo "--touch-sleepwake=SECONDS needs a number (15..600)" >&2; exit 2 ;; esac; { [ "$TOUCH_SW" -ge 15 ] && [ "$TOUCH_SW" -le 600 ]; } || { echo "--touch-sleepwake=SECONDS must be 15..600" >&2; exit 2; } ;;
 	--touch-recover) TOUCH_RECOVER=1 ;;
+	--touch-trace=*) TOUCH_TRACE="${a#--touch-trace=}"; case "$TOUCH_TRACE" in arm|dump|disarm) ;; *) echo "--touch-trace must be arm, dump or disarm" >&2; exit 2 ;; esac ;;
+	--sleep-probe) SLEEP_PROBE=1 ;;
+	--load-probe) LOAD_PROBE=1 ;;
 	-*) echo "unknown option $a" >&2; exit 2 ;;
 	*) LABEL="$a" ;;
 	esac
@@ -232,6 +246,15 @@ push_scripts() {
 	if [ -n "$TOUCH_WATCH" ]; then
 		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-touch-watch.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the touch watch script failed"; exit 1; }
 	fi
+	if [ -n "$TOUCH_TRACE" ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-touch-trace.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the touch trace script failed"; exit 1; }
+	fi
+	if [ "$LOAD_PROBE" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-load-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the load probe failed"; exit 1; }
+	fi
+	if [ "$SLEEP_PROBE" = 1 ]; then
+		scp "${SSH_OPTS[@]}" -q "$REPO/scripts/phone-sleep-probe.sh" "$PUSER@$PHONE:/tmp/" || { echo "scp of the sleep probe failed"; exit 1; }
+	fi
 }
 wait_up() {
 	local t=0
@@ -289,6 +312,18 @@ sh /tmp/phone-mhi-regdump.sh load 2>&1 | tee /tmp/dm1q-collect/regdump-load.txt"
 elif [ -n "$REGDUMP" ]; then
 	BODY="$BODY
 sh /tmp/phone-mhi-regdump.sh $REGDUMP 2>&1 | tee /tmp/dm1q-collect/regdump.txt"
+fi
+if [ "$LOAD_PROBE" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-load-probe.sh 2>&1 | tee /tmp/dm1q-collect/load-probe.txt"
+fi
+if [ "$SLEEP_PROBE" = 1 ]; then
+	BODY="$BODY
+sh /tmp/phone-sleep-probe.sh 2>&1 | tee /tmp/dm1q-collect/sleep-probe.txt"
+fi
+if [ -n "$TOUCH_TRACE" ]; then
+	BODY="$BODY
+OUT=/tmp/dm1q-collect/touch-trace-raw.txt sh /tmp/phone-touch-trace.sh $TOUCH_TRACE 2>&1 | tee /tmp/dm1q-collect/touch-trace.txt"
 fi
 if [ -n "$TOUCH_WATCH" ]; then
 	BODY="$BODY
@@ -379,6 +414,10 @@ RMSG=""
 [ -n "$REGDUMP" ] && RMSG="$RMSG; the regdump step takes ~40 s"
 [ "$TOUCH" = 1 ] && RMSG="$RMSG; the touch probe takes ~10 s"
 [ -n "$TOUCH_WATCH" ] && RMSG="$RMSG; THE TOUCH WATCH RUNS FIRST: DRAG A FINGER CONTINUOUSLY ON THE PHONE SCREEN for the whole ${TOUCH_WATCH} s window, even if touch looks dead${TOUCH_SW:+; then, when it says so, press the POWER KEY (screen off), wait 5 s, press it again (screen on) and keep dragging for ${TOUCH_SW} s}${TOUCH_RECOVER:+; if no events came, up to two recovery experiments of ~25 s each follow (keep dragging)}"
+[ "$LOAD_PROBE" = 1 ] && RMSG="$RMSG; the load probe is read-only and takes ~10 s (it is only useful while the phone is hot or laggy)"
+[ "$SLEEP_PROBE" = 1 ] && RMSG="$RMSG; the sleep probe is read-only and takes a few seconds (run it before rebooting the phone, after a slow wake)"
+[ "$TOUCH_TRACE" = arm ] && RMSG="$RMSG; THE TOUCH RECORDER ARM asks you to DRAG A FINGER on the phone screen for 6 s (twice if touch is dead: it then revives it with a rebind)"
+[ "$TOUCH_TRACE" = dump ] && RMSG="$RMSG; the touch recorder dump is read-only and takes a few seconds"
 [ -n "$PLASMA_START" ] && RMSG="$RMSG; THE PLASMA MOBILE FIRST START runs ${PLASMA_START}s: WATCH THE PHONE SCREEN and use it (touch, keys, brightness slider, keyboard); the UI is stopped again at the end unless --plasma-keep"
 [ "$PLASMA_INSTALL" = 1 ] && RMSG="$RMSG; THE PLASMA MOBILE INSTALL takes 15-40 min and changes the system: stay on the USB network, do NOT reboot the phone into the system afterwards (TWRP + fix-phone-initramfs-extra.sh first)"
 [ "$APK_HTTPS" = 1 ] && RMSG="$RMSG; the apk https step downloads ~7 MB of indexes and runs a simulation (~1-2 min); it edits /etc/apk/repositories"
@@ -397,7 +436,7 @@ ssh "${SSH_OPTS[@]}" -t "$PUSER@$PHONE" "sudo sh -c \"$BODY\"" 2>&1 | tee "$DEST
 
 echo "== pulling the files =="
 scp "${SSH_OPTS[@]}" -q "$PUSER@$PHONE:/tmp/dm1q-collect/*" "$DEST/" || { echo "scp of the results failed (see $DEST/session.log for what was printed)"; exit 1; }
-ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/phone-pam-fix.sh /tmp/phone-boot-setup.sh /tmp/phone-touch-watch.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
+ssh "${SSH_OPTS[@]}" "$PUSER@$PHONE" 'rm -rf /tmp/dm1q-collect /tmp/phone-wlan-probe.sh /tmp/phone-ath11k-reload.sh /tmp/phone-mhi-regdump.sh /tmp/mmio-read /tmp/phone-touch-spi-probe.sh /tmp/spi-xfer /tmp/phone-display-probe.sh /tmp/phone-drm-test.sh /tmp/phone-backlight-test.sh /tmp/drm-fill /tmp/phone-plasma-preflight.sh /tmp/phone-apknet-diag.sh /tmp/phone-apk-https.sh /tmp/phone-plasma-install.sh /tmp/phone-plasma-start.sh /tmp/phone-sigill-core.sh /tmp/phone-gpu-probe.sh /tmp/phone-gpu-powerup.sh /tmp/phone-pam-probe.sh /tmp/phone-pam-fix.sh /tmp/phone-boot-setup.sh /tmp/phone-touch-watch.sh /tmp/phone-touch-trace.sh /tmp/phone-sleep-probe.sh /tmp/phone-load-probe.sh /tmp/dm1q-gpu-fw' 2>/dev/null || true
 for f in "$DEST"/*; do tr -d '\r' < "$f" > "$f.tmp" && mv "$f.tmp" "$f"; done
 ls -la "$DEST"
 echo

@@ -398,3 +398,77 @@ How the verdicts will be read (this is the plan, the readings are INFERENCE unti
 | `NO-DEVICE` | probe failed this boot | the probe's dmesg lines (boot race with GPU init or the regulators) |
 
 Not verified: whether the phone's kernel has `/sys/kernel/tracing/events/spi` (the script says "skipped" and carries on without the SPI records if not), and whether the evdev reader changes the chip's behaviour (it only opens the node, as KWin does).
+
+### 2.14 First touch-watch result (2026-10-21, boot at uptime 890 s) and the flight recorder
+
+Raw capture: `notes/2026-10-21-touch-watch/touch-watch.txt` (uncommitted, like all raw captures). Baraa dragged a finger in every window. State at the start: `plasma-mobile.service` active, the evdev node held by
+`kwin_wayland`, `systemd` and `systemd-logind`, the fts2ba61y interrupt count already **11464**.
+
+FACTS (read from the capture):
+
+| Window | What was measured |
+|---|---|
+| `touch`, 45 s | interrupt count constant (11464), gpio25 high in all 45 samples, 0 evdev bytes, rails L12B 1.8 V / L16B 3.0 V enabled with 1 user, DSI-1 enabled/On, backlight bl_power 0 / 2047, the SPI controller (a90000.spi) runtime-suspended, the SPI device itself reports `unsupported` runtime PM. 0 new kernel lines. The SPI trace buffer held 0 records of spi0.0 (the driver reads the chip only after an interrupt). Verdict CHIP-SILENT. |
+| `sleepwake`, 20 s | the power key switched DSI-1 to disabled/Off with bl_power 4 for ~7 s, then back to enabled/On; one new kernel line (the panel driver read the panel id `81 02 25` again at re-enable); touch stayed silent. |
+| `rebind` | unbind: L12B and L16B disabled (users 0); bind: both enabled again; probe took 188 ms and printed `id 53 54 40 36 01, resolution 4095x4095, 16 TX x 34 RX channels`. In the next 15 s: +1706 interrupts (~114 per second), 11811 evdev records, gpio25 never sampled low. The SPI trace showed one 18-byte read (2 header bytes + one 16-byte event, id 0) every ~8.3 ms, i.e. 120 Hz coordinate reports. |
+| kernel log | no line about the touch chip between the failure and the capture, no `nobody cared`, no SPI error. |
+
+Readings (INFERENCE, labelled as such):
+
+- The chip, not the interrupt line, the SPI controller or the panel path holds the failed state: gpio25 stayed high (the chip did not assert it, so H2 "asserted but not serviced" is out for this occurrence), no interrupts arrived
+  (so H3 "driver swallows them" and H4 "userspace ignores the device" are out for this occurrence), the rails were on (H6 for the rails). The rebind only touches the chip's rails and a freshly allocated driver state; the
+  SPI controller and its pinctrl are not reset by it, so they work. A full power cycle plus soft reset plus re-init revives the chip at once: this is the H1 class (the chip stops reporting by itself).
+- A panel power cycle does not revive it (`sleepwake` window), so the panel path is not a recovery. It is not excluded as a trigger: the chip was already silent before that window.
+- The interrupt count of 11464 at the start of the first window means the chip had raised interrupts earlier in this boot (at ~114-123 per second of dragging that is on the order of 100 s of use; the status records the driver drops
+  would also count, so this is an order of magnitude, not a measurement). That fits "works for a while, then stops" (2.10, 2.11) better than "dead from the start of Plasma" (2.13); the two statements are not reconciled and the
+  recorder below will settle it with timestamps.
+- Nothing recorded what the chip said last: the trace was started after the failure. Hence the recorder.
+
+**The recorder: `scripts/phone-touch-trace.sh`** (collector flag `--touch-trace=arm|dump|disarm`; PC-side test `scripts/test-phone-touch-trace.sh`, 66 checks). `arm` starts a dedicated trace instance
+(`/sys/kernel/tracing/instances/dm1q-touch`, 4 MB per CPU, overwrite mode) for `spi:spi_transfer_stop` of bus 0 / cs 0; once the chip goes quiet nothing new is written, so the buffer keeps the final ~minute of its traffic
+(at ~120 records per second and ~250 bytes per record). It lives in RAM until the next reboot (arm after every boot). `arm` also runs a 6 s alive check and, if touch is dead at that moment, revives it with the rebind so that the
+*next* failure is the recorded one. `dump` is read-only and prints: the buffer statistics, the age of the last record against the boot clock, the event-id counts, every non-coordinate record (id 1 = status, with its stype and the
+raw bytes), the last 20 records, the records per second in the last 10 s before the end, the largest gap.
+
+How a dump will be read (plan; INFERENCE until a dump exists):
+
+| What the dump shows | Reading | Fix direction |
+|---|---|---|
+| a status record `id=1 stype=2` with `49 00 10` just before the end | the chip reset itself (the IC-reset notice of 2.12) and our driver dropped it and never re-sent SENSE_ON | handle status events: log, full re-init (Samsung's `reset_work`) |
+| a status record `stype=1` (error: ESD, queue full) | the chip reported a fault | same, plus power cycle |
+| coordinate records at full rate, then nothing, no status record | the chip stopped without telling | a watchdog is the only driver-side answer (touch seen, then no interrupt for N s while the screen is on is not distinguishable from an idle screen: needs another signal) or chip configuration (scan mode `A0 00 01` never set, 2.12) |
+| the rate decays before the end, or the records change shape | degradation (supply, scan mode switching to a low-power rate) | scan mode / rail investigation |
+| the age of the last record far below the uptime gap | tells when it died (compare with the wall clock Baraa noted) | correlate with panel on/off, GPU load, suspend |
+
+### 2.15 Slow wake from the power key after a long sleep (2026-10-21, reported by Baraa)
+
+FACT (Baraa, no capture yet): after the phone has "deep slept" for about 30 minutes (he is not sure of the duration), one press of the power key takes 20-30 s to wake it. Short screen-off / screen-on cycles (the 5 s test of 2.14)
+are immediate: DSI-1 was back On within a second.
+
+Not known (do not assume): whether the system ever suspended (docs/08 section 1.5: wakeup from suspend was never tested, "no suspend path yet"), what the PowerDevil / logind idle action is, which device resumes slowly, and whether this
+started with the GPU firmware at boot / Plasma autostart (9.12) or was always there. `dmesg` of the 2026-10-21 08:41 capture has no `PM:` suspend line (it ends before the long sleep).
+
+Candidate readings (INFERENCE, to be separated by the probe): (a) a real suspend-to-idle with a slow device resume or a timeout (the log shows `PM: suspend entry` / `exit` and per-device errors, `-110`); (b) no system suspend, only
+the screen off + CPU idle, and a slow display / GPU runtime-resume or compositor path; (c) the key press does not wake the SoC by itself and something else (a timer, Wi-Fi) wakes it 20-30 s later.
+
+**The probe: `scripts/phone-sleep-probe.sh`** (collector flag `--sleep-probe`; PC-side test `scripts/test-phone-sleep-probe.sh`, 52 checks; READ-ONLY, writes not even a temp file). Sections: power configuration (`/sys/power/*`,
+`suspend_stats`), cpuidle states, wakeup sources by total time, input devices and their wake setting, the kernel-log timeline (suspend entries / exits counted, `PM:`, timeouts, `-110`, GPU / display lines, the last 60 lines),
+runtime PM of the display / GPU / storage / SPI / PCIe devices, this boot's journal lines about suspend / power key / idle / powerdevil, the logind / sleep / PowerDevil / screen-locker configuration, RTC and battery, current
+state. It must run after a slow wake and before a reboot.
+
+### 2.16 The phone is hot and laggy with very high CPU since the autostart (2026-10-21 / 22, reported by Baraa)
+
+FACTS (Baraa's reports, no capture yet): (1) when it lags, `top` shows a very high CPU usage (no numbers or process names given); (2) by 2026-10-22 01:50 the phone is "in an unusable state" since the GPU firmware and
+Plasma were made automatic at boot (9.12), and it "heats up so badly" that he reads it as extremely high CPU use. The earlier manual Plasma runs lasted 240 s each (docs/10 9), so a long-running session was never observed before.
+
+Not known (do not assume): which process burns the CPU, whether it is a CPU renderer (llvmpipe) at the panel's refresh rate, a crash / respawn loop of `plasma-mobile.service` (its drop-in allows 4 starts per 180 s, 9.12), a
+lock-screen greeter that cannot authenticate (the known PAM problem), an interrupt storm (the touch line is level-low), or a GPU hang-recovery loop now that the GPU initialises at boot. Whether the high CPU use and the touch
+drop-out (2.14) are related is open: the touch failure has a different signature (no interrupts at all, gpio25 high), so a starved irq thread does not explain it.
+
+**The probe: `scripts/phone-load-probe.sh`** (collector flag `--load-probe`; PC-side test `scripts/test-phone-load-probe.sh`, 47 checks; READ-ONLY, writes not even a temp file, never opens a `/dev/dri` node). It must run WHILE
+the phone is hot: loadavg and pressure, per-CPU busy / user / system / irq / softirq / iowait over 3 s, the 10 interrupts with the highest rate, top (processes, then threads; the second frame only), `plasma-mobile.service`
+state with `NRestarts` and its last journal lines, stored core dumps, which processes hold a `/dev/dri` node (a compositor on the GPU holds `renderD128`), devfreq GPU frequency, renderer / crash lines of the journal, stall /
+throttling / GPU-hang lines of the kernel log, cpufreq and the hottest thermal zones.
+
+Safety: the rollback of the autostart is `--boot-setup=undo-plasma` (reversible with `--boot-setup=plasma`); it disables the unit for the next boot and does not stop the running session, so the running phone stays hot until it is
+rebooted. The GPU firmware at boot stays (it is a separate step, `--boot-setup=undo-gpu-fw`).
