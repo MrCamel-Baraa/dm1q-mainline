@@ -364,3 +364,37 @@ Readings (INFERENCE):
   running kernel exposes `/sys/kernel/tracing/events/spi` is NOT verified and the first script checks it.
 - Fix direction (D, only after a measurement names the cause): log and act on status events (queue full, ESD, IC reset), a recovery work item that power-cycles the rails and re-initialises, Samsung's init including scan mode,
   rails off at close or at panel-off with a full re-init at open, release-all on error paths, `IRQ_HANDLED` with a log on an empty FIFO.
+
+### 2.13 Regression after the boot setup (2026-10-21, reported by Baraa) and the touch watcher (Step B)
+
+FACT (Baraa, 2026-10-21 06:01, nothing captured yet): after the GPU firmware moved into the default firmware path and `plasma-mobile.service` was enabled at boot (docs/11 9.12), touch "no longer works at all ... it
+crashes as soon as plasma launches". Before, touch worked for a while and then stopped (2.10, 2.11); now it is dead from the start of the autostarted session. The power key (sleep / wake of the desktop) works.
+
+What changed between the two behaviours (FACT, from the 9.12 captures): (a) the GPU firmware is loaded during boot: `load_gpu` runs at ~7.66 s, the touch driver probes at 7.74-7.79 s in every boot, so the two overlap
+(INFERENCE: this could matter for timing, nothing shows it does); (b) the UI now starts a few seconds after boot instead of minutes later by hand, so KWin opens the touch evdev node close to the probe; (c) the first
+manual Plasma start ran for 240 s with touch working at first. No kernel error line has been seen in any of these.
+
+Candidates (INFERENCE, to be separated by the measurement, not ranked on the evidence we have): chip state after a warm reboot (2.10 had one boot where gpio25 never asserted), the first `input_open` right after probe
+(SENSE_ON only, no reinit, 2.12), the panel power cycle at session start (H5), a pure userspace failure (H4: the device delivers, the compositor does not use it).
+
+**The instrument: `scripts/phone-touch-watch.sh`** (POSIX sh, root, read-only except the tracefs controls of one event, restored at exit; PC-side test `scripts/test-phone-touch-watch.sh`, 70 checks, plus `shellcheck -s sh`).
+Collector flags: `--touch-watch[=SECONDS]` (default 45), `--touch-sleepwake[=SECONDS]` (default 20; implies the watch), `--touch-recover` (implies the watch). Baraa drags a finger continuously during every window.
+
+| Phase | What it records |
+|---|---|
+| `touch` | a background reader holds the evdev node open; once a second: fts2ba61y interrupt count (and delta), gpio25 level, evdev events (count and delta, 24-byte records), seconds since anything changed, runtime-PM state of spi0.0 and of the serial engine, L12B / L16B state, DSI-1 enabled/dpms, backlight bl_power/brightness; at the end a verdict, the new kernel lines, the last `spi:spi_transfer_stop` records of spi0.0 with raw tx / rx |
+| `sleepwake` | the same, while Baraa presses the power key (screen off), waits 5 s, presses it again |
+| `rebind`, `modreload` | only with `--touch-recover` and only if the first window had no events: unbind / bind of spi0.0 (the driver's remove / probe switch L12B and L16B off and on: a real power cycle of the chip), then `modprobe -r` / `modprobe fts2ba61y`; each is followed by a 15 s window; it stops at the first one that brings events back; the device is always left bound |
+
+How the verdicts will be read (this is the plan, the readings are INFERENCE until a run exists):
+
+| Verdict | Where the chain breaks | Next step |
+|---|---|---|
+| `EVENTS-FLOW` while the UI is dead | not in the kernel: the chip, the interrupt and evdev work (H4) | a userspace probe: which process holds the node, KWin / libinput device list and journal |
+| `IRQ-COUNTS-NO-EVDEV` | the driver consumes interrupts but reports nothing (H3: slot logic, event decoding) | read the SPI trace records against `fts2ba61y_handle_event` |
+| `IRQ-LINE-LOW-NOT-SERVICED` | gpio25 asserted, thread not running or masked (H2) | `/proc/irq/<n>`, the irq thread's state |
+| `CHIP-SILENT`, recovered by `rebind` | the chip left scanning or lost its state and a rail power cycle brings it back (H1, H5) | driver fix direction D of 2.12, using the status record seen in the SPI trace |
+| `CHIP-SILENT`, nothing recovers it | below the driver: SPI controller / pinctrl / rails (H6) | rails and `spi_geni_qcom` state, a raw transfer through debugfs |
+| `NO-DEVICE` | probe failed this boot | the probe's dmesg lines (boot race with GPU init or the regulators) |
+
+Not verified: whether the phone's kernel has `/sys/kernel/tracing/events/spi` (the script says "skipped" and carries on without the SPI records if not), and whether the evdev reader changes the chip's behaviour (it only opens the node, as KWin does).
