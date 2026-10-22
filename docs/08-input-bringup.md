@@ -472,3 +472,14 @@ throttling / GPU-hang lines of the kernel log, cpufreq and the hottest thermal z
 
 Safety: the rollback of the autostart is `--boot-setup=undo-plasma` (reversible with `--boot-setup=plasma`); it disables the unit for the next boot and does not stop the running session, so the running phone stays hot until it is
 rebooted. The GPU firmware at boot stays (it is a separate step, `--boot-setup=undo-gpu-fw`).
+
+**Result (2026-10-22, `notes/2026-10-22-hot-cpu/`, FACT unless marked):** boot uptime 441 s, plasma-mobile.service active. Load average 9.71 / 6.57 / 3.09; all CPUs ~89 % busy; the time is `llvmpipe` threads (8 each) of
+`kwin_wayland` (~50 %) and the Angelfish browser (~31 %); temperatures 84 to 90 C; GPU devfreq `cur=0`; Mesa client errors (zink incompatible driver, dri2 screen failure). In that boot the GPU firmware was NOT found
+(`a740_sqe.fw` `error -2` at 8.05 s, `error -40` later; docs/11 9.13), so the GPU never initialised and Plasma rendered on the CPU. After `--gpu-powerup=full` (the GPU initialises, no zap error) Baraa reports the lag is gone
+(2026-10-22 11:52). So the hot / laggy state is the llvmpipe fallback, not a GPU hang and not the zap (INFERENCE for the causal step, FACT for the correlation). It is also the likely reason for the lag Baraa saw earlier: every boot
+after 2026-10-20 21:16 captured so far lacks the firmware at boot (docs/11 9.13).
+
+**Slow wake (2.15), what the 2026-10-22 sleep probe shows (same capture):** `suspend_stats success = 0`, 0 suspend entries and exits in the kernel log, `mem_sleep` is `s2idle [deep]`, `gpio-keys` and `pmic_pwrkey` have wake enabled; the `systemd` sleep units never ran;
+the journal has one `Power key pressed short` and no sleep, suspend or idle-action line. The boot was only ~7 min old, so it holds no slow wake. FACT: this phone has not suspended in that boot; INFERENCE: the 20 to 30 s wake is then not a suspend
+resume but the screen-off path (display, GPU and compositor on a saturated CPU, or PowerDevil): the probed boot had all cores busy from software rendering, so the slow wake may share that cause. Not tested: it needs a slow wake reproduced in a boot WITH the GPU,
+then `--sleep-probe` before any reboot. Also seen: the clock starts at 1970 (RTC `1970-01-01 14:53`) and jumps when `systemd-timesyncd` syncs (journal timestamps of the early boot are unreliable), PowerDevil retries i2c for ddcutil (`EACCES`, 100 ms doubling to 800 ms, ~3 s at startup), `kscreenlocker_greet: Worker not ready yet, cannot authenticate` (the known PAM problem).

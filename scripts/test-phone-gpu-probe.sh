@@ -101,6 +101,28 @@ run_bare() {
 		"$1" "$HERE/phone-gpu-probe.sh" > "$W/out-bare" 2>&1
 }
 
+# ---------------------------------------------------------------- scenario fwpath (section 6b: the firmware lookup)
+# a custom firmware_class.path with the SQE in it, a self-referencing a740_sqe.fw.xz symlink in the root directory (a read of it fails with
+# ELOOP, as the kernel's -40 would), a symlink loop pair for find -L, pid 1 seeing the whole tree (root -> /), pid 2 (the kernel threads)
+# seeing only an emptied root with one leftover file
+P="$W/fwpath"; mkdir -p "$P/proc/1" "$P/proc/2/root" "$P/sys/module/firmware_class/parameters" "$P/custom/qcom" "$P/fw/qcom" "$P/fw/updates/7.3.0-rc3-dm1q/qcom"
+mk_bin "$P"
+: > "$P/lsmod.txt"; : > "$P/dmesg.txt"; : > "$P/apk-info.txt"
+echo "console=ttyMSM0" > "$P/proc/cmdline"
+echo "$P/custom" > "$P/sys/module/firmware_class/parameters/path"
+printf 'sqe' > "$P/custom/qcom/a740_sqe.fw"
+ln -s a740_sqe.fw.xz "$P/fw/qcom/a740_sqe.fw.xz"
+ln -s loop2 "$P/fw/loop1"; ln -s loop1 "$P/fw/loop2"
+ln -s / "$P/proc/1/root"
+: > "$P/proc/2/root/init"
+printf '/dev/sda1 / ext4 rw 0 0\ntmpfs /tmp tmpfs rw 0 0\n' > "$P/proc/mounts"
+run_fwpath() {
+	timeout 20 env PATH="$P/bin:$PATH" SYSFS="$P/sys" DEBUGFS="$P/nodbg" PROC="$P/proc" DMESG="$P/bin/dmesg" LSMOD="$P/bin/lsmod" \
+		MODROOT="$P/nomod" UNAME_R=7.3.0-rc3-dm1q ZCAT=zcat FWROOT="$P/fw" FWSTAGE="$P/stage1" BOOTDIR="$P/noboot" \
+		PLASMA_SAVED="$P/none" APK="$P/bin/apk" DEVDRI="$P/nodri" USRLIB="$P/nousr" ICD="$P/noicd" \
+		"$1" "$HERE/phone-gpu-probe.sh" > "$W/out-fwpath" 2>&1
+}
+
 expect() { # file name regex
 	if grep -qE -- "$3" "$1"; then ok "$2"; else bad "$2 (no match for: $3)"; fi
 }
@@ -182,6 +204,15 @@ for sh in dash bash; do
 	expect "$O" "summary zap" "^firmware_zap_files=yes$"
 	expect "$O" "summary error count" "^dmesg_gpu_errors=1$"
 	expect "$O" "ends with done" "^done$"
+	expect "$O" "6b section" "== 6b\\. the firmware lookup"
+	expect "$O" "6b: this shell finds the SQE in the root" "\\[this-shell\\] .*fw/qcom/a740_sqe\\.fw$"
+	expect "$O" "6b: the read of an existing file is ok" "^      read ok$"
+	expect "$O" "6b: this shell: 22 of 24 lookups are 'no such file'" "^\\[this-shell\\] 22 of 24 lookups ended in 'no such file or directory'"
+	expect "$O" "6b: pid 1 view absent: all lookups fail" "^\\[pid1\\] 24 of 24 lookups ended"
+	expect "$O" "6b: pid 2 view absent: all lookups fail" "^\\[pid2-kthreads\\] 24 of 24 lookups ended"
+	expect "$O" "6b: no symlinks in the full tree" "symlinks below .*/fw: 0"
+	expect "$O" "6b: no loops in the full tree" "symlink loops below .*/fw \\(find -L\\): none reported"
+	expect "$O" "6b: no mounts file reported" "\\(no .*/proc/mounts\\)"
 
 	echo "== $sh, scenario bare"
 	( cd "$B" && find . | sort ) > "$W/tree-before-b" 2>/dev/null
@@ -214,6 +245,36 @@ for sh in dash bash; do
 	expect "$O" "summary zap no" "^firmware_zap_files=no$"
 	expect "$O" "summary errors 0" "^dmesg_gpu_errors=0$"
 	expect "$O" "ends with done (bare)" "^done$"
+	expect "$O" "bare 6b: 4 dirs x 3 names x 2 suffixes, all absent" "^\\[this-shell\\] 24 of 24 lookups ended"
+
+	echo "== $sh, scenario fwpath"
+	( cd "$P" && find . | sort && find . -type f -exec cksum {} + | sort ) > "$W/tree-before-p" 2>/dev/null
+	rm -f "$P/CALLED"
+	run_fwpath "$sh"; rc=$?
+	[ "$rc" = 0 ] && ok "exits 0 (fwpath)" || bad "exit status $rc (fwpath)"
+	( cd "$P" && find . | sort && find . -type f -exec cksum {} + | sort ) > "$W/tree-after-p" 2>/dev/null
+	cmp -s "$W/tree-before-p" "$W/tree-after-p" && ok "fwpath tree unchanged" || bad "the probe changed the fwpath tree"
+	[ ! -e "$P/CALLED" ] && ok "no forbidden command (fwpath)" || bad "forbidden command called (fwpath)"
+	O="$W/out-fwpath"
+	expect "$O" "custom path shown" "firmware_class\\.path \\(custom search dir\\): '.*/fwpath/custom'"
+	expect "$O" "this shell finds the SQE in the custom dir" "^  \\[this-shell\\] .*custom/qcom/a740_sqe\\.fw$"
+	expect "$O" "read of the good file is ok" "^      read ok$"
+	expect "$O" "the self-referencing .xz symlink is listed" "^  \\[this-shell\\] l.*a740_sqe\\.fw\\.xz -> a740_sqe\\.fw\\.xz$"
+	expect "$O" "its read fails with a symlink error" "^      read fails: .*(Too many levels|symbolic)"
+	expect "$O" "pid 1 sees the custom SQE" "^  \\[pid1\\] .*custom/qcom/a740_sqe\\.fw$"
+	expect "$O" "pid 2 top level shows the leftover" "^\\[pid2-kthreads\\] top level of this view: init"
+	expect "$O" "this shell: 28 of 30" "^\\[this-shell\\] 28 of 30 lookups ended in 'no such file or directory'"
+	expect "$O" "pid 1: 28 of 30" "^\\[pid1\\] 28 of 30 lookups ended"
+	expect "$O" "pid 2: 30 of 30" "^\\[pid2-kthreads\\] 30 of 30 lookups ended"
+	reject "$O" "pid 2 does not list any found file" "^  \\[pid2-kthreads\\]"
+	expect "$O" "chain: custom dir" "^  d.*fwpath/custom$"
+	expect "$O" "chain: custom/qcom dir" "^  d.*fwpath/custom/qcom$"
+	expect "$O" "symlink count" "symlinks below .*/fw: 3 \\(first 12\\)"
+	expect "$O" "symlink listing with target" "^    l.*loop1 -> loop2$"
+	expect "$O" "loops reported by find -L" "SYMLINK LOOPS found by find -L:"
+	expect "$O" "root mount shown" "^  /dev/sda1 / ext4 rw 0 0$"
+	reject "$O" "unrelated mount dropped" "tmpfs /tmp"
+	expect "$O" "fwpath ends with done" "^done$"
 done
 
 echo "== static checks"

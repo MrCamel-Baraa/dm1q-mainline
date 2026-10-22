@@ -10,6 +10,9 @@
 #      child, the gpu_micro_code reserved region and its /proc/iomem entry
 #   5. DRM cards/render nodes, devfreq devices
 #   6. firmware files the kernel can find (a740/gmu/zap) and the staging directories, with sizes and sha256
+#   6b. the firmware LOOKUP as the loader does it (custom path, updates/<rel>, updates, <rel>, root; plain and .xz), seen from this shell,
+#      from pid 1 and from pid 2 (the kernel threads: /proc/<pid>/root), with what a read of each existing path says (docs/11 section 9.13),
+#      the directory chain, the symlinks below the firmware root, symlink loops (find -L) and the mounts carrying the path
 #   7. installed packages (firmware, Mesa), the Mesa msm/freedreno userspace files, GPU tools in PATH
 #   8. /boot/initramfs-extra fingerprint (docs/06 rule 3 baseline: did something regenerate it?)
 #   9. interrupts, GPU clocks, GPU power domains, deferred probes, GPU/SMMU dmesg lines
@@ -152,6 +155,55 @@ fwfiles "$FWROOT"
 echo "staging directories:"
 # shellcheck disable=SC2086
 for s in $FWSTAGE; do fwfiles "$s"; done
+
+say "6b. the firmware lookup as the kernel loader does it (docs/11 section 9.13)"
+echo "The loader tries <dir>/<name> and then <dir>/<name>.xz for these directories, in this order: the firmware_class.path directory, updates/<release>,"
+echo "updates, <release>, the root. Shown per view (this shell / pid 1 / pid 2 = the kernel threads) are the lookups that did NOT end in 'no such file',"
+echo "each followed by what a read of the path says."
+fwdirs="$FWROOT/updates/$UNAME_R $FWROOT/updates $FWROOT/$UNAME_R $FWROOT"
+[ -n "$fwp" ] && fwdirs="$fwp $fwdirs"
+for view in "this-shell:" "pid1:$PROC/1/root" "pid2-kthreads:$PROC/2/root"; do
+	vname=${view%%:*}
+	vroot=${view#*:}
+	if [ -n "$vroot" ]; then
+		echo "[$vname] top level of this view: $(ls -1 "$vroot/" 2>&1 | tr '\n' ' ' | cut -c1-300)"
+		echo "[$vname] /lib: $(ls -ld "$vroot/lib" 2>&1)"
+	fi
+	nno=0
+	nall=0
+	# shellcheck disable=SC2086
+	for d in $fwdirs; do
+		for rel in qcom/a740_sqe.fw qcom/gmu_gen70200.bin qcom/sm8550/a740_zap.mbn; do
+			for suffix in "" .xz; do
+				p="$vroot$d/$rel$suffix"
+				nall=$((nall + 1))
+				out=$(ls -ld "$p" 2>&1)
+				case "$out" in
+				*"No such file"*) nno=$((nno + 1)) ;;
+				*)
+					echo "  [$vname] $out"
+					err=$(cat "$p" 2>&1 >/dev/null)
+					if [ -n "$err" ]; then echo "      read fails: $err"; else echo "      read ok"; fi
+					;;
+				esac
+			done
+		done
+	done
+	echo "[$vname] $nno of $nall lookups ended in 'no such file or directory'"
+done
+echo "-- the path chain (ls -ld) and the symlinks below $FWROOT:"
+for p in "$(dirname "$FWROOT")" "$FWROOT" "$fwp" "${fwp:+$fwp/qcom}"; do
+	[ -n "$p" ] || continue
+	ls -ld "$p" 2>&1 | sed 's/^/  /'
+done
+nsl=$(find "$FWROOT" -maxdepth 6 -type l 2>/dev/null | wc -l)
+echo "  symlinks below $FWROOT: $nsl (first 12)"
+find "$FWROOT" -maxdepth 6 -type l 2>/dev/null | head -n 12 | while read -r l; do ls -l "$l" 2>&1 | sed 's/^/    /'; done
+loops=$(find -L "$FWROOT" -maxdepth 6 2>&1 >/dev/null | grep -i 'symbolic link' | head -n 5)
+if [ -n "$loops" ]; then echo "  SYMLINK LOOPS found by find -L:"; echo "$loops" | sed 's/^/    /'; else echo "  symlink loops below $FWROOT (find -L): none reported"; fi
+echo "-- mounts that carry the firmware path:"
+[ -r "$PROC/mounts" ] || echo "  (no $PROC/mounts)"
+grep -E ' (/|/lib|/usr|/lib/firmware|/lib/firmware/postmarketos) ' "$PROC/mounts" 2>/dev/null | sed 's/^/  /'
 
 say "7. packages and userspace"
 echo "installed packages (local apk database, no network):"
