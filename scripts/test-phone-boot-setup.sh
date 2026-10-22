@@ -83,6 +83,9 @@ for sh in dash bash; do
 	done
 	expect "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" "guard unit runs before udev and sysinit" "^Before=systemd-udev-trigger.service .*sysinit.target"
 	expect "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" "guard unit is WantedBy sysinit" "^WantedBy=sysinit.target"
+	expect "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" "guard unit stays active so that ExecStop runs at shutdown" "^RemainAfterExit=yes"
+	expect "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" "guard unit clears the marker at a clean shutdown" "^ExecStop=/usr/local/sbin/dm1q-gpu-fw-clean"
+	[ -x "$D/usr/local/sbin/dm1q-gpu-fw-clean" ] && ok "clean script executable" || bad "clean script missing"
 	expect "$D/etc/systemd/system/dm1q-gpu-fw-ok.service" "ok unit starts after multi-user" "^After=multi-user.target"
 	expect "$D/etc/systemd/system/dm1q-gpu-fw-ok.service" "ok unit points at the ok script" "^ExecStart=/usr/local/sbin/dm1q-gpu-fw-ok"
 	[ ! -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && ok "no marker at install time" || bad "marker created at install time"
@@ -116,20 +119,44 @@ for sh in dash bash; do
 	expect "$D/kmsg" "kernel log line written" "dm1q-gpu-fw-guard: the previous boot did not finish"
 	runguard; rc=$?
 	[ "$rc" = 0 ] && [ ! -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && ok "no manifest: guard does nothing" || bad "guard acted without a manifest"
+	echo "-- a clean shutdown (the ExecStop script) protects a quick reboot"
+	run "$sh" "$D" gpu-fw >/dev/null 2>&1
+	runguard
+	[ -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && ok "boot 1: marker left" || bad "boot 1: no marker"
+	DM1Q_ROOT="$D" timeout 20 "$sh" "$D/usr/local/sbin/dm1q-gpu-fw-clean"; rc=$?
+	[ "$rc" = 0 ] && [ ! -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && ok "clean shutdown clears the marker" || bad "clean script left the marker (rc $rc)"
+	runguard
+	[ -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && [ -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && [ ! -d "$D/var/lib/dm1q/gpu-fw-disabled" ] && ok "boot 2 after a clean reboot: firmware stays, new marker" || bad "a clean reboot still disabled the firmware"
+	runguard
+	[ ! -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && ok "boot 3 after NO clean shutdown: firmware moved away" || bad "an unclean end did not trip the guard"
 	echo "-- check after the guard acted"
 	run "$sh" "$D" check; expect "$D/out" "check reports disabled-by-guard" "^gpu_fw=disabled-by-guard"
 	run "$sh" "$D" gpu-fw; rc=$?
 	[ "$rc" = 0 ] && [ -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && [ ! -d "$D/var/lib/dm1q/gpu-fw-disabled" ] && ok "gpu-fw again puts the firmware back and clears the disabled dir" || bad "re-install after the guard failed (rc $rc)"
 
 	echo "== $sh: the generated wait script"
-	W2="$D/usr/local/sbin/dm1q-wait-render-node"
+	W2="$D/usr/local/sbin/dm1q-plasma-gate"
 	run "$sh" "$D" plasma; rc=$?
 	[ "$rc" = 0 ] && [ -x "$W2" ] && ok "plasma wrote an executable wait script" || { bad "wait script (rc $rc)"; cat "$D/out"; }
 	touch "$D/node"
-	DM1Q_RENDER_NODE="$D/node" timeout 5 "$sh" "$W2"; rc=$?
-	[ "$rc" = 0 ] && ok "wait script returns at once when the node exists" || bad "wait script rc $rc"
-	DM1Q_RENDER_NODE="$D/nonode" DM1Q_WAIT_TRIES=2 timeout 10 "$sh" "$W2"; rc=$?
-	[ "$rc" = 0 ] && ok "wait script gives up without failing" || bad "wait script rc $rc"
+	gate() { DM1Q_ROOT="$D" DM1Q_DMESG="$D/bin/dmesg" DM1Q_KMSG="$D/kmsg" DM1Q_GPU_TRIES=1 DM1Q_RENDER_NODE="${NODE:-$D/node}" DM1Q_WAIT_TRIES=2 timeout 20 "$sh" "$W2" 2>"$D/gate-err"; }
+	gate; rc=$?
+	[ "$rc" = 0 ] && ok "gate: node present and GPU initialised: exit 0" || bad "gate rc $rc"
+	NODE="$D/nonode" gate; rc=$?
+	[ "$rc" = 0 ] && ok "gate: no render node but GPU initialised: still exit 0 (the node wait never fails)" || bad "gate rc $rc"
+	cp "$D/dmesg" "$D/dmesg.good"
+	printf '[  7.1] [drm] Initialized msm 1.13.0\n[  7.9] msm_dpu: Direct firmware load for qcom/a740_sqe.fw failed with error -2\n' > "$D/dmesg"
+	: > "$D/kmsg"; gate; rc=$?
+	[ "$rc" = 1 ] && ok "gate: GPU not initialised: exit 1 (Plasma does not start on llvmpipe)" || bad "gate rc $rc (expected 1)"
+	expect "$D/kmsg" "gate: kernel log line" "dm1q-plasma-gate: the GPU did not initialise"
+	expect "$D/gate-err" "gate: message on stderr (journal)" "not starting Plasma"
+	printf '[  8.0] [drm] Loaded GMU firmware v4.1.9\n[  8.1] msm_dpu: [drm:adreno_load_gpu] gpu hw init failed: -22\n' > "$D/dmesg"
+	gate; rc=$?
+	[ "$rc" = 1 ] && ok "gate: GMU line but a hw init failure: exit 1" || bad "gate rc $rc (expected 1)"
+	mkdir -p "$D/var/lib/dm1q"; touch "$D/var/lib/dm1q/plasma-allow-cpu"
+	gate; rc=$?
+	[ "$rc" = 0 ] && ok "gate: plasma-allow-cpu escape hatch lets it through" || bad "gate rc $rc with the escape hatch"
+	rm -f "$D/var/lib/dm1q/plasma-allow-cpu"; cp "$D/dmesg.good" "$D/dmesg"
 
 	echo "== $sh: check writes nothing"
 	D="$W/c-$sh"; mk "$D"; run "$sh" "$D" gpu-fw; b=$(tree "$D")
@@ -154,7 +181,7 @@ for sh in dash bash; do
 	expect "$D/out" "kept message" "kept .*a740_sqe.fw \\(content differs"
 	[ ! -e "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" ] && ok "our guard unit removed" || bad "guard unit left"
 	[ "$(cat "$D/etc/systemd/system/dm1q-gpu-fw-ok.service")" = "my unit" ] && ok "a unit without the marker is kept" || bad "foreign unit removed"
-	[ ! -e "$D/usr/local/sbin/dm1q-gpu-fw-guard" ] && [ ! -e "$D/var/lib/dm1q/gpu-fw.manifest" ] && ok "guard script and manifest removed" || bad "leftovers"
+	[ ! -e "$D/usr/local/sbin/dm1q-gpu-fw-guard" ] && [ ! -e "$D/usr/local/sbin/dm1q-gpu-fw-clean" ] && [ ! -e "$D/var/lib/dm1q/gpu-fw.manifest" ] && ok "guard and clean scripts and manifest removed" || bad "leftovers"
 	grep -qx 'systemctl disable dm1q-gpu-fw-guard.service dm1q-gpu-fw-ok.service' "$D/systemctl.log" && ok "units disabled" || bad "units not disabled"
 
 	echo "== $sh: gpu-fw refusals"
@@ -214,7 +241,7 @@ for sh in dash bash; do
 	[ -f "$DR" ] && head -n 1 "$DR" | grep -q '^# dm1q-boot-setup' && ok "drop-in written with the marker" || bad "drop-in missing"
 	expect "$DR" "drop-in limits the restart loop" "^StartLimitBurst=4"
 	expect "$DR" "drop-in has the interval" "^StartLimitIntervalSec=180"
-	expect "$DR" "drop-in waits for the render node" "^ExecStartPre=/usr/local/sbin/dm1q-wait-render-node"
+	expect "$DR" "drop-in waits for the render node" "^ExecStartPre=/usr/local/sbin/dm1q-plasma-gate"
 	grep -qx 'systemctl enable plasma-mobile.service' "$D/systemctl.log" && ok "enable plasma-mobile.service" || bad "no enable"
 	grep -qx 'systemctl set-default graphical.target' "$D/systemctl.log" && ok "default target set to graphical" || bad "no set-default"
 	[ "$(cat "$D/var/lib/dm1q/plasma-prev-default")" = multi-user.target ] && ok "previous default recorded" || bad "previous default not recorded"
@@ -233,7 +260,7 @@ for sh in dash bash; do
 	D="$W/u-$sh"; mk "$D"; run "$sh" "$D" gpu-fw; run "$sh" "$D" plasma
 	run "$sh" "$D" undo-plasma; rc=$?
 	[ "$rc" = 0 ] && ok "undo exit 0" || bad "undo exit $rc"
-	[ ! -e "$D/etc/systemd/system/plasma-mobile.service.d" ] && [ ! -e "$D/usr/local/sbin/dm1q-wait-render-node" ] && ok "drop-in and wait script removed" || bad "leftovers"
+	[ ! -e "$D/etc/systemd/system/plasma-mobile.service.d" ] && [ ! -e "$D/usr/local/sbin/dm1q-plasma-gate" ] && ok "drop-in and wait script removed" || bad "leftovers"
 	[ "$(cat "$D/default")" = multi-user.target ] && ok "default target restored" || bad "default is $(cat "$D/default")"
 	[ ! -e "$D/en/plasma-mobile.service" ] && ok "plasma-mobile.service disabled" || bad "still enabled"
 	[ -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && ok "GPU firmware untouched by undo-plasma" || bad "undo-plasma removed the firmware"
@@ -247,13 +274,13 @@ done
 echo "== static checks"
 bash --posix -n "$SCRIPT" && ok "bash --posix -n" || bad "bash --posix -n"
 D="$W/s"; mk "$D"; run bash "$D" gpu-fw >/dev/null 2>&1; run bash "$D" plasma >/dev/null 2>&1
-for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-wait-render-node; do
+for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate; do
 	[ -f "$D/usr/local/sbin/$f" ] || { bad "generated $f missing"; continue; }
 	bash --posix -n "$D/usr/local/sbin/$f" && ok "bash --posix -n on generated $f" || bad "syntax of generated $f"
 done
 if command -v shellcheck >/dev/null; then
 	shellcheck -s sh -S warning "$SCRIPT" && ok "shellcheck -s sh -S warning" || bad "shellcheck on the script"
-	for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-wait-render-node; do
+	for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate; do
 		[ -f "$D/usr/local/sbin/$f" ] && { shellcheck -s sh -S warning "$D/usr/local/sbin/$f" && ok "shellcheck on generated $f" || bad "shellcheck on generated $f"; }
 	done
 else
