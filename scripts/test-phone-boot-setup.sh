@@ -241,7 +241,7 @@ for sh in dash bash; do
 	[ -f "$DR" ] && head -n 1 "$DR" | grep -q '^# dm1q-boot-setup' && ok "drop-in written with the marker" || bad "drop-in missing"
 	expect "$DR" "drop-in limits the restart loop" "^StartLimitBurst=4"
 	expect "$DR" "drop-in has the interval" "^StartLimitIntervalSec=180"
-	expect "$DR" "drop-in waits for the render node" "^ExecStartPre=/usr/local/sbin/dm1q-plasma-gate"
+	expect "$DR" "drop-in waits for the render node" "^ExecStartPre=\+/usr/local/sbin/dm1q-plasma-gate"
 	grep -qx 'systemctl enable plasma-mobile.service' "$D/systemctl.log" && ok "enable plasma-mobile.service" || bad "no enable"
 	grep -qx 'systemctl set-default graphical.target' "$D/systemctl.log" && ok "default target set to graphical" || bad "no set-default"
 	[ "$(cat "$D/var/lib/dm1q/plasma-prev-default")" = multi-user.target ] && ok "previous default recorded" || bad "previous default not recorded"

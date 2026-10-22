@@ -224,7 +224,8 @@ StartLimitIntervalSec=180
 StartLimitBurst=4
 
 [Service]
-ExecStartPre=/usr/local/sbin/dm1q-plasma-gate
+# the + prefix runs the gate as root: the unit runs as the UI user, who may not read the kernel log (dmesg_restrict)
+ExecStartPre=+/usr/local/sbin/dm1q-plasma-gate
 EOF
 }
 

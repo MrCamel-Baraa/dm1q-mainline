@@ -417,3 +417,5 @@ Design problems this exposed (found by reading the generated scripts; FIXED 2026
 3. **A fix needs the firmware back first:** `--boot-setup=gpu-fw` (with `DM1Q_GPU_FW` at the vendor set), then a normal reboot and 2 minutes of waiting (rebooting inside the ~90 s window trips the guard).
 
 Added: `scripts/phone-gpu-probe.sh` section 6b (and 125 checks in `scripts/test-phone-gpu-probe.sh`, a `fwpath` scenario with a symlink loop, a custom path and a pid-2 view).
+
+**First run of the gate on hardware, 2026-10-22 23:20 (`notes/2026-10-22-plasma-black/`, FACT):** the GPU initialised by itself (GMU line at 7.76 s) and the firmware survived the reboot, but `plasma-mobile.service` failed with `Control process exited, status=1` after 10 s, restart counter 2, OnFailure triggered: black screen with a flashing login. Cause (INFERENCE, matches the 10 s = DM1Q_GPU_TRIES): the unit runs as the UI user (PAM session for uid 10000), who cannot read the kernel log (dmesg_restrict), so the gate saw no GMU line. Fix: `ExecStartPre=+` (runs as root). Lesson: the first version of a gate that refuses to start the UI locked the UI out; test it against the unit's real user.
