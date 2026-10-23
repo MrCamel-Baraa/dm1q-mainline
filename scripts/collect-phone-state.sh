@@ -9,7 +9,7 @@
 #
 # Usage:  scripts/collect-phone-state.sh <label> [--reboot] [--reload] [--regdump[=idle|load|reload]] [--fresh] [--touch] [--display] [--drm-test] [--backlight] [--plasma-preflight] [--apknet] [--apk-https] [--plasma-install] [--plasma-start[=SECONDS]] [--plasma-profile=default|software|softpipe] [--plasma-keep] [--sigill-core] [--gpu] [--pam-fix[=check|undo]] [--gpu-powerup=sqe-gmu|full] [--boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma] [--touch-watch[=SECONDS]] [--touch-sleepwake[=SECONDS]] [--touch-recover] [--touch-trace=arm|dump|disarm] [--sleep-probe] [--load-probe] [--input-check] [--touch-scanmode] [--touch-pm] [--touch-poke=read|senseon|scanmode|reset|hex:<bytes>]
 #   <label>      names the output dir: notes/<YYYY-MM-DD>-<label>/   (e.g. v8-wlan-rails); reusing a
-#                label on the same day overwrites files with the same name
+#                label on the same day writes to notes/<YYYY-MM-DD>-<label>-2/ (then -3 ...), never over an earlier capture
 #   --reboot     first `adb reboot` (phone sitting in recovery -> boots the system)
 #   --reload     also run scripts/phone-ath11k-reload.sh (reload ath11k_pci, sample the PCIe link for ~30 s)
 #   --regdump    also run scripts/phone-mhi-regdump.sh in the given mode (default load): sample the chip's
@@ -202,6 +202,11 @@ if [ "$BOOT_SETUP" = gpu-fw ]; then
 	[ "$(sha256sum "$GPU_FW/qcom/sm8550/a740_zap.mbn" | cut -d' ' -f1)" = 60cf7ab4f3d96e0992a42560ac288c053328bda5e41b4fe5e678be94ecd7ae35 ] || { echo "$GPU_FW/qcom/sm8550/a740_zap.mbn is not the phone's own signed zap (sha256 60cf7ab4...): that is the generic one, refused by the secure world. Use DM1Q_GPU_FW=$REPO/../_scratch/dm1q-gpu-fw-vendor-run"; exit 1; }
 fi
 DEST="$REPO/notes/$(date +%Y-%m-%d)-$LABEL"
+if [ -e "$DEST" ]; then
+	n=2; while [ -e "$DEST-$n" ]; do n=$((n + 1)); done
+	echo "notes dir $DEST exists (an earlier capture): writing to $DEST-$n instead"
+	DEST="$DEST-$n"
+fi
 CP="/tmp/dm1q-ssh-$$"
 SSH_OPTS=(-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR
           -o ControlPath="$CP" -o ConnectTimeout=10)

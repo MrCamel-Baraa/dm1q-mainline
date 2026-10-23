@@ -704,3 +704,30 @@ Captures: `notes/2026-10-23-post-v20` (uptime 31.5 s: recorder armed) and `notes
 3. Keep the dump's journal window of every further death next to its record tail.
 
 Status: open.
+
+### 2.22 One SPI read revived the dead chip, and its event FIFO was full (2026-10-24 02:09, same boot as 2.21)
+
+Capture: `notes/2026-10-24-poke-read` (the run of `--touch-poke=read --touch-trace=dump`). The boot clock at the dump is 17686 s, but 15854 s of it were suspended: dmesg has `PM: suspend entry (deep)` at 1390.7 s, so deep suspend now works. The trace and journal clocks do not count the suspend; every time below is on that clock.
+
+**FACT (seen in the files).**
+- No record between 313.182 s and 1816.913 s (largest gap 1503.7 s). The panel power-ons at 317.3 s, 381.1 s and 489.7 s did not bring touch back.
+- The first transfer after the stall is `sh` pid 4727 at 1816.913095: 18 bytes, `87` plus zeros, rx `00 87 00 ...` (no event). That is our poke (step `read`) through the raw knob.
+- 100 us later the IRQ thread reads `80 d8 b9 a8 09 07 09 3f 03 55`. Byte 7 of the event (the "events left" field, mask 0x1f) is `3f`, so left = 31, the largest value the field holds. The coordinates `d8 b9 a8 09 07 09` are those of the touch-down at 313.18 s. The driver then sends `C0 62` (clear events; the driver does this when left >= 31, patch 0002) and the next read returns `43 01 62`. From 1816.918 s on the reports are normal.
+- In all 4810 records before the stall left = 0. The host never fell behind.
+- Around 1816.9 s the journal has: `Power key pressed short` 1816.199 (logind), panel power-on 1816.288, kwin `Atomic commit failed: EBUSY` 1816.756, the lock screen QML 1817.28. The collector sessions c5 (1811 s) and c6 (1826 s) are two runs with the same label; the second overwrote the first, so the output of the run that did the poke is lost. The surviving `touch-poke.txt` is the second run: NOT-DEAD (279 interrupts in 3 s), nothing sent.
+- gpio25 read high at the dump of 2.21 (375 s, touch dead).
+
+**INFERENCE (reasoned, not verified).**
+- The chip was alive and kept queueing events while its INT line stayed high. The stall is chip-side INT logic, not a lost interrupt on the SoC side (the line was high, and at the revival the FIFO held at least 31 events). This sharpens H1 into H10: after some read the chip stops asserting INT for later events until the host reads the FIFO again.
+- The full FIFO is the consequence of the stall, not its cause (left = 0 in every record before it).
+- The reviver is the read: it is the first transfer after the stall, and three panel power-ons and the user's drags in the 25 minutes before did not revive it. Confounders: this stall ended after a deep suspend and resume, and a power key press and a panel power-on came 0.7 s and 0.6 s before the poke. A repeat with the screen on, no power key and no suspend separates them.
+- H8 (time since boot) and H9 (hang while processing a touch) are not needed to explain this. H5 and H7 stay weak.
+- Fix direction, untested, needs a kernel change: a fallback in the driver that reads the FIFO when the chip is silent. During a touch (between touch-down and release) a delayed work reads one event if no interrupt came within about 30 ms; while the input device is open, a slow idle read (for example every 100 ms) also covers a stall after a release. An `87` read that returns no event is harmless (it did exactly that here).
+
+**Tooling.** `collect-phone-state.sh` no longer writes over an earlier capture: reusing a label the same day goes to `<label>-2`, `-3`, and so on.
+
+**Next.**
+1. Repeat on the next stall: `--touch-poke=read --touch-trace=dump` with the screen on, no power key, no suspend, to confirm the read alone revives it (a first run that is NOT-DEAD costs nothing).
+2. If it holds, build the fallback (needs the user's go-ahead: kernel and package change) and watch whether any stall outlives it.
+
+Status: open; a candidate cause and a candidate fix, one confounded observation.
