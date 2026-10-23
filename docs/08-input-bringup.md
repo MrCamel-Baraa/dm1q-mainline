@@ -669,3 +669,38 @@ What it does not show: the first death of each boot was never recorded, because 
 Status: open. The audit changes the picture from "the chip fell silent somewhere" to "no host command caused the two recorded stops; the first death of a boot is unrecorded; idle is a candidate".
 
 **Addendum (2026-10-23, after the DTS fix).** FACT (`notes/2026-10-23-gpu-after-restore-2/dmesg.txt`, kernel #10): `failed to validate module [evdev] BTF: -22` at 2.68 s is still present in the boot after the user ran the module refresh for r9, so it is not explained by a stale module tree (INFERENCE; that the refresh completed was not independently verified). It concerns evdev only, and evdev works. Low priority, open. Corrected: the soft reset in 2.19 step 3 had an extra byte; the driver sends opcode `FA` plus `20 00 00 24 81` (patch 0002, `fts2ba61y_reset`), that is `FA 20 00 00 24 81`, and the knob test in 2.20 uses `FA2000002481`. The opcodes of the driver are `87` (read event), `C0` (custom write: `10` sense on, `11` sense off, `22` device id, `23` panel info, `30` touch type, `62` clear events), `D1` (custom read) and `FA` (register write).
+
+### 2.21 The first recorded death of a boot (2026-10-23 evening, r9 kernel, image set `pmos-v20-knob-gpu`)
+
+Captures: `notes/2026-10-23-post-v20` (uptime 31.5 s: recorder armed) and `notes/2026-10-23-post-v20-touch_dump` (uptime 375.6 s: dump after the touch had died). This is the first death of a boot that the recorder saw from the start.
+
+**FACT (seen in the files).**
+- The boot is healthy otherwise: GMU firmware v4.1.9 loaded at 8.04 s, 0 "no GPU device was found" lines, `gpu_fw=installed`, `gpu_state=initialised`, `plasma_boot=enabled`; `fts2ba61y` bound at 7.64 s (id `53 54 40 36 01`); the evdev BTF `-22` line is still there.
+- Armed at uptime 31.69 s, alive check 713 interrupts in 6 s, so touch worked at arming.
+- The dump holds 4810 records from 33.755 s to 313.182 s (cpu0 only, no overrun). The interrupt count 4821 is the 11 probe-time interrupts plus the 4810 records: every interrupt after arming has a record, and none arrived after 313.18 s. At 375.6 s gpio25 is high, l12b and l16b are enabled, the IRQ thread sleeps in `irq_thread`.
+- All 4810 transfers are `87` event reads issued by the IRQ thread (pid 1544). There is no control command at all between arming and the stop: no SENSE_ON / SENSE_OFF, no reset, no status record. The input device stayed open the whole time.
+- The tail: a touch sequence ends with `ev=c0` at 312.523 s; 0.66 s later a new sequence starts with `ev=40` at 313.182 s; nothing follows. (In this buffer every touch sequence starts with `ev=40` and ends with `ev=c0`.) So this stop came right after the first record of a touch, with no release record after it. The two stops of 2.20 came after a release.
+- Pauses between records: 21 gaps above 2 s, the longest 41.2 s (ending at 87.04 s), then 17.0 s, 13.6 s, 5.6 s. The chip reported again after every one of them.
+- "panel id 81 02 25" (panel power-on) is logged at 8.14 s (boot), 317.33 s and 381.05 s. There is none between 8.14 s and 313.18 s. The one at 317.33 s comes 4.1 s AFTER the stop.
+- Nothing else in the kernel log between 90 s and 376 s.
+
+**What this changes.**
+- "A host command caused the stop": now ruled out for this stop with certainty, because there was no host command at all in the window (2.20 had only the last command before the stop).
+- H5 (panel power cycle or session change): no panel power cycle precedes this stop; it is weakened for this boot. The panel power-ons at 317.3 s and 381.1 s are not yet explained. INFERENCE: manual power-key off/on revive attempts by Baraa; to be confirmed.
+- H7 (the chip stops after an idle pause): weakened. The chip survived pauses of up to 41 s and stopped 0.66 s after a release, in the middle of use. Pauses of 1, 2 and 5 minutes are still untested.
+- H1 (the chip stops by itself) remains; it now has two shapes that a recorder can tell apart: a stop after a release (2.20, twice) and a stop right after a touch-down (this boot).
+
+**Candidates added (INFERENCE, not tested).**
+- H8: the stop is tied to time since boot, not to touch. Last records at 241.9 s (boot 2) and 313.2 s (this boot); boot 1 was never timed. A chip-side or host-side timer in the range of 4 to 5 minutes after boot would fit. Two data points only. The new journal window in the dump (below) shows what userspace did around 313 s.
+- H9: the chip hangs while processing a touch (firmware lock-up on a pattern or on noise), so the death rate follows the amount of touching. It fits a stop in mid-sequence; it does not explain the stops after a release.
+
+**Tooling added (PC tests pass, shellcheck clean).**
+- `--touch-trace=dump` now also prints the journal lines of ALL units within 30 s of the last record (monotonic clock, at most 150 lines), so the userspace event nearest the stop is in the same capture.
+- `--touch-poke=STEP` (`scripts/phone-touch-poke.sh`, `scripts/test-phone-touch-poke.sh`): ONE transfer through the debugfs raw knob of patch 0004, no unbind. STEP is `read` (`87+17`), `senseon` (`C010`), `scanmode` (`A00001`), `reset` (`FA2000002481`) or `hex:<bytes>`. It first requires 3 s of dragging with a flat interrupt count (otherwise NOT-DEAD, nothing sent), then sends, waits 2 s without a finger (interrupts there are the chip answering, a reset raises its own), then 8 s with a finger. Verdicts: REVIVED, CHIP-RESPONDED, NO-CHANGE. It also classifies the rx bytes: ALL-00 / ALL-FF (the chip drove nothing) or DATA.
+
+**Tests that follow (no kernel change).**
+1. With touch dead: `--touch-poke=read --touch-trace=dump`, then `senseon`, `scanmode`, `reset` in that order, one per run; the first REVIVED names the missing command. The recorder shows each poke with the task that sent it.
+2. A boot with no touch at all for 6 minutes after arming, then drag: separates H8 (dead regardless of touch) from H9 (dead only after touching).
+3. Keep the dump's journal window of every further death next to its record tail.
+
+Status: open.

@@ -12,15 +12,17 @@
 #            worked on 2026-10-21) and checks again, so that the NEXT failure is the one that gets recorded. The device is always left bound.
 #   dump     changes nothing: saves the raw buffer to $OUT, prints the buffer statistics, the current interrupt count / gpio25 / rails, the decoded records
 #            (event id counts, every non-coordinate record, the last 20 records, records per second before the last one, the largest gap), and how long ago
-#            the last record was. Run it BEFORE reviving the touch (reviving does not clear the buffer, but new touch traffic overwrites the oldest records).
+#            the last record was, then the journal lines of ALL units within 30 s of the last record (docs/08 2.21: what userspace did when the chip stopped).
+#            Run it BEFORE reviving the touch (reviving does not clear the buffer, but new touch traffic overwrites the oldest records).
 #   disarm   stops the event and removes the instance.
 # Event layout (kernel patch 0002): rx = 2 header bytes (00 87) then 16-byte events; event byte0: bits 1:0 = id (0 coordinate, 1 status, 2 / 3 other),
 # bits 5:2 = touch id (coordinate) or status type (stype).
-# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DMESG TRACEFS MOUNT MKDIR RMDIR OUT TMPDIR NAME SPIDEV IRQ_GPIO BUF_KB CHECK REVIVE COUNTDOWN ID_U
+# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DMESG JOURNALCTL TRACEFS MOUNT MKDIR RMDIR OUT TMPDIR NAME SPIDEV IRQ_GPIO BUF_KB CHECK REVIVE COUNTDOWN ID_U
 SYSFS="${SYSFS:-/sys}"
 PROC="${PROC:-/proc}"
 DEBUGFS="${DEBUGFS:-$SYSFS/kernel/debug}"
 DMESG="${DMESG:-dmesg}"
+JOURNALCTL="${JOURNALCTL:-journalctl}"
 TRACEFS="${TRACEFS:-$SYSFS/kernel/tracing}"
 MOUNT="${MOUNT:-mount}"
 MKDIR="${MKDIR:-mkdir}"
@@ -215,6 +217,13 @@ END {
 	print "last 20 records:"
 	for (i = (n > 20 ? n - 19 : 1); i <= n; i++) printf "   %.6f len=%s id=%d ev=%s\n", T[i], L[i], ID[i], E[i]
 }' "$OUT"
+	LAST=$(awk -v dev="$SPIDEV" 'index($0, "spi_transfer_stop") && index($0, dev " ") { for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+\.[0-9]+:$/) { t = substr($i, 1, length($i) - 1); break } } END { if (t != "") print t }' "$OUT")
+	if [ -n "$LAST" ]; then
+		echo "-- journal, all units, within 30 s of the last record ($LAST s, monotonic clock):"
+		"$JOURNALCTL" -b --no-pager -o short-monotonic 2>/dev/null | awk -v last="$LAST" '
+match($0, /^\[ *[0-9]+\.[0-9]+\]/) { t = substr($0, RSTART + 1, RLENGTH - 2) + 0; if (t >= last - 30 && t <= last + 30) { n++; if (n <= 150) print "   " substr($0, 1, 220) } }
+END { if (n == 0) print "   no journal lines in that window (journalctl missing, or the journal is not readable)"; else if (n > 150) print "   ... " n - 150 " more lines not shown" }'
+	fi
 	echo "RESULT: DUMPED (the recorder stays armed)"
 }
 

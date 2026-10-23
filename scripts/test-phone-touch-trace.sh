@@ -35,6 +35,15 @@ mk() { # $1 = dir
 	echo 0 > "$D/sys/kernel/tracing/events/spi/spi_transfer_stop/enable"
 	printf '[    7.700000] fts2ba61y spi0.0: id 53 54 40 36 01, resolution 4095x4095, 16 TX x 34 RX channels\n' > "$D/dmesg"
 	printf '#!/bin/sh\ncat "%s/dmesg"\n' "$D" > "$D/bin/dmesg"
+	cat > "$D/bin/journalctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' '[  960.000000] samsung-dm1q plasmashell[900]: outside, too early' \
+	'[  970.123456] samsung-dm1q kernel: inside, early' \
+	'-- a line without a monotonic stamp' \
+	'[  995.150000] samsung-dm1q systemd-logind[612]: inside, near the stop' \
+	'[ 1030.000000] samsung-dm1q plasmashell[900]: outside, too late'
+EOF
+	printf '#!/bin/sh\nexit 0\n' > "$D/bin/nojournal"
 	printf '#!/bin/sh\necho "$*" >> "%s/mount.log"\n' "$D" > "$D/bin/mount"
 	# the real tracefs fills a new instance directory by itself; the stub plays that
 	cat > "$D/bin/mkdir" <<EOF
@@ -47,7 +56,7 @@ echo 1408 > "\$1/buffer_size_kb"; echo 1 > "\$1/tracing_on"; echo 0 > "\$1/event
 printf 'entries: 203\noverrun: 12\nbytes: 4000\n' > "\$1/per_cpu/cpu0/stats"
 EOF
 	printf '#!/bin/sh\nrm -rf "$1"\n' > "$D/bin/rmdir"
-	chmod +x "$D/bin/dmesg" "$D/bin/mount" "$D/bin/mkdir" "$D/bin/rmdir"
+	chmod +x "$D/bin/journalctl" "$D/bin/nojournal" "$D/bin/dmesg" "$D/bin/mount" "$D/bin/mkdir" "$D/bin/rmdir"
 }
 
 sim() { # $1 dir $2 mode: alive | dead | rebindfix
@@ -70,7 +79,7 @@ unsim() { [ -n "$SIMPID" ] && { kill "$SIMPID" 2>/dev/null; wait "$SIMPID" 2>/de
 
 go() { # $1 dir, $2 mode, rest = VAR=value assignments
 	local D="$1" m="$2"; shift 2
-	timeout 100 env SYSFS="$D/sys" PROC="$D/proc" DEBUGFS="$D/sys/kernel/debug" DMESG="$D/bin/dmesg" MOUNT="$D/bin/mount" MKDIR="$D/bin/mkdir" RMDIR="$D/bin/rmdir" \
+	timeout 100 env SYSFS="$D/sys" PROC="$D/proc" DEBUGFS="$D/sys/kernel/debug" DMESG="$D/bin/dmesg" JOURNALCTL="$D/bin/journalctl" MOUNT="$D/bin/mount" MKDIR="$D/bin/mkdir" RMDIR="$D/bin/rmdir" \
 		TMPDIR="$D/tmp" OUT="$D/outdir/raw.txt" ID_U="${ID_U_T-0}" CHECK=2 COUNTDOWN=0 "$@" bash "$SCRIPT" "$m" > "$D/out" 2>&1
 }
 INSTD() { echo "$1/sys/kernel/tracing/instances/dm1q-touch"; }
@@ -183,6 +192,14 @@ expect "$O" "kernel lines about the chip" "fts2ba61y spi0.0: id 53 54 40 36 01"
 expect "$O" "state line" "^irq count: 11464"
 [ "$sum_before" = "$(cd "$D/sys" && find . -type f -exec cksum {} + | sort)" ] && ok "dump changed nothing under /sys" || bad "dump changed the fake sys tree"
 [ "$(cat "$I/events/spi/spi_transfer_stop/enable")" = 1 ] && ok "still armed" || bad "not armed any more"
+expect "$O" "journal header names the last record" "^-- journal, all units, within 30 s of the last record \(995.200000 s, monotonic clock\):"
+expect "$O" "journal line inside the window (early edge)" "^   \[  970.123456\] samsung-dm1q kernel: inside, early"
+expect "$O" "journal line inside the window (near the stop)" "^   \[  995.150000\] samsung-dm1q systemd-logind\[612\]: inside, near the stop"
+reject "$O" "journal line before the window is dropped" "outside, too early"
+reject "$O" "journal line after the window is dropped" "outside, too late"
+reject "$O" "a line without a stamp is dropped" "without a monotonic stamp"
+go "$D" dump JOURNALCTL="$D/bin/nojournal"; O="$D/out"
+expect "$O" "an empty journal is said so" "no journal lines in that window"
 
 echo "== disarm"
 go "$D" disarm; rc=$?
