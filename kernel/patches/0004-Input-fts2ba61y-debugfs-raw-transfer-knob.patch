@@ -1,0 +1,210 @@
+From: dm1q mainline port <dm1q-mainline@example.com>
+Subject: [PATCH] Input: fts2ba61y: add a debugfs raw SPI transfer knob
+
+Experiments only. Writes hex bytes to /sys/kernel/debug/<spi device>/raw as one full-duplex SPI transfer
+("+N" clocks out N zero bytes), so the chip can be poked without an unbind. Reading returns the last raw
+transfer. Root-only (0600). Removed on unbind. Needed for the touch drop-out investigation (docs/08 2.18, 2.19).
+---
+ drivers/input/touchscreen/fts2ba61y.c | debugfs raw transfer knob
+
+diff --git a/drivers/input/touchscreen/fts2ba61y.c b/drivers/input/touchscreen/fts2ba61y.c
+--- a/drivers/input/touchscreen/fts2ba61y.c
++++ b/drivers/input/touchscreen/fts2ba61y.c
+@@ -11,17 +11,23 @@
+ #include <linux/bits.h>
+ #include <linux/cache.h>
+ #include <linux/cleanup.h>
++#include <linux/ctype.h>
++#include <linux/debugfs.h>
+ #include <linux/delay.h>
++#include <linux/fs.h>
+ #include <linux/input.h>
+ #include <linux/input/mt.h>
+ #include <linux/input/touchscreen.h>
++#include <linux/hex.h>
+ #include <linux/interrupt.h>
++#include <linux/kernel.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
+ #include <linux/regulator/consumer.h>
+ #include <linux/spi/spi.h>
+ #include <linux/string.h>
++#include <linux/uaccess.h>
+ #include <linux/unaligned.h>
+ 
+ /* SPI opcodes that are sent as is */
+@@ -92,6 +98,11 @@
+ 	struct mutex lock;
+ 	u8 tx_buf[FTS2BA61Y_XFER_MAX] __aligned(ARCH_DMA_MINALIGN);
+ 	u8 rx_buf[FTS2BA61Y_XFER_MAX] __aligned(ARCH_DMA_MINALIGN);
++
++	/* debugfs raw knob: the last raw transfer, see fts2ba61y_raw_write() */
++	u8 raw_tx[FTS2BA61Y_XFER_MAX];
++	u8 raw_rx[FTS2BA61Y_XFER_MAX];
++	size_t raw_len;
+ };
+ 
+ /* Send @opcode followed by @len bytes of @data. */
+@@ -381,6 +392,139 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++/*
++ * Debugfs raw transfer knob, /sys/kernel/debug/<spi device>/raw (experiments
++ * only, mode 0600). Writing hex bytes, e.g. "A0 00 01", sends them to the chip
++ * as one full-duplex SPI transfer. "+N" clocks out N zero bytes after the hex
++ * bytes, e.g. "87+17" reads one 18-byte event record. Reading returns the last
++ * raw transfer as "tx <hex> rx <hex>". It sends whatever it is given, so it is
++ * root-only.
++ */
++static int fts2ba61y_raw_parse(const char *cmd, u8 *tx, size_t *len)
++{
++	char hex[2 * FTS2BA61Y_XFER_MAX + 1];
++	size_t nhex = 0, nbytes, zeros = 0;
++	const char *p;
++	unsigned int n;
++	int error;
++
++	for (p = cmd; *p && *p != '+'; p++) {
++		if (isspace(*p))
++			continue;
++		if (nhex + 1 >= sizeof(hex))
++			return -EINVAL;
++		hex[nhex++] = *p;
++	}
++	hex[nhex] = '\0';
++	if (nhex % 2)
++		return -EINVAL;
++	nbytes = nhex / 2;
++
++	if (*p == '+') {
++		error = kstrtouint(p + 1, 10, &n);
++		if (error)
++			return error;
++		zeros = n;
++	}
++
++	if (nbytes + zeros == 0 || nbytes + zeros > FTS2BA61Y_XFER_MAX)
++		return -EINVAL;
++
++	error = hex2bin(tx, hex, nbytes);
++	if (error)
++		return error;
++	memset(&tx[nbytes], 0, zeros);
++	*len = nbytes + zeros;
++
++	return 0;
++}
++
++static int fts2ba61y_raw_transfer(struct fts2ba61y_data *ts, const char *cmd)
++{
++	struct spi_transfer xfer = {
++		.tx_buf = ts->tx_buf,
++		.rx_buf = ts->rx_buf,
++	};
++	size_t len;
++	int error;
++
++	guard(mutex)(&ts->lock);
++
++	error = fts2ba61y_raw_parse(cmd, ts->tx_buf, &len);
++	if (error)
++		return error;
++
++	xfer.len = len;
++	error = spi_sync_transfer(ts->spi, &xfer, 1);
++
++	ts->raw_len = len;
++	memcpy(ts->raw_tx, ts->tx_buf, len);
++	memcpy(ts->raw_rx, ts->rx_buf, len);
++
++	return error;
++}
++
++static ssize_t fts2ba61y_raw_write(struct file *file, const char __user *ubuf,
++				   size_t count, loff_t *ppos)
++{
++	struct fts2ba61y_data *ts = file->private_data;
++	char *cmd;
++	int error;
++
++	if (count > 4 * FTS2BA61Y_XFER_MAX)
++		return -EINVAL;
++
++	cmd = memdup_user_nul(ubuf, count);
++	if (IS_ERR(cmd))
++		return PTR_ERR(cmd);
++
++	error = fts2ba61y_raw_transfer(ts, cmd);
++	kfree(cmd);
++
++	return error ? error : count;
++}
++
++static ssize_t fts2ba61y_raw_read(struct file *file, char __user *ubuf,
++				  size_t count, loff_t *ppos)
++{
++	struct fts2ba61y_data *ts = file->private_data;
++	size_t size = 4 * FTS2BA61Y_XFER_MAX + 16;
++	size_t pos = 0, i;
++	char *out;
++	ssize_t ret;
++
++	out = kmalloc(size, GFP_KERNEL);
++	if (!out)
++		return -ENOMEM;
++
++	scoped_guard(mutex, &ts->lock) {
++		pos += scnprintf(out + pos, size - pos, "tx ");
++		for (i = 0; i < ts->raw_len; i++)
++			pos += scnprintf(out + pos, size - pos, "%02x", ts->raw_tx[i]);
++		pos += scnprintf(out + pos, size - pos, " rx ");
++		for (i = 0; i < ts->raw_len; i++)
++			pos += scnprintf(out + pos, size - pos, "%02x", ts->raw_rx[i]);
++		pos += scnprintf(out + pos, size - pos, "\n");
++	}
++
++	ret = simple_read_from_buffer(ubuf, count, ppos, out, pos);
++	kfree(out);
++
++	return ret;
++}
++
++static const struct file_operations fts2ba61y_raw_fops = {
++	.owner = THIS_MODULE,
++	.open = simple_open,
++	.read = fts2ba61y_raw_read,
++	.write = fts2ba61y_raw_write,
++};
++
++static void fts2ba61y_debugfs_remove(void *dentry)
++{
++	debugfs_remove(dentry);
++}
++
+ static int fts2ba61y_input_open(struct input_dev *dev)
+ {
+ 	struct fts2ba61y_data *ts = input_get_drvdata(dev);
+@@ -410,6 +554,7 @@
+ 	struct device *dev = &spi->dev;
+ 	struct fts2ba61y_data *ts;
+ 	struct input_dev *input;
++	struct dentry *dbg;
+ 	int error;
+ 
+ 	if (spi->irq <= 0)
+@@ -494,6 +639,13 @@
+ 	if (error)
+ 		return dev_err_probe(dev, error, "failed to request interrupt\n");
+ 
++	/* experiments only: the raw transfer knob (removed again on unbind) */
++	dbg = debugfs_create_dir(dev_name(dev), NULL);
++	error = devm_add_action_or_reset(dev, fts2ba61y_debugfs_remove, dbg);
++	if (error)
++		return error;
++	debugfs_create_file("raw", 0600, dbg, ts, &fts2ba61y_raw_fops);
++
+ 	return 0;
+ }
+ 

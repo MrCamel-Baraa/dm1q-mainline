@@ -483,3 +483,189 @@ after 2026-10-20 21:16 captured so far lacks the firmware at boot (docs/11 9.13)
 the journal has one `Power key pressed short` and no sleep, suspend or idle-action line. The boot was only ~7 min old, so it holds no slow wake. FACT: this phone has not suspended in that boot; INFERENCE: the 20 to 30 s wake is then not a suspend
 resume but the screen-off path (display, GPU and compositor on a saturated CPU, or PowerDevil): the probed boot had all cores busy from software rendering, so the slow wake may share that cause. Not tested: it needs a slow wake reproduced in a boot WITH the GPU,
 then `--sleep-probe` before any reboot. Also seen: the clock starts at 1970 (RTC `1970-01-01 14:53`) and jumps when `systemd-timesyncd` syncs (journal timestamps of the early boot are unreliable), PowerDevil retries i2c for ddcutil (`EACCES`, 100 ms doubling to 800 ms, ~3 s at startup), `kscreenlocker_greet: Worker not ready yet, cannot authenticate` (the known PAM problem).
+
+### 2.17 Possible fix: evdev failed its BTF check at boot (2026-10-22, PC-side review of the reboot capture)
+
+FACT (`notes/2026-10-22-plasma-boot/dmesg.txt`, uptime 3 s): `failed to validate module [evdev] BTF: -22`, followed by `evdev: module verification failed: signature and/or required key missing - tainting kernel`. The kernel is tainted from that point (the taint alone does not explain the touch failure).
+
+FACT (`notes/2026-10-22-plasma-boot/probe.txt`, `gpu.txt`, `session.log`): the "Modules linked in" list of the display-clock WARNING (`disp_cc_mdss_mdp_clk_src`, at about 7 s) includes `evdev`, so the module was loaded despite the BTF line (audit 2.20: the earlier wording "module list printed in the kernel log" hid that this list belongs to an unrelated warning). The captures do not contain `/proc/bus/input/devices`, `lsmod`, or the touch device list, so whether the input devices are present and bound in this boot is not yet verified.
+
+Background: the header of `scripts/refresh-phone-modules.sh` records (citing docs/07 section 15.12) that modules refused by BTF validation once left PCIe, the PHY and wlan0 missing. The script rebuilds the module tree from a kernel APK: `--apk FILE --reboot`. The 2026-10-11 rule that an earlier draft of this section cited does not exist in the docs; it was removed (see 2.18).
+
+INFERENCE (not checked): the evdev BTF failure is a module-tree mismatch. If evdev is loaded from a stale tree, event delivery could be affected, and a dead touch could look like a chip fault. This is a candidate for the touch problem, not a confirmed cause.
+
+Plan (step 1 was run on 2026-10-23, see 2.18; steps 2 and 3 were not):
+1. Read-only input check, run in the same boot as the reboot test: `/proc/bus/input/devices`, `lsmod | grep evdev`, `/sys/module/evdev` presence, and the BTF/taint lines of `dmesg`. Expected healthy result: the FTS2BA61Y touch device and the three key devices listed, bound to evdev.
+2. If evdev is missing or the touch device is absent, run `refresh-phone-modules.sh --apk <kernel apk> --reboot` and repeat the check.
+3. Only then re-run the touch trace (`--touch-trace=arm`) so the recorder is not tested against a broken input stack.
+
+Status: step 1 done. evdev is loaded and the four input devices are bound (FACT, 2026-10-23 `input-check-boot`), so the BTF line is not the cause of a missing device. The BTF check is not proven harmless for evdev: it stays a candidate until the module tree is refreshed and a dead-touch window is measured (2.18).
+
+### 2.18 Re-analysis of the touch captures (2026-10-23): what is measured, what is not
+
+This section replaces the working reading of 2.14-2.17 for the 2026-10-23 captures. FACT means read from a capture named here; INFERENCE means reasoned and not yet measured. Audited the same day: the corrections are listed in 2.20 and the corrected passages below are marked (audit).
+
+**Boot timeline (FACT).** `input-check-boot` ran at 05:10:01 with uptime 20024.7 s. `touch-dead-snapshot` ran at 05:17:02 with uptime 375.4 s. So the phone rebooted at about 05:10:47, about 45 s after that capture. The previous boot's journal has no shutdown or reboot lines, so that boot did not end in a logged clean shutdown. The reason is not known (INFERENCE: a crash, a hard reset or a manual power cut). Whether the reboot was intended is a question for the user.
+
+**Interrupt count in the new boot (FACT).** At uptime 396.56 s (arm) the count was 2 (audit: a value for 375 s that an earlier draft gave here was not found again in the captures). The user reported at about 05:16 that touch was not working. Two interrupts in six minutes is very few if the screen was in use, so touch was most likely dead from early in this boot. The drag during that window was not recorded.
+
+**The rebind revived it (FACT).** `arm` checked for six seconds with the finger dragging: 0 interrupts while touch was dead; it then power-cycled spi0.0 and the second check, with the finger dragging, rose from 160 to 522 interrupts. The recorder was armed after that.
+
+**The dump (FACT, `touch-dump-1`).** 763 SPI records of spi0.0 between 404.66 s and 435.52 s. The last twenty are coordinate records; the final one (`c0`) looks like a release. The only status record is `49 00 10` at 405.87 s, which is the chip's reply to the rebind's probe, not an error before it. Nothing is recorded after 435.52 s. The dump was taken at 453 s.
+
+**After the dump (FACT).** The interrupt count was 709 at 453 s, 709 at 587 s (`touch-dead-irq-check`), 709 at 996 s and 1149 s (`touch-irq-state`, `touch-irq-thread`), and 718 at about 05:36 (`touch-scanmode-2`, before the swap). (audit, corrected) The 709 seen before the swap of `touch-scanmode-1` (about 05:33) is the same value as at 453 s, so the count was flat for about 15 minutes. The step from 709 to 718 lies after the unbind and rebind of spi0.0 that `touch-scanmode-1` performed (its restore step power-cycles and re-initialises the chip), so those nine interrupts are most likely the probe traffic of that rebind (INFERENCE, not measured). An earlier version of this paragraph read them as the chip still reporting; that is withdrawn. No drag is recorded for the flat window (the user's belief that touch was dead is not a measurement), and evdev was not read in it.
+
+**The dead state with a drag, the only measured one (FACT, 2.14).** In the 21 October boot, with Baraa dragging, the window of 45 s had 0 evdev bytes and gpio25 high in every sample; the rails were enabled with one user each; the rebind brought events back at once. This is the strongest dead-with-drag evidence in the docs.
+
+**Interrupt line and driver (FACT).** The device tree sets `interrupts = <25 IRQ_TYPE_LEVEL_LOW>` (kernel patch 0002). gpio25 is therefore active-low: high means not asserted. The driver requests the IRQ with `IRQF_ONESHOT` and a NULL primary handler. The handler thread was idle (state S, wait channel `irq_thread`) in `touch-irq-thread`. So the thread is not stuck, and the earlier "stuck in SPI" idea is ruled out.
+
+**IRQ enable state (FACT).** This kernel has no `irq/irqs/178` debugfs entry, so `IRQ=unknown` is the correct result, not a parser failure. Enable state is not measurable with the current tools.
+
+**The rails during the dead state (FACT).** L12B and L16B show enabled with one user in every capture taken before a swap (`2026-10-21 touch-watch`, `touch-trace-arm`, `touch-scanmode-2`). So the rails are on while touch is dead, as far as the regulator framework knows.
+
+**The unbind drops the rails (FACT, `touch-scanmode-2`).** Unbinding fts2ba61y took both rails from one user to zero. The regulator framework switches an unused regulator off unless it is always-on, so the chip was unpowered during the swap (INFERENCE, not measured on the chip). The guard in `phone-touch-scanmode.sh` aborted before any command was sent, and the restore rebound the touch driver.
+
+**BTF (FACT).** In the 2026-10-23 boot the only module failing BTF validation is `evdev`. evdev is loaded regardless.
+
+**Corrections to earlier analysis.**
+- The gpio25 "low" reading after the unbind (`touch-scanmode-1`) was most likely an artifact of an unpowered chip and a released pin, not a sign that the chip was asserting (audit: INFERENCE; the driver's power-off action disables the rails at unbind, but the chip's output was not measured). I had also suggested the opposite reading in the chat; it is withdrawn.
+- "The chip stopped asserting its interrupt and went silent" (from `touch-dump-1` plus the frozen count) is not established for boot 1 from `touch-dump-1` alone (audit, corrected): the last record at 435 s is a release (decoded: event byte `c0`, TCHSTA 3), no drag is recorded after it, and the nine later interrupts are the rebind of `touch-scanmode-1`. It is established for boot 2 (count flat at 8189 with a 20 s drag at 571 s and a 15 s drag during the PM test) and by 2.14.
+- The scan-mode test in `phone-touch-scanmode.sh` cannot run on this image, because unbinding unpowers the chip. The script now refuses to run unless `ALLOW_UNBIND=1` is set.
+- The 2.17 reference to a "2026-10-11 rule" was not in the docs and has been removed.
+
+**Revised hypotheses** (none is confirmed; these names are retired, 2.20 uses H1 to H6 of 2.10 and 2.12):
+- H-boot: touch is dead from early in a boot. The probe leaves the chip in a state that only a power cycle clears. Consistent with this boot. Separated by: a drag right after a boot.
+- H-mid: touch works after a boot and then stops after some time or use (2.10, 2.11, 2.14). Separated by: a drag right after a boot, then a dump at the failure.
+- H1 (the chip stops reporting without a status record): consistent with 2.14; not confirmed by any capture after 435 s.
+- H-scan (scan mode never sent, 2.12): untested. Its test is blocked on this image (see above).
+- H-rails (rails off in the dead state): not supported. The rails were on in every dead-state capture.
+
+**Plan, no code change needed.**
+1. Confirm with the user: whether the phone was rebooted at about 05:10:47 and how; whether touch worked in the boot before that and in this boot before 05:16; whether a finger was moving during 05:17 to 05:18, after 435 s, and from 05:29 to 05:36.
+2. On the next boot, as soon as it is up, run `--touch-watch=45` with a continuous drag. Its verdict says whether events flow in the first minute after boot (H-mid or healthy) or the chip is silent from the start (H-boot).
+3. If events flow after boot and later stop, run `--touch-trace=arm` right after the boot, with the same drag, and `--touch-trace=dump` at the failure, before any rebind.
+4. Only then decide the driver change. The candidate changes are a status-event handler with a re-init (docs/08 2.12), or a scan-mode knob that needs a kernel build.
+
+Status: open. Nothing here is a confirmed cause.
+
+**Addendum, 2026-10-23 05:43 (user answers and the touch-watch after a hard reset).** FACT, from the user: the 05:10:47 reboot was a hard reset done by hand; the user does not remember whether touch worked before 05:16 and thinks it did not; a finger was probably moving during the 05:17-05:18 rebind window.
+
+FACT (`notes/2026-10-23-boot-touch-watch/touch-watch.txt`, boot at about 05:43:08, touch-watch at uptime 32 s): `verdict=EVENTS-FLOW`, 45 s of continuous dragging, 36,869 evdev events, interrupt delta 5545, gpio25 low in one sample, L12B and L16B enabled with one user, DSI on, no new kernel line, plasma-mobile active. The evdev node was held by kwin_wayland and the touch reader. So touch worked in this boot from its first minute.
+
+What this changes:
+- H-boot ("dead from early in every boot") is not supported: the 05:43 boot was healthy within 32 s of boot. The 05:10 boot had only 2 interrupts by 375 s, so that boot was dead early and recovered by rebind.
+- Touch is therefore not dead by design at boot. It fails in some boots, and the trigger is not identified. The hard reset may or may not matter; there is no controlled comparison yet.
+- The recorder is not armed in this boot, so no failure in it is recorded yet.
+
+Next (no code change): in this boot, arm the recorder and use the touchscreen normally. Arming runs a six-second alive check (drag during it; it revives only if touch is dead). When touch stops, drag continuously for about 10 s to confirm silence, then dump before any rebind or reboot. The arm is lost at the next reboot.
+
+Status: open. The question is now what makes touch fail in a boot that worked, not whether it fails at boot.
+
+**Addendum 2, 2026-10-23 05:47 (the boot that worked, then stopped).** FACT, from `notes/2026-10-23-boot-touch-watch` (uptime 32 to 77 s): EVENTS-FLOW with drag. FACT, from `notes/2026-10-23-touch-trace-arm-2` (armed at uptime 221.85 s): the first six-second alive check (drag requested) saw 0 interrupts and gpio25 high, so touch was dead at about 222 to 228 s; the rebind revived it (418 interrupts in the second check, drag requested). FACT, from `notes/2026-10-23-touch-dump-2` (uptime 262.9 s): 764 SPI records of spi0.0 from 229.99 s to 241.92 s, all coordinate records after the rebind's probe (`49 00 10` at 231.2 s), the last one a release (`c0`); nothing from 241.92 s to the dump.
+
+What this establishes: in this boot, touch worked from the first minute (EVENTS-FLOW at 32 to 77 s) and was dead by 222 s. So the failure happened in the window 77 s to 222 s of a boot that was healthy at first (audit: it did not start at 77 s; the count went on from 6863 at the end of the watch, row t=45, to 7441 at 222 s, about 580 more interrupts, so the chip kept reporting for part of that window; the kernel log has a panel power-on at 102.9 s and 224.0 s and a `buffyboard` input device at 111.5 s inside it). That is the "works for a while, then stops" pattern of 2.10 and 2.11 with a timing: somewhere within about two and a half minutes of boot. The stop itself was not recorded, because the recorder was armed only at 222 s. Whether a finger was moving at 222 to 228 s has not been confirmed.
+
+Status: the recorder stays armed in this boot (since 221.85 s; the dump does not disarm it), so the next stop should be in the buffer if it happens before any reboot. Do not run `--touch-trace=arm` again while it is armed: its alive check revives touch if it is dead, which erases the state we want to see.
+
+**Addendum 3, 2026-10-23 05:51 (user answers and dump 3).** FACT, from the user: during the arm check at about 222 s the finger was dragging; from about 80 s to about 220 s the phone was on the lock screen the whole time (the window in which touch failed; the failure itself is not timed).
+
+FACT (`notes/2026-10-23-touch-dump-3`, uptime 406.25 s): the decoded records are identical to dump 2 (764 records, last at 241.92 s, a release). The interrupt count was 8189 at 262 s and 8189 at 406 s, so no interrupt arrived in those 144 s. That is either no touch in that time or touch dead again; the dump cannot tell which, and no drag is recorded.
+
+INFERENCE, the new lead: the failure was in a window that was entirely the lock screen. Earlier notes already tie the lock screen to this (2.11: "the screen locker started mid-session"; `docs/11` 9.10: the lock greeter cannot authenticate). Two mechanisms are possible and neither is measured: (a) the greeter (kscreenlocker_greet) holds or releases the touch evdev node or the input seat, which would affect event delivery, not the chip; (b) the lock or the screen blank turns the panel off, and the chip is then left in a state the panel power cycle does not restore (2.14 shows a panel off/on does not revive it, but that test came after the failure, not before). The `--touch-watch` verdict already lists the processes holding the evdev node, so a window taken while on the lock screen will show whether the greeter holds it.
+
+Next test (no code change): with a continuous drag, run `--touch-watch=20` now, to find out whether touch is dead at this moment; the verdict and the holder list show the state. Then lock and unlock the phone while a `--touch-watch` runs, to see whether the failure follows the lock.
+
+**Addendum 4, 2026-10-23 05:52 (correction).** FACT, from the user: touch fails both in and out of the lock screen. So the lock screen is not a required condition for the failure, and the lead in addendum 3 (lock-screen correlation) is withdrawn. The 80-to-220 s window of the lock screen does not by itself explain the failure; the window in which it stopped is still not timed. The hypotheses of 2.18 stand as before, with H-lock dropped. Next: a drag-based `--touch-watch` now, to see whether touch is dead at this moment, and a dump at the next failure (recorder still armed since 221.85 s).
+
+**Addendum 5, 2026-10-23 05:57 (the runtime-PM test, and the silence).**
+
+FACT, `notes/2026-10-23-touch-watch-now` (uptime 571 s, drag 20 s): `verdict=CHIP-SILENT`, 0 interrupts, 0 events, gpio25 high in every sample, serial engine `suspended`, the rails enabled with one user each.
+
+FACT, `notes/2026-10-23-touch-pm-1` (drag 15 s; the user reports 20 s): with power/control held on, the serial engine went `active` at once, and the interrupt count stayed 8189 for all 15 s. `RESULT pm ... delta=0 verdict=NO-CHANGE`. The SPI device itself reports runtime PM `unsupported`, so its control setting had no effect. Controls were restored to `auto`.
+
+So the runtime power state of the serial engine is not enough to bring the chip back. The correlation with `suspended` in the two dead captures does not hold as a cause.
+
+FACT, from `touch-dump-2` (raw buffer): there are 14 release records (`c0`) between 231 s and 242 s, and touch went on being reported after several of them (for example 232.0 s, 232.4 s, 235.1 s, 239.2 s). So a release is not what stops the chip, and the last record at 241.92 s was not special. The silence starts after it: the interrupt count is 8189 at 262 s, 406 s, 571 s and through the PM test. No record was made after 241.92 s, and two drags (571 s, about 650 s) produced nothing. The stop itself happened between 241.92 s and the first later drag; we cannot time it more closely from these captures.
+
+What is now established about the dead state: the chip produces no interrupt and no status record before going silent; holding the bus awake does not revive it; a panel off/on does not (2.14); a full rebind does (rails off and on, probe and reset). That points at the chip's internal state (H1 class). The unexplored candidate is the scan mode that our driver never sends (2.12), which the chip could leave in an idle mode. Testing it needs a way to send the command to the chip while the driver is bound. Our driver has no such knob (the only transfer helper is `fts2ba61y_write`, used by the probe), so the test needs a kernel change, as 2.10 already noted: a debugfs file that takes a raw transfer, so the chip can be poked without a rebind.
+
+Status: open. The next test is the knob, not more runtime-PM tests.
+
+### 2.19 A raw SPI knob in the touch driver (patch 0004, written 2026-10-23, not built)
+
+Purpose: the scan-mode test (2.12, `phone-touch-scanmode.sh`) cannot run without unbinding the driver, and an unbind drops the touch rails and unpowers the chip (2.18). So the driver gets a debugfs file that sends raw bytes to the chip while the driver stays bound.
+
+**The patch:** `kernel/patches/0004-Input-fts2ba61y-debugfs-raw-transfer-knob.patch`, on top of patch 0002. It changes only `drivers/input/touchscreen/fts2ba61y.c`. The file is `/sys/kernel/debug/<spi device>/raw` (`spi0.0/raw` on this phone), mode 0600, removed on unbind.
+- Write: hex bytes as one full-duplex SPI transfer, e.g. `echo "A00001" > raw` sends scan mode MS+SS. `+N` clocks out N zero bytes after the hex, e.g. `echo "87+17" > raw` clocks one 18-byte event read. The transfer holds `ts->lock`, the same lock as the driver's own transfers.
+- Read: the last raw transfer as `tx <hex> rx <hex>`, kept in `raw_tx`/`raw_rx`, apart from the bounce buffers.
+
+**What was checked (FACT):**
+- `git apply --check` succeeds on a clean copy of the file as patch 0002 leaves it, and the applied result matches the edited file.
+- The edit was made against the file extracted from patch 0002, so the new patch is a delta on exactly that state.
+
+**What was not checked (say so before relying on it):**
+- The driver has NOT been compiled. The kernel trees on this PC are partial (`linux-7.3-rc3`) or lack the generated arch headers (`full/linux-7.3-rc3` plus `out-real`); a syntax-only clang run stopped on generated `cpucap` headers. The real build is the sudo build (docs/06 rule 6), and that is the first compile.
+- Nothing is flashed or loaded. The phone still runs the old module.
+
+**Plan, once the module is rebuilt and loaded (needs a reboot to load the new module, then `refresh-phone-modules.sh`):**
+1. After a boot, with touch dead (check with `--touch-watch=20`): `sudo sh -c 'echo "A00001" > /sys/kernel/debug/spi0.0/raw; cat /sys/kernel/debug/spi0.0/raw'`, then drag and check the interrupt count. Scan mode sent with the driver bound is the test 2.12 asked for.
+2. If touch does not come back: `echo "87+17" > raw; cat raw`. A chip that answers with a non-trivial event record is alive, and the reply is the first thing to read. An all-00 or all-ff reply means no chip response.
+3. Read the reply the same way for the reset sequence (`FA 20 00 00 24 81`) if the first step does nothing.
+
+**If the knob shows nothing (research, as the user asked):** the candidates in order are (a) the full init sequence of Samsung's `stm_spi` (calibration `C0 13`, clear events `C0 62`, scan mode, sense on) against our bare reset (2.12); (b) the SPI mode and the clock, since the device tree sets 10 MHz and the chip's documented limits were not checked; (c) the chip's power-up order and reset pin (gpio25 and the rails at probe). Each needs a source read before a test, as 2.12 did.
+
+
+**Package (pmbootstrap), r9.** The patch is also in the pmaports package as `add-fts2ba61y-raw-knob.patch` (identical copy of `kernel/patches/0004-*`), listed in `source` right after `add-fts2ba61y-touchscreen.patch`, with `pkgrel=9` (`KBUILD_BUILD_VERSION` becomes `#10-samsung-dm1q-mainline`). The sha512 was computed with plain `sha512sum`, as the APKBUILD notes describe; `pmbootstrap checksum` should leave it unchanged. The driver debugfs knob needs `CONFIG_DEBUG_FS`; the running kernel has debugfs mounted (`/sys/kernel/debug/gpio` is read by the scripts), so no fragment change is needed.
+
+**Steps, pmbootstrap (the user runs them):**
+1. `pmbootstrap checksum linux-samsung-dm1q-mainline` (needs sudo for the chroot). Afterwards `git diff` of the APKBUILD should show only the r9 change from this session.
+2. `pmbootstrap build linux-samsung-dm1q-mainline`. The build log must show `add-fts2ba61y-raw-knob.patch` applied after `add-fts2ba61y-touchscreen.patch`. This is the first compile of the knob; a failure there is the first real check.
+3. Build the boot image set from the r9 apk with the GPU DTS and the v19 reference (CORRECTED 2026-10-23, see docs/11 9.14; the first version of this step used the canonical DTS and the default v10 reference and produced an image with the GPU disabled): `bash scripts/make-dtb-image-set.sh --dts ../_scratch/pmos-v19-gpu-bind/dm1q-gpu.dts --out ../_scratch/pmos-v20-knob-gpu --ref-set ../_scratch/pmos-v19-gpu-bind --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r9.apk --new-kernel`. The module tree of the rootfs was already refreshed for this kernel (r9, #10), so step 5 is not needed again.
+4. Flash `boot` and `vendor_boot` from recovery as in 2.8 step 3 (`scripts/flash-recovery.sh`), then boot.
+5. Refresh the rootfs modules before anything else (rule 6, the kernel code changed): `bash scripts/refresh-phone-modules.sh --apk ~/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r9.apk --reboot`. Then boot again.
+6. On the phone, after the boot: `sudo ls /sys/kernel/debug/spi0.0/` should list `raw`. Then the knob test from the plan above, starting with `echo "A00001" > raw` while touch is dead.
+
+Status: patch in repo and package, applies, pkgrel 9, not yet built with pmbootstrap, not flashed. Open.
+
+**First pmbootstrap build (2026-10-23 08:06): failed, fixed.** The log (`~/.local/var/pmbootstrap/log.txt`, line 324772) shows one error, and it is in the new code only: `fts2ba61y.c:432: call to undeclared function 'hex2bin'` (implicit declaration). The rest of the tree compiled, including the other drivers and the rc keymaps. The fix: `#include <linux/hex.h>` (in this kernel `hex2bin` is declared there, not in `kernel.h`). The patch was regenerated (`kernel/patches/0004-*`, 153 added lines), checked with `git apply --check` on the patch-0002 state, copied to the package, and the APKBUILD sha512 updated with plain `sha512sum` (`a16bf8b8...`). `pkgrel` stays 9, since r9 was never published as an apk. Next: rerun the build; if abuild reports a checksum mismatch, run `pmbootstrap checksum linux-samsung-dm1q-mainline`.
+
+### 2.20 Audit of the touch analysis (2026-10-23, after the GPU image fix)
+
+Method: every number in 2.18 and its addenda was read again from the raw captures, the driver (patch 0002) and 2.12 were read again, and the SPI trace dumps were decoded for control commands. Hypothesis names are those of 2.10 and 2.12: H1 the chip stops scanning, H2 interrupt asserted but not serviced, H3 interrupts counted but evdev silent, H4 userspace ignores the device, H5 coupled to the panel power cycle, H6 SPI or regulator state. The names H-boot, H-mid, H-scan, H-rails and H-lock that 2.18 introduced are retired.
+
+**Checked and correct (FACT).**
+- Boot 2 `touch-watch` (uptime 32 to 77 s): EVENTS-FLOW, count 1318 to 6863, 36,869 events, serial engine `active`, rails on.
+- `touch-trace-arm` (boot 1): 6 samples flat at 2, then after the rebind 160 to 522. `touch-trace-arm-2` (boot 2): flat at 7441, then after the rebind 7569 to 7987 (418).
+- `touch-watch-now` (571 s, 20 s drag) and `touch-pm-1` (15 s drag): count flat at 8189, gpio25 high in every sample, serial engine `suspended` before the hold and `active` during it, no change.
+- Rails: `vreg_l12b_1p8` 1800 mV and `vreg_l16b_3p0` 3000 mV, use count 1, in the dead state.
+- gpio25 is active-low: it read `low` in one of the ten drag samples of the boot 2 watch and `high` in every dead sample.
+- No `fts2ba61y` line in the kernel log between the probe and the dead state, and no `nobody cared`. The three WARNINGs per boot (trace events at 0 s, SPMI PMIC arbiter at 0.147 s, display clock at 6.8 s) are unrelated to touch and also appear in boots where touch worked.
+- The event byte decodes as ID bits 1:0 = 0 (coordinate), TID bits 5:2, TCHSTA bits 7:6 with 2 = move and 3 = release (patch 0002), so `80` is a move and `c0` a release.
+
+**Errors found and corrected in 2.17 and 2.18 (marked (audit) there).**
+1. The nine interrupts from 709 to 718 were read as the chip still reporting. They come after the unbind and rebind of `touch-scanmode-1`, which power-cycles the chip; they are most likely its probe traffic. The count was flat for about 15 minutes. The 2.18 correction that said "interrupts did arrive later" is withdrawn too.
+2. The count of 2 at 375 s was not found again; only 396.56 s is verified.
+3. The failure window of boot 2 is 77 to 222 s, but the chip kept reporting for part of it (about 580 interrupts after the watch ended).
+4. The "module list in the kernel log" of 2.17 is the module list of the display-clock warning.
+5. The gpio25 `low` after the unbind is an INFERENCE (unpowered chip, released pin), not a fact.
+6. 2.18 invented hypothesis names instead of using H1 to H6.
+
+**New FACT from the recorder dumps (the main result of the audit).** The trace records the task that issued every transfer. In `touch-dump-1` and `touch-dump-2` the sequence after each rebind is the same: `sh` (the rebind) sends SENSE_OFF `c0 11`, the soft reset `fa 20 00 00 24 81`, `c0 22`, `d1`, `c0 23`, `d1`, `c0 30 61 00`; then three short-lived openers, `(udev-worker)`, `libinput-fuzz-extract` and `libinput-fuzz-to-zero`, each send SENSE_ON `c0 10` and about 20 ms later SENSE_OFF `c0 11`; then `systemd-logind` sends SENSE_ON and the device stays on. From there to the end of the buffer there are only event reads (`87`, 18 bytes): 749 in dump 1 (ends 435.52 s) and 750 in dump 2 (ends 241.92 s). No SENSE_OFF, no reset, no other command. Both buffers end with a release of slot 0.
+
+What this shows:
+- The two recorded stops were not caused by our `input_close` (SENSE_OFF) or by any other host command: the last control command was SENSE_ON, and the last transfer an ordinary event read, not a status record. That fits H1 (the chip stops by itself) and weakens the variant of H5 in which a close and reopen of the evdev node leaves the chip off.
+- The chip survived three SENSE_ON / SENSE_OFF pairs right after its reset and then reported for 12 and 30 s, so SENSE_OFF followed by SENSE_ON is not by itself fatal (weak: it was tested only just after a reset).
+- After the last release the chip never reported again: boot 2, no interrupt from 241.92 s to at least 650 s, with drags at 571 s and later; boot 1, a flat count until the rebind of `touch-scanmode-1`.
+
+What it does not show: the first death of each boot was never recorded, because the recorder was armed after it in both boots. In boot 2 the first death lies in 77 to 222 s, where the log has a panel power-on at 102.9 s and 224.0 s and a `buffyboard` input device at 111.5 s (a session or console change). So H5 stays open for the first death (INFERENCE). Whether anyone touched the screen in the silent windows is not recorded.
+
+**Candidate added (INFERENCE, not tested), H7: the chip stops after a pause in touch.** Every recorded stop follows a release, and boot 1 had only 2 interrupts by 396 s after a boot in which the user did not touch for several minutes. The timelines are consistent with a chip that drops out of scanning after some idle time and does not wake for the next touch; the scan-mode command that our driver never sends (2.12) is one candidate for what governs this. Idle blank timers and the panel power cycle (H5) move together, so the timeline alone cannot separate them.
+
+**Tests, in this order (no further code change; the raw knob of 2.19 is in the running kernel).**
+1. Arm the recorder within seconds of a clean boot while touch works (drag during the six-second check), use the phone normally, and dump at the first death before reviving it. The dump names the task and command nearest the stop, which none of the dumps so far could.
+2. Idle test: after the arm, touch once, then leave the phone untouched for 1, 2 and 5 minutes in turn, then drag under `--touch-watch=20`. Run it once with the screen kept on and once with the screen blanked, to separate H7 from H5.
+3. With touch dead, poke the chip through the knob, one step at a time, dragging after each and reading the interrupt count: `87+17` (does it answer, what does the FIFO hold), `C010` (SENSE_ON again), `A00001` (scan mode), and only last `FA2000002481` (the soft reset). The first step that revives the chip names the missing command.
+
+Status: open. The audit changes the picture from "the chip fell silent somewhere" to "no host command caused the two recorded stops; the first death of a boot is unrecorded; idle is a candidate".
+
+**Addendum (2026-10-23, after the DTS fix).** FACT (`notes/2026-10-23-gpu-after-restore-2/dmesg.txt`, kernel #10): `failed to validate module [evdev] BTF: -22` at 2.68 s is still present in the boot after the user ran the module refresh for r9, so it is not explained by a stale module tree (INFERENCE; that the refresh completed was not independently verified). It concerns evdev only, and evdev works. Low priority, open. Corrected: the soft reset in 2.19 step 3 had an extra byte; the driver sends opcode `FA` plus `20 00 00 24 81` (patch 0002, `fts2ba61y_reset`), that is `FA 20 00 00 24 81`, and the knob test in 2.20 uses `FA2000002481`. The opcodes of the driver are `87` (read event), `C0` (custom write: `10` sense on, `11` sense off, `22` device id, `23` panel info, `30` touch type, `62` clear events), `D1` (custom read) and `FA` (register write).
