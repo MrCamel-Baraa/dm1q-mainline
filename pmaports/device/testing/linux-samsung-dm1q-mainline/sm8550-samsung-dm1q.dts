@@ -1336,3 +1336,16 @@
 	vdds-supply = <&vreg_l1e_0p88>;
 	status = "okay";
 };
+
+/*
+ * Adreno 740 (docs/11 section 9). Without this node msm_dpu logs "no GPU device was found" and Plasma has no GPU.
+ * The zap shader is the phone's own signed a740_zap.mbn: the generic linux-firmware zap is refused by the secure world
+ * (docs/11 9.7). The firmware files live in /lib/firmware/postmarketos (scripts/phone-boot-setup.sh gpu-fw).
+ */
+&gpu {
+	status = "okay";
+};
+
+&gpu_zap_shader {
+	firmware-name = "qcom/sm8550/a740_zap.mbn";
+};

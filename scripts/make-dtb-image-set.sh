@@ -14,28 +14,29 @@
 #      the kernel part of boot.img must be byte-identical, and the DTB inside both images must be
 #      the one just compiled; show what differs from the reference DTB
 #
-# Usage: scripts/make-dtb-image-set.sh --dts <file.dts> --out <dir> [--ref-set <dir with vendor_boot.img + boot.img>]
-#        [--apk <kernel apk>] [--new-kernel] [--cmdline-mode quiet|debug|ref]
+# Usage: scripts/make-dtb-image-set.sh --dts <file.dts> --out <dir> --ref-set <dir with vendor_boot.img + boot.img>
+#        --apk <kernel apk> [--new-kernel] [--cmdline-mode quiet|debug|ref]
+#   --ref-set     REQUIRED (since 2026-10-23). The image set that boots well NOW: its vendor ramdisk, bootconfig and cmdline are
+#                 reused. The old built-in default (pmos-v10-r5-pcifix, 2026-10-11) was stale and, with the canonical DTS of that
+#                 day, produced an image without the GPU (docs/11 9.14).
+#   --apk         REQUIRED (since 2026-10-23). The kernel apk whose module tree is on the rootfs. The old default (r5) was stale.
 #   --cmdline-mode  how the vendor cmdline is derived from the reference vendor_boot's (2026-10-16, log clean-up):
 #                   quiet:           `initcall_debug` removed, `loglevel=4` (the ring buffer still keeps everything; only
 #                                    the console is quieter -- `dmesg` shows it all). WARN() traces are level 4: NOT on screen.
 #                   debug:           `initcall_debug` present and `loglevel=7` -- the verbose cmdline for hang debugging
 #                   ref (default):   the reference's cmdline unchanged (Baraa wants the early kernel log kept)
-#   --apk         default: the r5 APK (kernel #6, carries the PCIe BDF-to-SID fix; since 2026-10-11 the baseline,
-#                 and the rootfs' module tree is r5's -- an r4 kernel would refuse every module, docs/07 15.12)
+#                 (history: r5 = kernel #6, carries the PCIe BDF-to-SID fix; an r4 kernel refuses every module, docs/07 15.12)
 #   --new-kernel  the kernel is EXPECTED to differ from the reference's (reported, not a failure)
-# Defaults: --ref-set ../_scratch/pmos-v10-r5-pcifix
 # The last lines report whether the kernel in the new boot.img contains the PCIe BDF-to-SID fix
 # (docs/07 section 14): r4 = no, r5 = yes.
 # Nothing here flashes anything.
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-REPO="$(cd "$HERE/.." && pwd)"
 KSRC="${KSRC:-$HOME/.cache/dm1q-kernel-src/full/linux-7.3-rc3}"
 KOUT="${KOUT:-$HOME/.cache/dm1q-kernel-src/out-real}"
-APK="${APK:-$HOME/.local/var/pmbootstrap/packages/edge/aarch64/linux-samsung-dm1q-mainline-7.3_rc3-r5.apk}"
-REF="$REPO/../_scratch/pmos-v10-r5-pcifix"
+APK=""
+REF=""
 DTS="" OUT="" NEWK=0 CMODE=ref
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -49,6 +50,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 [ -f "$DTS" ] && [ -n "$OUT" ] || { sed -n '2,/^set -euo/p' "$0" | sed '$d'; exit 2; }
+[ -n "$REF" ] && [ -n "$APK" ] || { echo "pass --ref-set (the image set that boots well now) and --apk (its kernel apk) explicitly: the old built-in defaults (v10 / r5) were stale and gave an image without the GPU (docs/11 9.14)" >&2; exit 2; }
 for f in "$APK" "$REF/vendor_boot.img" "$REF/boot.img"; do [ -f "$f" ] || { echo "missing $f" >&2; exit 1; }; done
 
 W="$(mktemp -d)"

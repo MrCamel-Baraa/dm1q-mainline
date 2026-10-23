@@ -43,7 +43,15 @@ pkgver=7.3_rc3
 # with its three GPIO rails. Kernel code and config changed: the rootfs module
 # tree must be refreshed (scripts/refresh-phone-modules.sh) before booting it.
 # r7 reports "#8-samsung-dm1q-mainline".
-pkgrel=8
+# r9 (2026-10-23): touchscreen debugfs raw SPI knob for the drop-out investigation (docs/08 section 2.19). Adds
+# add-fts2ba61y-raw-knob.patch (kernel/patches/0004-*), applied after add-fts2ba61y-touchscreen.patch. The driver
+# code changed: after the build, flash boot + vendor_boot, then refresh the rootfs modules
+# (scripts/refresh-phone-modules.sh). r9 reports "#10-samsung-dm1q-mainline".
+# r10 (2026-10-23): the Adreno 740 is enabled in the DTS (&gpu okay + zap-shader firmware-name, docs/11 9.14). The DTS was the
+# only change; no kernel code changed against r9, so the rootfs module tree of r9 stays valid. NOT BUILT: boot image sets take the
+# DTS from dts/dm1q/dm1q.dts (scripts/make-dtb-image-set.sh); build r10 when the next kernel change needs a package. r10 would
+# report "#11-samsung-dm1q-mainline".
+pkgrel=10
 pkgdesc="Mainline kernel for Samsung Galaxy S23 (dm1q)"
 arch="aarch64"
 _carch="arm64"
@@ -93,6 +101,7 @@ source="
 	add-samsung-sec-log-console.patch
 	pci-qcom-honor-iommu-cells-in-config-sid.patch
 	add-fts2ba61y-touchscreen.patch
+	add-fts2ba61y-raw-knob.patch
 	add-s6e3fac-amb606aw01-panel.patch
 	config-dm1q.fragment
 	sm8550-samsung-dm1q.dts
@@ -150,7 +159,8 @@ d8ba9027742e20fe2568b9231616077837a51160c0361373ee8fa50afa746133bd9c5cfd198f364a
 d54ea7ab441f0ba0626a58febbb06047aa5e7715a0356303e0e74296fbca07a3cb8a65e76f0ea22b49170dffa0c05c2f784adcee56e23e8dece73560eebf9f7a  add-samsung-sec-log-console.patch
 5b67955c0cbba004de4547803764b2cc5bb3c56c89142af6c3f040b322183d7bb4b490cec9bf0c06c97b684411c99c920b21dcc7752b22360efa5fc638d41d5f  pci-qcom-honor-iommu-cells-in-config-sid.patch
 39b8eb692f7d4059b63ee3b7ceca7649754a6281c0fc849f1fded1a6827533607f0eb311f4ce7eaea58c194d385bb9e758b22e7a1961decd0c281c905bdf2f4f  add-fts2ba61y-touchscreen.patch
+a16bf8b80b23376777c3e33caa4644be8f9b70af029785a6629108c3487ecbd5feacf44ff0f3038818099f36f941a4dff08d4a75b1d032ee11514d0d04ec1097  add-fts2ba61y-raw-knob.patch
 b7ae70b5062f22a2200b82681ff68519db0887b77c6bbccc99c81446058fd13dc19ba2cb83fb9faf41bd12c9c37b1b81a1e48f994dc10160a55d495c428cf2c1  add-s6e3fac-amb606aw01-panel.patch
 f8c9eccacb7c856f1f9d5fca55ee8d9f25fa2e43512c91289ca8b62ba1210bb21d9fddba7eda4dc79c5db4096606c994dfd6800e4b8433c1921f195e9f176088  config-dm1q.fragment
-ba36b8fd368827425632831fc103a01743eade2e901b77eb366ba7a1ae1c4b6414a9b96be66432a876e13828582226b333b89109f2a923866e7284f7da411fd7  sm8550-samsung-dm1q.dts
+3eb96fae3acf07c9a54da2fbcf14890ef8a2fc4a6b2b8459493b7578dbb0451d83bddf8cdced2fd7066f229abadf630e1c59797c569a6fdcb28530a625cb1d55  sm8550-samsung-dm1q.dts
 "
