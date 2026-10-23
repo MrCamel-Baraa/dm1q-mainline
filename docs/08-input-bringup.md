@@ -731,3 +731,24 @@ Capture: `notes/2026-10-24-poke-read` (the run of `--touch-poke=read --touch-tra
 2. If it holds, build the fallback (needs the user's go-ahead: kernel and package change) and watch whether any stall outlives it.
 
 Status: open; a candidate cause and a candidate fix, one confounded observation.
+
+### 2.23 The second stall and the second revival: the read alone does it (2026-10-24 02:26, `notes/2026-10-24-poke-read2`)
+
+Same boot as 2.21 and 2.22. Times are on the trace / journal clock (no suspended time).
+
+**FACT (seen in the files).**
+- Touch worked from the revival at 1816.9 s. Pauses of 50.5 s, 60.2 s, 39.7 s and 299.3 s (ending at 2520.9 s) were survived without any help, so an idle pause alone does not stop the chip (H7 is out for pauses up to 5 minutes).
+- Second stall: the last record is a touch-down (`40 da a3 0b 08 06 06 20 03 3d`) at 2773.163 s; then nothing until 2820.679 s (47.5 s). In the pre phase of the poke run the interrupt count stayed at 16754 for 3 s while Baraa dragged, gpio25 high.
+- At 2820.679313 `sh` (pid 6411) sent `87` + 17 zeros through the knob: rx has no event. At 2820.679509 the IRQ thread read `80 da a3 0b 08 06 06 1f 02 3c`: the coordinates of the touch-down, events left = 31. The driver sent `C0 62` (clear events), the next read returned `43 01 62`, and normal reports followed. This is the same sequence as in 2.22.
+- This time there is no power key, no panel power-on and no suspend in the window: the journal window around the poke has only ssh, sudo and NetworkManager lines (plus a kwin lock-screen QML message 1.5 s after the poke, unexplained), and dmesg has nothing after 2780 s. The confounders of 2.22 are gone.
+- Both stalls of this boot began right after a touch-down record. In this boot's buffer there are 832 touch-downs of touch id 0 and 828 releases of touch id 0 (and 43 / 46 for id 1); the difference of 4 includes the two stalled touch-downs. About 1 stall per 440 touch-downs.
+- The poke's write returned an error both times, although the transfer went out (the recorder has it, task `sh`). busybox `printf` exits non-zero without a message when `write()` fails, so the script took its SEND-FAILED exit right after the transfer. That is why the first poke run (session c5, 1811 s) was over after 4.6 s, and why the second printed SEND-FAILED. The cause of the write error is unknown.
+
+**INFERENCE.**
+- H10 holds twice, with a clean control: after a touch-down the chip delivers it and then does not assert INT for the following events, which pile up (left = 31 at the revival). One host read of the event FIFO, even one that returns no event, makes it assert INT again at once (the IRQ thread ran 100 to 200 us after the poke both times).
+- So the driver does not need the chip's INT to restart it: a read is the kick. The fallback of 2.22 stands. What the data supports: a short timer while a touch is active (between touch-down and release) covers both stalls seen in this boot. A slow idle read would also cover a stall after a release (the stops of 2.20), at the cost of a few reads a second while the input device is open.
+- Why the chip stalls after a touch-down is not explained (the stalled touch-downs have the same bytes as the 800 normal ones). Candidates left: the chip's INT logic; something in how our driver reads right after a touch-down.
+
+**Tooling.** `phone-touch-poke.sh` sends with `dd`, so the errno is printed, and it goes on with the settle and watch phases after a write error (`write=ERR` in the RESULT line); a knob that is not a writable file still aborts with exit 3.
+
+Status: open. Cause of the chip stall unknown; recovery by one read demonstrated twice.

@@ -2,7 +2,7 @@
 # PC-side test of scripts/phone-touch-poke.sh (docs/06 rule 3). A fake sysfs / procfs / debugfs tree with a plain file as the raw knob
 # (RAW_READ points at a second file that plays the kernel's "tx .. rx .." read-back). Checks: the bytes sent for each STEP, that exactly
 # the intended bytes reach the knob, REVIVED / CHIP-RESPONDED / NO-CHANGE (a background writer raises the interrupt count in the right
-# phase), that NOT-DEAD sends nothing, the rx classification, SEND-FAILED, the aborts and refusals, and the POSIX / shellcheck static checks.
+# phase), that NOT-DEAD sends nothing, the rx classification, a write() error (write=ERR, the run goes on), the aborts and refusals, and the POSIX / shellcheck static checks.
 # Usage: bash scripts/test-phone-touch-poke.sh
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -38,7 +38,7 @@ make_tree "$W/flat"
 run "$W/flat" STEP=read; rc=$?
 [ "$rc" = 0 ] && ok "flat run: exit 0" || bad "flat run: exit $rc"
 check "read sends 87+17" "raw_is '$W/flat' '87+17'"
-expect "$W/flat.out" "NO-CHANGE with a flat count" "RESULT poke step=read irq_pre=500 irq_settle=500 irq_end=500 settle_delta=0 watch_delta=0 verdict=NO-CHANGE rx=DATA"
+expect "$W/flat.out" "NO-CHANGE with a flat count" "RESULT poke step=read irq_pre=500 irq_settle=500 irq_end=500 settle_delta=0 watch_delta=0 verdict=NO-CHANGE rx=DATA write=ok"
 expect "$W/flat.out" "the read-back is shown" "readback: tx 8700"
 
 echo "== the bytes of each step"
@@ -102,12 +102,21 @@ rm -f "$W/noknob/sys/kernel/debug/spi0.0/raw"
 run "$W/noknob" STEP=read; rc=$?
 [ "$rc" = 3 ] && ok "missing knob: exit 3" || bad "missing knob: exit $rc"
 expect "$W/noknob.out" "the abort names the knob" "ABORT: .*raw is not writable"
-make_tree "$W/sendfail"
-rm -f "$W/sendfail/sys/kernel/debug/spi0.0/raw"
-mkdir "$W/sendfail/sys/kernel/debug/spi0.0/raw"
-run "$W/sendfail" STEP=read; rc=$?
-[ "$rc" = 4 ] && ok "failed write: exit 4" || bad "failed write: exit $rc"
-expect "$W/sendfail.out" "SEND-FAILED verdict" "verdict=SEND-FAILED"
+make_tree "$W/dirknob"
+rm -f "$W/dirknob/sys/kernel/debug/spi0.0/raw"
+mkdir "$W/dirknob/sys/kernel/debug/spi0.0/raw"
+run "$W/dirknob" STEP=read; rc=$?
+[ "$rc" = 3 ] && ok "knob is a directory: exit 3" || bad "knob is a directory: exit $rc"
+echo "== a write() error: the run goes on and says so"
+make_tree "$W/werr"
+printf '#!/bin/sh\ncat >/dev/null\necho "dd: error writing \x27/x/raw\x27: Input/output error" >&2\nexit 1\n' > "$W/werr/ddfail"
+chmod +x "$W/werr/ddfail"
+( sleep 3; IRQ_LINE 540 > "$W/werr/proc/interrupts" ) &
+run "$W/werr" STEP=read DD="$W/werr/ddfail"; rc=$?
+wait
+[ "$rc" = 0 ] && ok "write error: exit 0 (it goes on)" || bad "write error: exit $rc"
+expect "$W/werr.out" "the error text is shown" "returned an error .*Input/output error"
+expect "$W/werr.out" "the verdict is still computed and marked" "watch_delta=40 verdict=REVIVED rx=DATA write=ERR"
 
 echo "== refusals"
 make_tree "$W/refuse"

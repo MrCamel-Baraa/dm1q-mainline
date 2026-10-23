@@ -19,9 +19,11 @@
 #            NO-CHANGE       no interrupts at all after the poke
 #            NOT-DEAD        the touch interrupt moved during the pre phase: nothing was sent
 #            NO-IRQ-LINE     the touch interrupt is not in /proc/interrupts
+# write=ERR in the RESULT line: the knob's write() returned an error (the message is printed). The 2026-10-24 runs showed that the transfer can still
+# have gone out (the recorder has it), so the script goes on with the settle and watch phases instead of stopping.
 # Caution (docs/08 2.20): a soft reset makes the chip raise its own interrupts, so a reset's settle_delta is not touch activity;
 # only watch_delta counts as touch. Send the steps one at a time, in the order read, senseon, scanmode, reset.
-# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DEV STEP PRE SETTLE WAIT ID_U RAW RAW_READ
+# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DEV STEP PRE SETTLE WAIT ID_U RAW RAW_READ DD
 SYSFS="${SYSFS:-/sys}"
 PROC="${PROC:-/proc}"
 DEBUGFS="${DEBUGFS:-$SYSFS/kernel/debug}"
@@ -32,6 +34,7 @@ SETTLE="${SETTLE:-2}"
 WAIT="${WAIT:-8}"
 RAW="${RAW:-$DEBUGFS/$DEV/raw}"
 RAW_READ="${RAW_READ:-$RAW}"
+DD="${DD:-dd}"
 [ "${ID_U:-$(id -u)}" = 0 ] || { echo "run as root"; exit 2; }
 for _n in PRE SETTLE WAIT; do
 	eval "_v=\$$_n"
@@ -70,7 +73,7 @@ tick() {
 }
 
 say "before"
-[ -w "$RAW" ] || { echo "ABORT: $RAW is not writable (kernel patch 0004 / package r9 not running, or debugfs not mounted)"; exit 3; }
+[ -f "$RAW" ] && [ -w "$RAW" ] || { echo "ABORT: $RAW is not writable (kernel patch 0004 / package r9 not running, or debugfs not mounted)"; exit 3; }
 IRQ0=$(irq_count)
 echo "step: $STEP  bytes: $HEX"
 echo "irq: $IRQ0   gpio25: $(gpio_level)"
@@ -90,10 +93,11 @@ fi
 
 say "poke"
 IRQP=$(irq_count)
-if ! printf '%s\n' "$HEX" > "$RAW"; then
-	echo "RESULT poke step=$STEP irq_pre=$IRQP irq_settle=$IRQP irq_end=$IRQP settle_delta=0 watch_delta=0 verdict=SEND-FAILED"
-	echo "the write to $RAW failed (the knob rejects bad hex, or the SPI transfer returned an error)"
-	exit 4
+WRITE=ok
+# dd, not a shell redirection: busybox printf exits non-zero WITHOUT a message when write() fails, dd names the errno
+if ! WERR=$(printf '%s\n' "$HEX" | "$DD" of="$RAW" bs=64 2>&1 >/dev/null); then
+	WRITE=ERR
+	echo "the write to $RAW returned an error (the transfer may still have gone out, the recorder shows it): $(printf '%s' "$WERR" | tail -n 1)"
 fi
 LINE=$(rd "$RAW_READ")
 echo "readback: $LINE"
@@ -122,5 +126,5 @@ WD=$((IRQ3 - IRQ2))
 if [ "$WD" -gt 0 ]; then VERDICT=REVIVED
 elif [ "$SD" -gt 0 ]; then VERDICT=CHIP-RESPONDED
 else VERDICT=NO-CHANGE; fi
-echo "RESULT poke step=$STEP irq_pre=$IRQP irq_settle=$IRQ2 irq_end=$IRQ3 settle_delta=$SD watch_delta=$WD verdict=$VERDICT rx=$CLASS"
+echo "RESULT poke step=$STEP irq_pre=$IRQP irq_settle=$IRQ2 irq_end=$IRQ3 settle_delta=$SD watch_delta=$WD verdict=$VERDICT rx=$CLASS write=$WRITE"
 exit 0
