@@ -781,3 +781,33 @@ What is established (2.21 to 2.23): after a touch-down record the chip sometimes
 3. DT-only variants (H12, H14), then the raw-knob init parity (H13), then kernel knobs (delay, speed) if the timing points to a race. Kernel changes are asked for before they are made.
 
 Status: open.
+
+### 2.25 Two separate defects: an IRQ storm around suspend (cause found) and the INT stall at touch transitions (2026-10-24 10:48, `notes/2026-10-24-soak1`, `-soak1-stall`)
+
+**Defect A: the touch IRQ is killed by the kernel after a suspend.**
+
+FACT (dmesg of `soak1-stall`, same boot as 2.21 to 2.23, monotonic clock):
+- `3724.926 PM: suspend entry (deep)`; the non-boot CPUs are back up at 3725.283, so the system woke again 0.36 s after entering suspend (an immediate wakeup).
+- `3725.314 fts2ba61y spi0.0: Attempted to sync while suspend` (the SPI core refuses a transfer while its controller is suspended).
+- `3728.543 irq 178: nobody cared`, naming `irq_default_primary_handler threaded fts2ba61y_irq_handler`: the kernel disabled the touch IRQ after the spurious-interrupt limit.
+- The resume itself took 48 s: `ath11k_pci ... pci_pm_resume_early returns -110` at 3751.57 and `pci_pm_resume returns -110` at 3773.13, `PM: suspend exit` at 3773.137.
+- At the `soak1` arm (uptime 48641 s, monotonic about 3820 s) the touch was dead with gpio25 LOW (INT asserted, nobody reading) and an interrupt count of 204822 (it was about 17k at the end of the previous capture). The arm's rebind revived it (new input device `input4` at 3821.3 s).
+- Our driver (patch 0002) has no `dev_pm_ops`, does not touch its IRQ in suspend or resume, and returns `IRQ_NONE` whenever a read fails (`fts2ba61y_irq_handler`, also for `left >= 31`).
+
+INFERENCE: the touch INT was low during the interrupted suspend (a touch or the wake itself); the IRQ was re-enabled by the PM core before the SPI controller was resumed, the thread's read failed, `IRQ_NONE` left the level-low line asserted, and the line fired about 30000 times a second until the kernel disabled it, about 3 s after the first failure. The 48 s resume (the Wi-Fi card failing, docs/02 of today) kept the controller suspended long enough for the storm to finish. Only a rebind restores it. This is a fully explained cause, and it is independent of the chip stall below. Fix direction (a kernel change, to be asked for): `dev_pm_ops` that call `disable_irq` in suspend and `enable_irq` in resume (the resume of the SPI device runs after its controller's), and no `IRQ_NONE` storm on read errors.
+
+**Defect B: the INT stall at touch transitions (2.21 to 2.23), reproduced with a tap soak.**
+
+FACT (`soak1-stall`, recorder armed at 3821 s with the new events; 5299 reads in 133 s):
+- 416 touch-downs and 416 releases of touch id 0; the last record is a release at 3933.457778. Then nothing until our poke at 3953.07 s (19.6 s). In the poke's pre phase the count stayed at 210067 during a 3 s drag, gpio25 high. One stall per about 416 touch-downs, as estimated.
+- E1: the poke `D1 00 00` + 8 zeros (a register read, not the event FIFO) returned data (`00 d1 00 00 00 00 10 00 0f ff 0f`) and did NOT restart INT (settle 2 s and drag 8 s: count flat at 210067). One trial.
+- Timing of the 5245 complete reads (INT noticed, transfer start, transfer stop): INT to start min 13 us, median 95, p90 140, p99 204, max 561; start to stop min 65, median 117, p90 168, p99 254, max 437; INT to INT median 8.327 ms. The last read before the stall: 137 us and 116 us, ordinary.
+- Stall positions so far: touch-down (2.21), touch-down (2.23), release (this one), and release, release in 2.20. None after a move, although moves are 4391 of 5245 reads (84%) in this soak.
+
+INFERENCE: the stall is tied to touch-state transitions, not to the read timing of the last read. Under H11 the chip's firmware switches state at a touch-down or a release and its INT logic can lose the next assertion. A kick by the event-FIFO read restarts it, a register read does not.
+
+**Next.**
+1. The phone is probably still stalled: `--touch-poke=read --touch-trace=dump` shows whether this stall also had a full FIFO (left = 31) before it is revived.
+2. The kernel batch (to be approved): the fix for defect A, and research knobs for defect B (delay before the first read of an IRQ, per-transfer clock, counters of stalls and transitions).
+
+Status: A explained (fix pending); B open.
