@@ -834,3 +834,25 @@ Status: A explained (fix pending); B open.
 - A rate that moves in none of them points at the chip select and DMA mode (H12, devicetree only) or at the missing init (H13). An arm needs about 1500 touch-downs: at the rate of this boot (1 in 300 to 440) a clean arm of that size has a chance of about 2% by luck.
 
 Status: A has a candidate fix (untested on hardware); B has instruments (untested on hardware).
+
+### 2.27 What the poll really found: a stall has a signature, the in-kernel counter does not show it (2026-10-24 night, `notes/2026-10-24-r11-b1*`, `-r11-b2*`, `-r11-b3*`)
+
+New tool: `python3 scripts/touch-trace-stalls.py <touch-trace-raw.txt>` (PC test `scripts/test-touch-trace-stalls.sh`). A stall is a kick read (the poll work of patch 0005, or our poke) that returns no event and is followed within 2.5 ms by an IRQ read with `left >= 1`, after at least 100 ms without an IRQ read. A touch-down that merely arrives right after a poll read has `left = 0`: a coincidence.
+
+**FACT.**
+- `r11-b1` (poll_ms = 150, 1975 touch-downs, no recorder): the kernel counted 22 stalls (21 after a release) and `overflow 0`. The in-kernel rule (any interrupt within 2 ms plus scheduling slack after an empty poll read) also counts touch-downs that arrive at that moment, which rapid tapping produces all the time: that counter over-counts and is not used.
+- `r11-b2`: `poll_ms` was back at 0 (the phone had rebooted), 36 s, 115 touch-downs, no stall: no information.
+- `r11-b3` (poll_ms = 150, recorder armed, 150 s, 587 touch-downs, 158 poll reads): 4 stalls (6.8 per 1000 touch-downs) and 2 coincidences (touch-downs 563 us and 1517 us after a poll read, `left = 0`). In the 4 stalls the poll read returned no event, the IRQ thread read 109 to 311 us later and found 9, 9, 10 and 18 events queued; the silence before the kick was 181 to 303 ms. None of the 158 poll reads returned an event itself.
+- Three of the four queues start with a touch-down the chip had not announced (idle gaps after the last release: 237, 114 and 201 ms); the fourth starts with a move (the stall began mid-touch). In the case with the 114 ms gap no poll read can have happened between the release and the touch-down (a poll needs 150 ms of silence), and the mid-touch case has no idle gap at all: those two stalls were not caused by a poll read.
+- Of the 586 touch-downs that followed a release, 378 followed it by 100 to 150 ms (the tapping rhythm); 12 followed by 200 to 300 ms, and 2 of those 12 stalled.
+- `soak1-stall2-2` run through the tool gives its two stalls as they are in 2.26 (queues of 32 after a poke).
+
+**INFERENCE.**
+- The poll recovers a stall within one poll tick (150 to 300 ms) in 4 of 4 cases here; the touch stays usable with it.
+- The stall rate with the poll (4 in 587) is above the 1 in 300 to 440 of the runs without one; with four events that is not significant, but it is no sign that the poll lowers the rate.
+- Stalls begin mostly at a touch-down after a release (3 of 4 here), sometimes mid-touch; the earlier stalls of 2.21 and 2.23 began right after a touch-down read, so no single event type is the trigger.
+- The in-kernel stall counter should demand `left >= 1` on the IRQ read after the poll read; until then `touch-trace-stalls.py` on a recorder dump is the measurement.
+
+**Next: the experiment arms.** Each arm: `--touch-set=...` plus `--touch-trace=arm`, 5 minutes of rapid tapping (about 1000 touch-downs, about 7 stalls at the baseline rate), then `--touch-trace=dump`, then the tool. Baseline (`read_delay_us=0`), `read_delay_us=300`, `read_delay_us=1000`, `speed_hz=5000000`, `speed_hz=20000000`.
+
+Status: open.
