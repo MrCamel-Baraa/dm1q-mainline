@@ -10,6 +10,8 @@
 #   arm      creates / resets the instance, enables the event for bus 0 / cs 0, then (CHECK seconds, default 6) asks you to drag a finger and checks that the
 #            interrupt count rises. If it does not (touch is dead right now) and REVIVE=1 (default) it power-cycles the chip with an unbind / bind of spi0.0 (what
 #            worked on 2026-10-21) and checks again, so that the NEXT failure is the one that gets recorded. The device is always left bound.
+#            EXTRA=1 (default) also records spi:spi_transfer_start (same filter) and irq:irq_handler_entry for the touch interrupt (docs/08 2.24): with the
+#            stop records they give, per read, the time the chip's INT was noticed, when the read started and how long it took. EXTRA=0 records the stop only.
 #   dump     changes nothing: saves the raw buffer to $OUT, prints the buffer statistics, the current interrupt count / gpio25 / rails, the decoded records
 #            (event id counts, every non-coordinate record, the last 20 records, records per second before the last one, the largest gap), and how long ago
 #            the last record was, then the journal lines of ALL units within 30 s of the last record (docs/08 2.21: what userspace did when the chip stopped).
@@ -17,7 +19,7 @@
 #   disarm   stops the event and removes the instance.
 # Event layout (kernel patch 0002): rx = 2 header bytes (00 87) then 16-byte events; event byte0: bits 1:0 = id (0 coordinate, 1 status, 2 / 3 other),
 # bits 5:2 = touch id (coordinate) or status type (stype).
-# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DMESG JOURNALCTL TRACEFS MOUNT MKDIR RMDIR OUT TMPDIR NAME SPIDEV IRQ_GPIO BUF_KB CHECK REVIVE COUNTDOWN ID_U
+# Env (the PC-side test uses them): SYSFS PROC DEBUGFS DMESG JOURNALCTL TRACEFS MOUNT MKDIR RMDIR OUT TMPDIR NAME SPIDEV IRQ_GPIO BUF_KB CHECK REVIVE COUNTDOWN ID_U EXTRA
 SYSFS="${SYSFS:-/sys}"
 PROC="${PROC:-/proc}"
 DEBUGFS="${DEBUGFS:-$SYSFS/kernel/debug}"
@@ -33,12 +35,15 @@ IRQ_GPIO="${IRQ_GPIO:-25}"
 BUF_KB="${BUF_KB:-4096}"
 CHECK="${CHECK:-6}"
 REVIVE="${REVIVE:-1}"
+EXTRA="${EXTRA:-1}"
 COUNTDOWN="${COUNTDOWN:-2}"
 TMPD="${TMPDIR:-/tmp}"
 OUT="${OUT:-$TMPD/dm1q-touch-trace-raw.txt}"
 MODE="${1:-}"
 INST="$TRACEFS/instances/dm1q-touch"
 TE="$INST/events/spi/spi_transfer_stop"
+TS="$INST/events/spi/spi_transfer_start"
+TI="$INST/events/irq/irq_handler_entry"
 DRVDIR="$SYSFS/bus/spi/drivers/fts2ba61y"
 
 for kv in BUF_KB:$BUF_KB CHECK:$CHECK COUNTDOWN:$COUNTDOWN; do
@@ -116,7 +121,32 @@ do_arm() {
 		echo "RESULT: ARM-FAILED (enable=$(rd "$TE/enable") tracing_on=$(rd "$INST/tracing_on"))"
 		exit 3
 	fi
+	EXTRA_DESC=""
+	if [ "$EXTRA" = 1 ]; then
+		if [ -d "$TS" ]; then
+			echo 0 > "$TS/enable"
+			echo 'bus_num == 0 && chip_select == 0' > "$TS/filter" 2>/dev/null || echo "the filter of spi_transfer_start was rejected: every SPI controller's starts will be recorded"
+			echo 1 > "$TS/enable"
+			[ "$(rd "$TS/enable")" = 1 ] && EXTRA_DESC="spi_transfer_start"
+		fi
+		IRQ_NUM=$(awk '/fts2ba61y/ { sub(":", "", $1); print $1; exit }' "$PROC/interrupts" 2>/dev/null)
+		case "$IRQ_NUM" in
+			''|*[!0-9]*) echo "no touch interrupt number in $PROC/interrupts: irq_handler_entry is not recorded" ;;
+			*)
+				if [ -d "$TI" ]; then
+					echo 0 > "$TI/enable"
+					if echo "irq == $IRQ_NUM" > "$TI/filter" 2>/dev/null; then
+						echo 1 > "$TI/enable"
+						[ "$(rd "$TI/enable")" = 1 ] && EXTRA_DESC="$EXTRA_DESC irq_handler_entry(irq $IRQ_NUM)"
+					else
+						echo "the filter of irq_handler_entry was rejected: that event is not recorded"
+					fi
+				fi
+				;;
+		esac
+	fi
 	echo "armed: $INST (spi:spi_transfer_stop, bus 0 / cs 0), buffer_size_kb=$(rd "$INST/buffer_size_kb") per CPU, at uptime $(uptime_s) s"
+	[ -n "$EXTRA_DESC" ] && echo "extra events: $EXTRA_DESC"
 	echo "it lives in RAM until the next reboot: arm again after every boot"
 	state_line
 	if [ "$CHECK" -gt 0 ]; then
@@ -150,6 +180,8 @@ do_arm() {
 do_disarm() {
 	if [ -d "$INST" ]; then
 		echo 0 > "$TE/enable" 2>/dev/null
+		echo 0 > "$TS/enable" 2>/dev/null
+		echo 0 > "$TI/enable" 2>/dev/null
 		echo 0 > "$INST/tracing_on" 2>/dev/null
 		"$RMDIR" "$INST" 2>/dev/null
 	fi

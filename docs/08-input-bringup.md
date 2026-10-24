@@ -752,3 +752,32 @@ Same boot as 2.21 and 2.22. Times are on the trace / journal clock (no suspended
 **Tooling.** `phone-touch-poke.sh` sends with `dd`, so the errno is printed, and it goes on with the settle and watch phases after a write error (`write=ERR` in the RESULT line); a knob that is not a writable file still aborts with exit 3.
 
 Status: open. Cause of the chip stall unknown; recovery by one read demonstrated twice.
+
+### 2.24 Root-cause plan for the INT stall (2026-10-24, after 2.21 to 2.23; Baraa's decision: find the cause and prevent it, no standing workaround)
+
+What is established (2.21 to 2.23): after a touch-down record the chip sometimes stops asserting INT; it keeps queueing events (left = 31 at the revival); one host read of the event FIFO restarts INT; the host never fell behind (left = 0 in every earlier record); about 1 stall per 440 touch-downs; two stalls in this boot, no other.
+
+**FACT from the vendor tree and DT (read in the files, this session).**
+- Samsung's `stm_ts_spi_read` (`stm_spi.c:700`) is one full-duplex transfer of `rlen + 1 + tlen` bytes with tx = command + zeros, the same 18-byte `87` shape as ours. Its IRQ thread does what ours does: read one event, read `left` more, clear events at `left >= 31`.
+- **Chip select.** Samsung's DT has `sec,gpio_spi_cs = <&tlmm 0x2f 0>` (gpio47) and the driver drives it by hand around every `spi_sync` (low before, high after: `stm_spi.c:843-851`); the pinctrl fragment of the touch SPI pins (fragment 70) muxes only gpio44, 45, 46 (MISO, MOSI, CLK), never gpio47. INFERENCE: the vendor kernel uses CS as a plain GPIO for this chip and not the controller's hardware CS (another pinctrl state could still mux gpio47; not searched). Our DT uses the SoC default: `qup_spi4_cs` muxes gpio47 to the serial engine and `spi-geni-qcom` asserts and deasserts it with its own commands. Not yet read: how that driver times CS against the clock, and whether our 18-byte transfers go through the GPI DMA engine (our DT enables `gpi_dma1`, spi4's `dmas` point at it) instead of the FIFO.
+- **Extra host traffic in Samsung's driver.** After every IRQ batch `stm_ts_external_func` calls `sec_input_set_temperature(..., IN_IRQ)`, and `stm_ts_print_info_work` calls it every 30 s (`stm_fn.c:972-986`); the chip write is `3C <temperature>` (`stm_fn.c:1124`). Samsung has no stall watchdog. INFERENCE: if any SPI transaction re-arms a stalled INT, Samsung's regular writes would hide the stall.
+- The same Samsung init that 2.12 lists and our driver lacks: `C0 13` (force calibration), `C0 62` (clear events), `A0 00 01` (scan mode MS+SS), plus the function writes (`C1 0D` is `ENABLE_VSYNC`; the DT has `sync-reportrate-120`; `C0 34` is the report rate; `C0 3D` is FOD INT control; `C0 3B` FOD finger merge). Which of these Samsung sends on this device was not read to the end.
+- Not the screen position: 42 of the 832 touch-downs of this boot are at x 3350 to 3600, where both stalled touch-downs were (x 3466 / y 2968 and x 3488 / y 2619); none of the others stalled.
+- Inside a touch the gap between two records is at most 18 ms (frame time 8.3 ms), apart from a few chip pauses of 131 ms to 1 s that end with a `43 11 xx` status record or an enter without a release.
+
+**Hypotheses (INFERENCE), each with the test that would settle it.**
+- H11, a race inside the chip: INT is asserted when an event is pushed while no SPI transaction is running; a push that lands during our read (or right at its end) is swallowed, INT stays high and later pushes do not re-assert it until the next CS cycle. Would explain: stall after a touch-down (the chip pushes extra records there), no host command involved, one read recovers. Test: the timing of INT against the read, per read (extra trace events, below), and a delay or a clock change that moves the window (kernel knobs).
+- H12, the chip-select behaviour: hardware CS from `spi-geni-qcom` (command-based, GPI DMA) differs from Samsung's software CS in setup and hold time and in what the chip sees at the end of a transfer. Test: DT only, `cs-gpios` on gpio47 with the pin muxed as GPIO; and the same without `dmas` (FIFO mode).
+- H13, missing configuration: scan mode, clear events, calibration, vsync, report rate, FOD INT control leave the chip in a state that Samsung's driver never has. Test: send the missing commands with the raw knob and soak.
+- H14, the SPI clock: 10 MHz is Samsung's value too, but the clock the engine really produces is not known. Test: per-transfer `speed_hz` (kernel knob) or `spi-max-frequency` in the DT.
+
+**Method.** The stall rate is about 1 per 440 touch-downs, so an experiment needs rapid tapping: about 3 taps a second give a stall every 2 to 3 minutes if nothing changes, and 2000 touch-downs without one (about 11 minutes) is a result. Every run keeps the recorder armed and ends with `--touch-trace=dump`, so the touch-downs and stalls can be counted from the buffer, not from memory.
+
+**Tooling added (PC tests pass, shellcheck clean).** `--touch-trace=arm` now also records `spi:spi_transfer_start` and `irq:irq_handler_entry` (irq of the touch chip) with the stop records, so every read has three timestamps: INT noticed, transfer start, transfer stop (`EXTRA=0` turns this off). The collector arms with a 12 MB buffer per CPU (`DM1Q_TRACE_BUF_KB` changes it), enough for a whole soak at three events per read.
+
+**Next (in this order).**
+1. Soak with the new recorder, tapping; at the first stall `--touch-poke=hex:D10000+8 --touch-trace=dump` (a read that is not the event FIFO) shows whether any transaction restarts INT or only the FIFO read does (E1), then `--touch-poke=read` to revive.
+2. Timing analysis of INT, start and stop for the stalled touch-downs against the normal ones (H11).
+3. DT-only variants (H12, H14), then the raw-knob init parity (H13), then kernel knobs (delay, speed) if the timing points to a race. Kernel changes are asked for before they are made.
+
+Status: open.

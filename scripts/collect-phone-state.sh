@@ -379,7 +379,7 @@ STEP=$TOUCH_POKE sh /tmp/phone-touch-poke.sh 2>&1 | tee /tmp/dm1q-collect/touch-
 fi
 if [ -n "$TOUCH_TRACE" ]; then
 	BODY="$BODY
-OUT=/tmp/dm1q-collect/touch-trace-raw.txt sh /tmp/phone-touch-trace.sh $TOUCH_TRACE 2>&1 | tee /tmp/dm1q-collect/touch-trace.txt"
+OUT=/tmp/dm1q-collect/touch-trace-raw.txt BUF_KB=${DM1Q_TRACE_BUF_KB:-12288} sh /tmp/phone-touch-trace.sh $TOUCH_TRACE 2>&1 | tee /tmp/dm1q-collect/touch-trace.txt"
 fi
 if [ -n "$TOUCH_WATCH" ]; then
 	BODY="$BODY

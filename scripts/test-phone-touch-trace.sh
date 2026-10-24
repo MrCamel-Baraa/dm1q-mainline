@@ -49,7 +49,8 @@ EOF
 	cat > "$D/bin/mkdir" <<EOF
 #!/bin/sh
 [ -e "$D/nomk" ] && exit 1
-mkdir -p "\$1/events/spi/spi_transfer_stop" "\$1/per_cpu/cpu0"
+mkdir -p "\$1/events/spi/spi_transfer_stop" "\$1/events/spi/spi_transfer_start" "\$1/events/irq/irq_handler_entry" "\$1/per_cpu/cpu0"
+echo 0 > "\$1/events/spi/spi_transfer_start/enable"; echo 0 > "\$1/events/irq/irq_handler_entry/enable"
 [ -e "$D/nospi" ] && rmdir "\$1/events/spi/spi_transfer_stop"
 echo 1408 > "\$1/buffer_size_kb"; echo 1 > "\$1/tracing_on"; echo 0 > "\$1/events/spi/spi_transfer_stop/enable" 2>/dev/null
 : > "\$1/trace"
@@ -97,6 +98,15 @@ expect "$O" "state line" "^irq count: [0-9]+ +gpio25: high +l12b=enabled:1800000
 expect "$O" "alive" "^touch is alive now \([1-9][0-9]* interrupts in 2 s\)"
 expect "$O" "RESULT ARMED" "^RESULT: ARMED"
 [ ! -s "$D/sys/bus/spi/drivers/fts2ba61y/unbind" ] && ok "no rebind when alive" || bad "rebind ran"
+[ "$(cat "$I/events/spi/spi_transfer_start/enable")" = 1 ] && grep -q 'bus_num == 0 && chip_select == 0' "$I/events/spi/spi_transfer_start/filter" && ok "EXTRA: spi_transfer_start enabled with the bus 0 / cs 0 filter" || bad "EXTRA: spi_transfer_start"
+[ "$(cat "$I/events/irq/irq_handler_entry/enable")" = 1 ] && grep -qx 'irq == 178' "$I/events/irq/irq_handler_entry/filter" && ok "EXTRA: irq_handler_entry enabled for irq 178" || bad "EXTRA: irq_handler_entry"
+expect "$O" "extra events line" "^extra events: spi_transfer_start irq_handler_entry\(irq 178\)"
+echo "== arm with EXTRA=0 records the stop only"
+D2="$W/a1x"; mk "$D2"; sim "$D2" alive
+go "$D2" arm EXTRA=0; rc=$?; unsim; I2=$(INSTD "$D2")
+[ "$rc" = 0 ] && ok "EXTRA=0: exit 0" || bad "EXTRA=0: exit $rc"
+[ "$(cat "$I2/events/spi/spi_transfer_start/enable")" = 0 ] && [ "$(cat "$I2/events/irq/irq_handler_entry/enable")" = 0 ] && ok "EXTRA=0: the extra events stay off" || bad "EXTRA=0: extra events on"
+reject "$D2/out" "EXTRA=0: no extra events line" "^extra events:"
 
 echo "== arm, dead, a rebind revives it"
 D="$W/a2"; mk "$D"; sim "$D" rebindfix
