@@ -811,3 +811,26 @@ INFERENCE: the stall is tied to touch-state transitions, not to the read timing 
 2. The kernel batch (to be approved): the fix for defect A, and research knobs for defect B (delay before the first read of an IRQ, per-transfer clock, counters of stalls and transitions).
 
 Status: A explained (fix pending); B open.
+
+### 2.26 Patch 0005 (package r11): the suspend fix and the stall instruments; a read revived four of four stalls (2026-10-24 evening)
+
+**FACT (captures `soak1-stall2` and `soak1-stall2-2`).**
+- `--touch-poke=read` revived two more stalls, so a read of the event FIFO has now revived four of four (2.22, 2.23 and these two); the `D1` register read of 2.25 revived none (one trial).
+- Third stall: the last read before it is the release at 3933.458 s (the one of 2.25); silent for 2010 s of the trace clock (two suspends in between, at 4864.9 s and 5858.8 s, neither followed by "nobody cared"); the poke at 5943.498 s; the IRQ read right after it is a touch-down with the left byte `3f` (left = 31).
+- Fourth stall: the last read before it is a MOVE (`80`) at 6150.478 s; silent for 24.3 s; the poke at 6174.828 s; the IRQ read right after it is a move with the left byte `1f` (left = 31). 135 touch-downs of touch id 0 happened between the two pokes.
+- So the six stalls known have these last records: touch-down (2.21), touch-down (2.23), release (2.25), move (this one), and release, release (2.20). The reading of 2.25 that stalls happen only at touch-down and release is withdrawn: they are enriched there (5 of 6, against 16% of the reads being touch-downs or releases in the soak) but not limited to it.
+- Correction to 2.23: it says the knob's write returned an error. With `dd` as the writer the write has returned ok in every run since (`write=ok`), so the non-zero exit of the earlier `printf` was a busybox quirk (cause not found), not the knob.
+
+**What patch 0005 does** (`kernel/patches/0005-*`, pmaports copy `add-fts2ba61y-suspend-and-stall.patch`, `pkgrel=11`; it applies on 0002 and 0004 and compiles against 7.3-rc3 with clang `-Wall -Wextra` without a warning: `bash scripts/compile-check-fts2ba61y.sh --patched`; it has NOT run on hardware).
+1. Defect A (2.25): `dev_pm_ops` disable the interrupt in suspend and enable it in resume (the device resumes after its SPI controller); a failing read is reported as handled up to 100 times in a row (1 to 2 ms apart) before it is reported as unhandled; a full queue (left = 31) is cleared, the touches are released, and it is counted, instead of failing the interrupt.
+2. Instruments in `/sys/kernel/debug/spi0.0/` next to `raw`, all idle at their defaults: `stats` (irqs, polls, events, press, move, release, overflow, errors, stalls, stall_after_none/press/move/release), `stats_reset`, `poll_ms` (0 = off; after that many ms without an interrupt, read the queue once: an interrupt within 2 ms after an empty read, or events in the read, count as one stall, classified by the last event; the read also recovers the touch), `read_delay_us` (wait before the first read of every interrupt) and `speed_hz` (the SPI clock at run time). With the defaults the driver behaves as r9 apart from point 1.
+3. Tools: `collect-phone-state.sh <label> --touch-set=poll_ms=150 --touch-stats[=reset]` (`scripts/phone-touch-stats.sh`, PC tests pass) sets the knobs, prints knobs and counters and the stalls per 1000 touch-downs.
+
+**Experiments with r11 (all at run time, no rebuilds).**
+- A: sleep and wake the phone with a finger on the screen and touch it afterwards; the log must not show "nobody cared".
+- B (baseline, touch stays usable): `--touch-set=poll_ms=150 --touch-stats=reset`, tap for about 10 minutes, `--touch-stats`. The counters give the stall rate per 1000 touch-downs and the event before each stall.
+- C (H11, a race with our read): the same with `read_delay_us=300`, then `1000`. A rate that falls with the delay puts the stall in the first 100 to 300 us after INT.
+- D (H14, the clock): the same with `speed_hz` 5000000 and 20000000.
+- A rate that moves in none of them points at the chip select and DMA mode (H12, devicetree only) or at the missing init (H13). An arm needs about 1500 touch-downs: at the rate of this boot (1 in 300 to 440) a clean arm of that size has a chance of about 2% by luck.
+
+Status: A has a candidate fix (untested on hardware); B has instruments (untested on hardware).

@@ -1,0 +1,490 @@
+From: dm1q mainline port <dm1q-mainline@example.com>
+Subject: [PATCH] Input: fts2ba61y: keep the interrupt off across suspend; stall instruments
+
+Suspend fix (docs/08 2.25): the PM core re-enables the level-triggered touch
+interrupt before the SPI controller resumes, the read fails, the handler
+returned IRQ_NONE and the kernel disabled the interrupt for good ("irq 178:
+nobody cared"). The interrupt is now disabled in suspend and enabled in
+resume (the device resumes after its controller), a failing read is reported
+as handled for up to 100 times in a row, and a full event queue (left = 31) is
+cleared and releases the touches instead of failing the interrupt.
+
+Instruments for the INT stall (docs/08 2.21 to 2.24), all in debugfs next to
+the raw knob and idle unless used: stats (counters of interrupts, touch-downs,
+moves, releases, full queues, stalls and the event before each stall),
+stats_reset, poll_ms (after that much silence read the queue once; an
+interrupt right after an empty read, or events in the read, count as a stall;
+the read also recovers the touch), read_delay_us (wait before the first read
+of an interrupt) and speed_hz (the SPI clock at run time).
+---
+ drivers/input/touchscreen/fts2ba61y.c | suspend irq fix, stall instruments
+
+diff --git a/drivers/input/touchscreen/fts2ba61y.c b/drivers/input/touchscreen/fts2ba61y.c
+--- a/drivers/input/touchscreen/fts2ba61y.c
++++ b/drivers/input/touchscreen/fts2ba61y.c
+@@ -20,15 +20,19 @@
+ #include <linux/input/touchscreen.h>
+ #include <linux/hex.h>
+ #include <linux/interrupt.h>
++#include <linux/ktime.h>
+ #include <linux/kernel.h>
+ #include <linux/mod_devicetable.h>
+ #include <linux/module.h>
+ #include <linux/mutex.h>
++#include <linux/pm.h>
+ #include <linux/regulator/consumer.h>
++#include <linux/seq_file.h>
+ #include <linux/spi/spi.h>
+ #include <linux/string.h>
+ #include <linux/uaccess.h>
+ #include <linux/unaligned.h>
++#include <linux/workqueue.h>
+ 
+ /* SPI opcodes that are sent as is */
+ #define FTS2BA61Y_OP_READ_EVENT		0x87
+@@ -85,6 +89,11 @@
+ /* opcode + one dummy byte + all the events the chip can queue */
+ #define FTS2BA61Y_XFER_MAX		(2 + FTS2BA61Y_EVENT_SIZE * FTS2BA61Y_MAX_EVENTS)
+ 
++/* failed reads in a row that are still reported as handled (1 to 2 ms apart) before the interrupt is reported as unhandled */
++#define FTS2BA61Y_MAX_READ_ERRORS	100
++/* the poll read counts as a restart of the chip's interrupt when the interrupt fires within this time after it */
++#define FTS2BA61Y_STALL_WINDOW_US	2000
++
+ struct fts2ba61y_data {
+ 	struct spi_device *spi;
+ 	struct input_dev *input_dev;
+@@ -103,6 +112,22 @@
+ 	u8 raw_tx[FTS2BA61Y_XFER_MAX];
+ 	u8 raw_rx[FTS2BA61Y_XFER_MAX];
+ 	size_t raw_len;
++
++	/* serializes the event service (IRQ thread and poll work); taken before ->lock */
++	struct mutex evlock;
++	struct delayed_work poll_work;
++	bool open;
++	u32 poll_ms;		/* debugfs: 0 = no poll */
++	u32 read_delay_us;	/* debugfs: wait before the first read of an interrupt */
++	u32 read_errors;	/* failed reads in a row, IRQ thread only */
++	u8 last_action;		/* TCHSTA of the last coordinate event, 0 = none yet */
++	u64 last_irq_ns;
++	unsigned long irq_seq;
++	struct {
++		u64 irqs, polls, errors, overflow;
++		u64 events, press, move, release;
++		u64 stalls, stall_after_none, stall_after_press, stall_after_move, stall_after_release;
++	} stats;
+ };
+ 
+ /* Send @opcode followed by @len bytes of @data. */
+@@ -283,8 +308,22 @@
+ 	return fts2ba61y_command(ts, FTS2BA61Y_CMD_TOUCHTYPE, types, sizeof(types));
+ }
+ 
+-/* Returns the number of events now in ts->events, or a negative errno. */
+-static int fts2ba61y_get_events(struct fts2ba61y_data *ts)
++static void fts2ba61y_release_all(struct fts2ba61y_data *ts)
++{
++	for (int i = 0; i < FTS2BA61Y_MAX_TOUCHES; i++) {
++		input_mt_slot(ts->input_dev, i);
++		input_mt_report_slot_inactive(ts->input_dev);
++	}
++	input_mt_sync_frame(ts->input_dev);
++	input_sync(ts->input_dev);
++}
++
++/*
++ * Returns the number of events now in ts->events, or a negative errno. A full
++ * queue (the chip held its interrupt back, docs/08 2.22) is cleared, the touches
++ * are released and *@overflow is set; the call then returns 0 events.
++ */
++static int fts2ba61y_get_events(struct fts2ba61y_data *ts, bool *overflow)
+ {
+ 	unsigned int left;
+ 	int error;
+@@ -299,7 +338,12 @@
+ 	left = FIELD_GET(FTS2BA61Y_EVENT_LEFT, ts->events[7]);
+ 	if (left >= FTS2BA61Y_MAX_EVENTS) {
+ 		fts2ba61y_command(ts, FTS2BA61Y_CMD_CLEAR_EVENTS, NULL, 0);
+-		return -EIO;
++		fts2ba61y_release_all(ts);
++		ts->stats.overflow++;
++		if (overflow)
++			*overflow = true;
++		dev_info_ratelimited(&ts->spi->dev, "event queue was full, cleared\n");
++		return 0;
+ 	}
+ 
+ 	if (left) {
+@@ -358,27 +402,48 @@
+ 	if (slot >= FTS2BA61Y_MAX_TOUCHES)
+ 		return;
+ 
++	ts->stats.events++;
+ 	switch (FIELD_GET(FTS2BA61Y_EVENT_TCHSTA, event[0])) {
+ 	case FTS2BA61Y_ACTION_PRESS:
++		ts->stats.press++;
++		ts->last_action = FTS2BA61Y_ACTION_PRESS;
++		fts2ba61y_report_touch(ts, event, slot);
++		break;
+ 	case FTS2BA61Y_ACTION_MOVE:
++		ts->stats.move++;
++		ts->last_action = FTS2BA61Y_ACTION_MOVE;
+ 		fts2ba61y_report_touch(ts, event, slot);
+ 		break;
+ 	case FTS2BA61Y_ACTION_RELEASE:
++		ts->stats.release++;
++		ts->last_action = FTS2BA61Y_ACTION_RELEASE;
+ 		input_mt_slot(ts->input_dev, slot);
+ 		input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, false);
+ 		break;
+ 	}
+ }
+ 
+-static irqreturn_t fts2ba61y_irq_handler(int irq, void *handle)
++/*
++ * Read and report whatever the chip has queued. @polled is set when the poll work
++ * calls it. Returns the number of events reported (0 when the queue was empty),
++ * or a negative errno.
++ */
++static int fts2ba61y_service(struct fts2ba61y_data *ts, bool polled, bool *overflow)
+ {
+-	struct fts2ba61y_data *ts = handle;
+ 	int count;
+ 
+-	count = fts2ba61y_get_events(ts);
++	guard(mutex)(&ts->evlock);
++
++	if (!polled) {
++		ts->stats.irqs++;
++		if (ts->read_delay_us)
++			fsleep(ts->read_delay_us);
++	}
++
++	count = fts2ba61y_get_events(ts, overflow);
+ 	if (count < 0) {
+-		dev_dbg(&ts->spi->dev, "failed to get events: %d\n", count);
+-		return IRQ_NONE;
++		ts->stats.errors++;
++		return count;
+ 	}
+ 
+ 	for (int i = 0; i < count; i++)
+@@ -389,9 +454,198 @@
+ 		input_sync(ts->input_dev);
+ 	}
+ 
++	return count;
++}
++
++static irqreturn_t fts2ba61y_irq_handler(int irq, void *handle)
++{
++	struct fts2ba61y_data *ts = handle;
++	int count;
++
++	WRITE_ONCE(ts->last_irq_ns, ktime_get_ns());
++	WRITE_ONCE(ts->irq_seq, ts->irq_seq + 1);
++
++	count = fts2ba61y_service(ts, false, NULL);
++	if (count < 0) {
++		dev_err_ratelimited(&ts->spi->dev, "failed to get events: %d\n", count);
++
++		/*
++		 * A read can fail for a short while (the SPI controller is still
++		 * suspended): the level-triggered line stays asserted, and reporting
++		 * every failure as unhandled would make the kernel disable the
++		 * interrupt for good after about 3 s of that (docs/08 2.25). Only a
++		 * failure that lasts reports it as unhandled.
++		 */
++		if (ts->read_errors++ < FTS2BA61Y_MAX_READ_ERRORS) {
++			usleep_range(1000, 2000);
++			return IRQ_HANDLED;
++		}
++
++		return IRQ_NONE;
++	}
++
++	ts->read_errors = 0;
++
+ 	return IRQ_HANDLED;
+ }
+ 
++static void fts2ba61y_count_stall(struct fts2ba61y_data *ts, u8 action)
++{
++	guard(mutex)(&ts->evlock);
++
++	ts->stats.stalls++;
++	switch (action) {
++	case FTS2BA61Y_ACTION_PRESS:
++		ts->stats.stall_after_press++;
++		break;
++	case FTS2BA61Y_ACTION_MOVE:
++		ts->stats.stall_after_move++;
++		break;
++	case FTS2BA61Y_ACTION_RELEASE:
++		ts->stats.stall_after_release++;
++		break;
++	default:
++		ts->stats.stall_after_none++;
++		break;
++	}
++
++	dev_info_ratelimited(&ts->spi->dev, "interrupt stall: the chip held events back (last event: %u)\n", action);
++}
++
++/*
++ * Research instrument (docs/08 2.24, 2.25), off unless debugfs poll_ms is set: after
++ * poll_ms of silence on the interrupt line, read the event queue once. Every stall
++ * seen so far was cured by exactly such a read, and the read itself returned no event:
++ * the chip then raised its interrupt within 200 us and the IRQ thread found the
++ * queued events. So an interrupt within FTS2BA61Y_STALL_WINDOW_US after an empty
++ * poll read, or events in the poll read, count as one stall, classified by the last
++ * event the IRQ thread saw. The read also recovers the touch.
++ */
++static void fts2ba61y_poll_work(struct work_struct *work)
++{
++	struct fts2ba61y_data *ts = container_of(to_delayed_work(work),
++						 struct fts2ba61y_data, poll_work);
++	unsigned int ms = READ_ONCE(ts->poll_ms);
++	bool overflow = false;
++	unsigned long seq = 0;
++	u8 action = 0;
++	int count;
++
++	if (!ms || !READ_ONCE(ts->open))
++		return;
++
++	if (ktime_get_ns() - READ_ONCE(ts->last_irq_ns) >= (u64)ms * NSEC_PER_MSEC) {
++		scoped_guard(mutex, &ts->evlock) {
++			action = ts->last_action;
++			seq = READ_ONCE(ts->irq_seq);
++			ts->stats.polls++;
++		}
++
++		count = fts2ba61y_service(ts, true, &overflow);
++		if (count > 0 || overflow) {
++			fts2ba61y_count_stall(ts, action);
++		} else if (count == 0) {
++			fsleep(FTS2BA61Y_STALL_WINDOW_US);
++			if (READ_ONCE(ts->irq_seq) != seq)
++				fts2ba61y_count_stall(ts, action);
++		}
++	}
++
++	if (READ_ONCE(ts->open))
++		schedule_delayed_work(&ts->poll_work, msecs_to_jiffies(ms));
++}
++
++static int fts2ba61y_stats_show(struct seq_file *m, void *unused)
++{
++	struct fts2ba61y_data *ts = m->private;
++
++	guard(mutex)(&ts->evlock);
++
++	seq_printf(m, "irqs %llu\npolls %llu\nevents %llu\npress %llu\nmove %llu\nrelease %llu\n",
++		   ts->stats.irqs, ts->stats.polls, ts->stats.events, ts->stats.press,
++		   ts->stats.move, ts->stats.release);
++	seq_printf(m, "overflow %llu\nerrors %llu\nstalls %llu\n",
++		   ts->stats.overflow, ts->stats.errors, ts->stats.stalls);
++	seq_printf(m, "stall_after_none %llu\nstall_after_press %llu\nstall_after_move %llu\nstall_after_release %llu\n",
++		   ts->stats.stall_after_none, ts->stats.stall_after_press,
++		   ts->stats.stall_after_move, ts->stats.stall_after_release);
++
++	return 0;
++}
++DEFINE_SHOW_ATTRIBUTE(fts2ba61y_stats);
++
++static int fts2ba61y_stats_reset_set(void *data, u64 val)
++{
++	struct fts2ba61y_data *ts = data;
++
++	guard(mutex)(&ts->evlock);
++	memset(&ts->stats, 0, sizeof(ts->stats));
++	ts->last_action = 0;
++
++	return 0;
++}
++DEFINE_DEBUGFS_ATTRIBUTE(fts2ba61y_stats_reset_fops, NULL, fts2ba61y_stats_reset_set, "%llu\n");
++
++static int fts2ba61y_poll_get(void *data, u64 *val)
++{
++	struct fts2ba61y_data *ts = data;
++
++	*val = READ_ONCE(ts->poll_ms);
++
++	return 0;
++}
++
++static int fts2ba61y_poll_set(void *data, u64 val)
++{
++	struct fts2ba61y_data *ts = data;
++
++	if (val > 60000)
++		return -EINVAL;
++
++	WRITE_ONCE(ts->poll_ms, val);
++	if (!val)
++		cancel_delayed_work_sync(&ts->poll_work);
++	else if (READ_ONCE(ts->open))
++		mod_delayed_work(system_wq, &ts->poll_work, msecs_to_jiffies(val));
++
++	return 0;
++}
++DEFINE_DEBUGFS_ATTRIBUTE(fts2ba61y_poll_fops, fts2ba61y_poll_get, fts2ba61y_poll_set, "%llu\n");
++
++/* The SPI clock, changed at run time (the devicetree value is the default). */
++static int fts2ba61y_speed_get(void *data, u64 *val)
++{
++	struct fts2ba61y_data *ts = data;
++
++	*val = ts->spi->max_speed_hz;
++
++	return 0;
++}
++
++static int fts2ba61y_speed_set(void *data, u64 val)
++{
++	struct fts2ba61y_data *ts = data;
++	u32 old;
++	int error;
++
++	if (!val || val > U32_MAX)
++		return -EINVAL;
++
++	guard(mutex)(&ts->evlock);
++	guard(mutex)(&ts->lock);
++
++	old = ts->spi->max_speed_hz;
++	ts->spi->max_speed_hz = val;
++	error = spi_setup(ts->spi);
++	if (error) {
++		ts->spi->max_speed_hz = old;
++		spi_setup(ts->spi);
++	}
++
++	return error;
++}
++DEFINE_DEBUGFS_ATTRIBUTE(fts2ba61y_speed_fops, fts2ba61y_speed_get, fts2ba61y_speed_set, "%llu\n");
++
+ /*
+  * Debugfs raw transfer knob, /sys/kernel/debug/<spi device>/raw (experiments
+  * only, mode 0600). Writing hex bytes, e.g. "A0 00 01", sends them to the chip
+@@ -528,8 +782,17 @@
+ static int fts2ba61y_input_open(struct input_dev *dev)
+ {
+ 	struct fts2ba61y_data *ts = input_get_drvdata(dev);
++	int error;
++
++	error = fts2ba61y_command(ts, FTS2BA61Y_CMD_SENSE_ON, NULL, 0);
++	if (error)
++		return error;
++
++	WRITE_ONCE(ts->open, true);
++	if (READ_ONCE(ts->poll_ms))
++		mod_delayed_work(system_wq, &ts->poll_work, msecs_to_jiffies(ts->poll_ms));
+ 
+-	return fts2ba61y_command(ts, FTS2BA61Y_CMD_SENSE_ON, NULL, 0);
++	return 0;
+ }
+ 
+ static void fts2ba61y_input_close(struct input_dev *dev)
+@@ -537,6 +800,9 @@
+ 	struct fts2ba61y_data *ts = input_get_drvdata(dev);
+ 	int error;
+ 
++	WRITE_ONCE(ts->open, false);
++	cancel_delayed_work_sync(&ts->poll_work);
++
+ 	error = fts2ba61y_command(ts, FTS2BA61Y_CMD_SENSE_OFF, NULL, 0);
+ 	if (error)
+ 		dev_err(&ts->spi->dev, "failed to turn off sensing: %d\n", error);
+@@ -549,6 +815,46 @@
+ 	regulator_bulk_disable(ARRAY_SIZE(ts->regulators), ts->regulators);
+ }
+ 
++static void fts2ba61y_stop_poll(void *data)
++{
++	struct fts2ba61y_data *ts = data;
++
++	WRITE_ONCE(ts->open, false);
++	cancel_delayed_work_sync(&ts->poll_work);
++}
++
++/*
++ * The touch interrupt is level triggered and the chip holds it low while it has
++ * events. The PM core re-enables interrupts before it resumes devices, so on the
++ * way up the IRQ thread can run while the SPI controller is still suspended: the
++ * read fails ("Attempted to sync while suspend"), and the line fires again and
++ * again until the kernel disables it ("irq 178: nobody cared", docs/08 2.25).
++ * Keep the interrupt off from suspend until this device resumes, which happens
++ * after its controller has resumed.
++ */
++static int fts2ba61y_suspend(struct device *dev)
++{
++	struct fts2ba61y_data *ts = dev_get_drvdata(dev);
++
++	disable_irq(ts->spi->irq);
++	cancel_delayed_work_sync(&ts->poll_work);
++
++	return 0;
++}
++
++static int fts2ba61y_resume(struct device *dev)
++{
++	struct fts2ba61y_data *ts = dev_get_drvdata(dev);
++
++	enable_irq(ts->spi->irq);
++	if (READ_ONCE(ts->open) && READ_ONCE(ts->poll_ms))
++		mod_delayed_work(system_wq, &ts->poll_work, msecs_to_jiffies(ts->poll_ms));
++
++	return 0;
++}
++
++static DEFINE_SIMPLE_DEV_PM_OPS(fts2ba61y_pm_ops, fts2ba61y_suspend, fts2ba61y_resume);
++
+ static int fts2ba61y_probe(struct spi_device *spi)
+ {
+ 	struct device *dev = &spi->dev;
+@@ -565,7 +871,10 @@
+ 		return -ENOMEM;
+ 
+ 	ts->spi = spi;
++	spi_set_drvdata(spi, ts);
+ 	mutex_init(&ts->lock);
++	mutex_init(&ts->evlock);
++	INIT_DELAYED_WORK(&ts->poll_work, fts2ba61y_poll_work);
+ 
+ 	spi->mode = SPI_MODE_0;
+ 	spi->bits_per_word = 8;
+@@ -588,6 +897,11 @@
+ 	if (error)
+ 		return error;
+ 
++	/* runs before the rails go off */
++	error = devm_add_action_or_reset(dev, fts2ba61y_stop_poll, ts);
++	if (error)
++		return error;
++
+ 	msleep(140);
+ 
+ 	error = fts2ba61y_reset(ts);
+@@ -645,6 +959,11 @@
+ 	if (error)
+ 		return error;
+ 	debugfs_create_file("raw", 0600, dbg, ts, &fts2ba61y_raw_fops);
++	debugfs_create_file("stats", 0400, dbg, ts, &fts2ba61y_stats_fops);
++	debugfs_create_file_unsafe("stats_reset", 0200, dbg, ts, &fts2ba61y_stats_reset_fops);
++	debugfs_create_u32("read_delay_us", 0600, dbg, &ts->read_delay_us);
++	debugfs_create_file_unsafe("poll_ms", 0600, dbg, ts, &fts2ba61y_poll_fops);
++	debugfs_create_file_unsafe("speed_hz", 0600, dbg, ts, &fts2ba61y_speed_fops);
+ 
+ 	return 0;
+ }
+@@ -665,6 +984,7 @@
+ 	.driver = {
+ 		.name = "fts2ba61y",
+ 		.of_match_table = fts2ba61y_of_match,
++		.pm = pm_sleep_ptr(&fts2ba61y_pm_ops),
+ 	},
+ 	.probe = fts2ba61y_probe,
+ 	.id_table = fts2ba61y_spi_ids,
