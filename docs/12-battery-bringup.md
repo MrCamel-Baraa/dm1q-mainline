@@ -148,3 +148,20 @@ and `dmesg | grep -iE 'max77705|max17042|i2c'`.
 - Checked in the new DTB: gpu `okay` and the `a740_zap.mbn` firmware-name still present (the v20 pitfall of docs/11 9.14), `i2c_hub_8` `okay`,
   pmic@66 (interrupt = gpio133 level-low), charger@69, fuel-gauge@36 and the simple-battery node present; the rest of the diff against v21 is phandle renumbering.
 - Rollback: `../_scratch/pmos-v21-r11-pm-stall`.
+
+## 10. First boot with v22 (2026-10-25 18:19): the hub I2C works, the MFD refuses Pass2 (CONFIRMED)
+
+Phone log: `max77705 0-0066: error -ENODEV: Rev.0x2 is not tested`, `probe of 0-0066 with driver max77705 returned 19`;
+`max77705-charger` (0-0069) and `max17042` (0-0036) return -517 and sit in `deferred probe pending: supplier 0-0066 not ready`.
+`/sys/class/power_supply/` is still empty.
+
+- GOOD: the I2C master hub, the bus (clocks, pins, power domain) and the chip all work: the PMIC revision register at 0x66 was read.
+  The "hub needs an ADSP-owned resource" worry from section 7 did not happen. Charger and gauge are only waiting for the pmic.
+- The Pass2 risk of section 7 is real: upstream `drivers/mfd/max77705.c` accepts only `MAX77705_PASS3`; this chip reads revision 2.
+- Samsung's downstream core (`drivers/mfd/maxim/max77705.c`) has a table `{id 0x5 rev 0x3 PASS3}, {0x5, 0x4 PASS4}, {0x15, 0x2 PASS2 "MD15"}`,
+  so revision 2 is the MD15 variant and is a supported, shipping chip. Downstream charger and fuel-gauge sources contain no revision checks;
+  the revision only selects the USB-C PD firmware update path (and one PASS1-only register offset), none of which mainline has. INFERRED: the ID
+  register (0x00) of this chip reads 0x15; not read yet.
+- Fix: accept Pass2 next to Pass3 in the MFD probe. Draft: `notes/2026-10-25-0006-mfd-max77705-accept-pass2.patch` (applies to 7.3-rc3, not
+  yet in kernel/patches or the APKBUILD). It is a kernel code change, so it needs a package build (r12 with the patch), a flash of
+  boot + vendor_boot and a refresh of the rootfs modules (the max77705 module changes).
