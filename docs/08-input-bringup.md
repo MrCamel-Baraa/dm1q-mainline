@@ -870,3 +870,11 @@ Status: open.
 **Change: the poll at every boot.** `phone-boot-setup.sh touch-poll[=MS]` (default 150) installs `dm1q-touch-poll.service`, which sets `poll_ms` once the debugfs knob exists, and applies it now when the knob is there; `undo-touch-poll` removes it (`collect-phone-state.sh <label> --boot-setup=touch-poll`). It costs one 18-byte read per poll while the line is silent. It is a recovery, not the explanation; it stays on until the cause is found and removed.
 
 Status: A awaiting the sleep test; B open, recovered by the poll.
+
+### 2.29 Defect A is fixed on the phone (2026-10-25 morning, `notes/2026-10-25-suspend1`, r11 kernel, poll_ms = 150)
+
+FACT. Two deep suspends in this boot (`PM: suspend entry (deep)` at 37039.8 s and 37290.4 s of the kernel clock): touch worked after both (Baraa), and the log has neither "Attempted to sync while suspend" nor "nobody cared". Both resumes logged `fts2ba61y spi0.0: event queue was full, cleared` (37065.827 s and 37339.239 s): the chip had queued events while the system slept, and the r11 driver clears them instead of failing the interrupt. The counters over the whole boot: 2529 touch-downs, `overflow 2` (those two resumes), `errors 0`. The in-kernel `stalls 40` is the over-counting rule of 2.27 and is not a stall count. With the poll on for hours of use no stall went unrecovered: apart from the two resumes the queue was never found full.
+
+Also FACT, from the same log: the suspend does not last. The non-boot CPUs are back up 0.6 s after "suspend entry" (`Disabling non-boot CPUs` at 37290.959 s, `Enabling non-boot CPUs` at 37291.000 s), so something wakes the system at once; then the Wi-Fi card is restarted (`mhi mhi0: Requested to power ON`, `Device failed to enter MHI Ready` after 26 s) and the resume lasts 26 to 49 s, with wlan0 gone afterwards (`failed to enable PMF QOS: -108`). Baraa's workaround while this is open: deep suspend off in the Plasma Mobile settings (the screen locks and turns off, but there is no deep suspend: bad for the battery).
+
+Status: A closed. B (the INT stall) open and recovered by the poll (2.28). The Wi-Fi resume is docs/02 of 2026-10-24 and below.

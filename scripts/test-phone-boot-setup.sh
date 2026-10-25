@@ -343,6 +343,34 @@ for sh in dash bash; do
 	D="$W/q4-$sh"; mk "$D"; mkdir -p "$D/usr/local/sbin"; printf 'foreign\n' > "$D/usr/local/sbin/dm1q-touch-poll"
 	run "$sh" "$D" undo-touch-poll
 	[ "$(cat "$D/usr/local/sbin/dm1q-touch-poll")" = foreign ] && ok "a script without our marker is kept" || bad "foreign script removed"
+
+	echo "== $sh: wifi-sleep-hook"
+	D="$W/w1-$sh"; mk "$D"
+	run "$sh" "$D" wifi-sleep-hook; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "wifi-sleep-hook: exit 0" || { bad "exit $rc"; cat "$O"; }
+	H="$D/etc/systemd/system-sleep/dm1q-ath11k"
+	[ -x "$H" ] && ok "hook executable" || bad "hook missing"
+	head -n 2 "$H" | grep -q '^# dm1q-boot-setup' && ok "hook has the marker" || bad "hook has no marker"
+	expect "$O" "result line" "^RESULT: ath11k_pci is unloaded before every suspend"
+	printf '#!/bin/sh\necho "modprobe $*" >> "%s/modprobe.log"\nexit 1\n' "$D" > "$D/bin/modprobe"; chmod +x "$D/bin/modprobe"
+	DM1Q_MODPROBE="$D/bin/modprobe" DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$H" pre suspend; rc=$?
+	{ [ "$rc" = 0 ] && grep -qx 'modprobe -r ath11k_pci' "$D/modprobe.log"; } && ok "pre: unloads ath11k_pci (exit 0 even if modprobe fails)" || bad "pre hook (rc $rc)"
+	DM1Q_MODPROBE="$D/bin/modprobe" DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$H" post suspend; rc=$?
+	{ [ "$rc" = 0 ] && grep -qx 'modprobe ath11k_pci' "$D/modprobe.log"; } && ok "post: loads ath11k_pci" || bad "post hook (rc $rc)"
+	expect "$D/kmsg" "the kernel log line of the last phase (a plain file is truncated by each write, /dev/kmsg is not)" "dm1q-ath11k: loaded ath11k_pci after suspend"
+	: > "$D/modprobe.log"
+	DM1Q_MODPROBE="$D/bin/modprobe" DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$H" bogus suspend
+	[ ! -s "$D/modprobe.log" ] && ok "an unknown phase does nothing" || bad "unknown phase called modprobe"
+	run "$sh" "$D" check; expect "$D/out" "check reports the hook" "^wifi_sleep_hook=present"
+	[ -z "$(forbidden "$D")" ] && ok "wifi-sleep-hook never starts or stops anything" || bad "forbidden: $(forbidden "$D")"
+	D="$W/w2-$sh"; mk "$D"; mkdir -p "$D/etc/systemd/system-sleep"; printf 'foreign\n' > "$D/etc/systemd/system-sleep/dm1q-ath11k"
+	run "$sh" "$D" wifi-sleep-hook; rc=$?
+	{ [ "$rc" = 3 ] && [ "$(cat "$D/etc/systemd/system-sleep/dm1q-ath11k")" = foreign ]; } && ok "a foreign file of that name is not overwritten" || bad "foreign hook overwritten (rc $rc)"
+	run "$sh" "$D" undo-wifi-sleep-hook
+	[ "$(cat "$D/etc/systemd/system-sleep/dm1q-ath11k")" = foreign ] && ok "undo keeps a foreign file" || bad "undo removed a foreign file"
+	D="$W/w1-$sh"
+	run "$sh" "$D" undo-wifi-sleep-hook; rc=$?
+	{ [ "$rc" = 0 ] && [ ! -e "$D/etc/systemd/system-sleep/dm1q-ath11k" ]; } && ok "undo removes our hook" || bad "undo left the hook (rc $rc)"
 done
 
 echo "== static checks"
@@ -352,11 +380,14 @@ for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate dm1
 	[ -f "$D/usr/local/sbin/$f" ] || { bad "generated $f missing"; continue; }
 	bash --posix -n "$D/usr/local/sbin/$f" && ok "bash --posix -n on generated $f" || bad "syntax of generated $f"
 done
+run bash "$D" wifi-sleep-hook >/dev/null 2>&1
+[ -f "$D/etc/systemd/system-sleep/dm1q-ath11k" ] && { bash --posix -n "$D/etc/systemd/system-sleep/dm1q-ath11k" && ok "bash --posix -n on the generated sleep hook" || bad "syntax of the sleep hook"; }
 if command -v shellcheck >/dev/null; then
 	shellcheck -s sh -S warning "$SCRIPT" && ok "shellcheck -s sh -S warning" || bad "shellcheck on the script"
 	for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate dm1q-touch-poll; do
 		[ -f "$D/usr/local/sbin/$f" ] && { shellcheck -s sh -S warning "$D/usr/local/sbin/$f" && ok "shellcheck on generated $f" || bad "shellcheck on generated $f"; }
 	done
+	[ -f "$D/etc/systemd/system-sleep/dm1q-ath11k" ] && { shellcheck -s sh -S warning "$D/etc/systemd/system-sleep/dm1q-ath11k" && ok "shellcheck on the generated sleep hook" || bad "shellcheck on the sleep hook"; }
 else
 	echo "  skip  shellcheck (not installed)"
 fi
