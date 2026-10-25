@@ -62,7 +62,10 @@ pkgver=7.3_rc3
 # (MFD_MAX77705, CHARGER_MAX77705, BATTERY_MAX17042) are already modules in the config, no fragment change. After the build: flash boot +
 # vendor_boot, then refresh the rootfs modules (scripts/refresh-phone-modules.sh; the max77705 module changed). r12 reports
 # "#13-samsung-dm1q-mainline".
-pkgrel=12
+# r13 (2026-10-25): ADSP (docs/13). DTS only: &remoteproc_adsp enabled with firmware-name qcom/sm8550/adsp.mdt + adsp_dtb.mdt. The firmware itself (the phone's own, from
+# its apnhlos partition) is NOT in this package and not in the default firmware path; it is staged by hand and the ADSP is started by hand. No kernel code or config change
+# against r12, so the r12 module tree on the rootfs stays valid. NOT BUILT: boot image sets take the DTS from dts/dm1q/dm1q.dts (scripts/make-dtb-image-set.sh).
+pkgrel=13
 pkgdesc="Mainline kernel for Samsung Galaxy S23 (dm1q)"
 arch="aarch64"
 _carch="arm64"
@@ -177,5 +180,5 @@ a16bf8b80b23376777c3e33caa4644be8f9b70af029785a6629108c3487ecbd5feacf44ff0f30388
 e5ab349cb2cbd492acf296b7f9b9beb9197329d463037056c7008b471b780c23d2311198e0ed0de65e4ba831fb227aebc07e74a170d69aa8d72cfccdd869d1c3  add-max77705-accept-pass2.patch
 b7ae70b5062f22a2200b82681ff68519db0887b77c6bbccc99c81446058fd13dc19ba2cb83fb9faf41bd12c9c37b1b81a1e48f994dc10160a55d495c428cf2c1  add-s6e3fac-amb606aw01-panel.patch
 f8c9eccacb7c856f1f9d5fca55ee8d9f25fa2e43512c91289ca8b62ba1210bb21d9fddba7eda4dc79c5db4096606c994dfd6800e4b8433c1921f195e9f176088  config-dm1q.fragment
-b9d9cb7085c1bff0d0d6e8d236bb0f6878f562d840d269da2de94c1e5685e1448367469fd4035e9c05f3101952113651f77de1a513a1d85a2db7e61e06041267  sm8550-samsung-dm1q.dts
+dc6f6ca0c856d795d28da64ad0cedf18021d74fd1515e0d2f595d7099622e6afd54c957cd65ca9a0a94670332f337049f0c2a07606bb3e4ee9efd50b97ae1d56  sm8550-samsung-dm1q.dts
 "

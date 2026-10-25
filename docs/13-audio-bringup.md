@@ -104,3 +104,14 @@ the files checked below are complete, so that does not matter for them.
 2. First start by hand and without a boot-loop risk (the GPU method of docs/11): put the firmware in `/root/dm1q-dsp-fw/qcom/sm8550/` on the phone (not in the default firmware path), point
    `firmware_class.path` at it at runtime and `echo start > /sys/class/remoteproc/remoteprocN/state`. A reboot leaves the default path without the firmware, so a bad image cannot loop the boot.
 3. Read dmesg (PAS authentication, smp2p, glink, the ADSP's own log), then the audio stack.
+
+## 9. DTS applied and image set v24 built (2026-10-25 23:40; NOT flashed)
+
+- `dts/dm1q/dm1q.dts` (and the identical pmaports copy `sm8550-samsung-dm1q.dts`): `&remoteproc_adsp { firmware-name = "qcom/sm8550/adsp.mdt", "qcom/sm8550/adsp_dtb.mdt"; status = "okay"; };`.
+  Compiles with the kernel's dtc. APKBUILD: checksum updated, `pkgrel=13` (DTS only, NOT built; r12 stays the built kernel, no module refresh needed).
+- `../_scratch/pmos-v24-adsp` = `make-dtb-image-set.sh` from the r12 apk with `--ref-set ../_scratch/pmos-v23-max77705` (kernel and ramdisk identical to v23, only the DTB differs). Checked in its DTB:
+  the only differences against v23 are the ADSP node's `status` ("disabled" -> "okay") and the new `firmware-name`; the ADSP `memory-region` resolves to `adspslpi@9ea00000` (size 0x59b4000, the live value)
+  and `q6-adsp-dtb-region@9e980000` (0x80000); the GPU zap firmware and the battery nodes are still there. Rollback: `../_scratch/pmos-v23-max77705`.
+- Firmware handling (decided): the phone's own `adsp*` files (`../_scratch/dm1q-dsp-fw-vendor/apnhlos-image/`) go to `/root/dm1q-dsp-fw/qcom/sm8550/` on the phone, NOT into the default firmware
+  path. After boot: `echo /root/dm1q-dsp-fw > /sys/module/firmware_class/parameters/path`, then `echo start > /sys/class/remoteproc/remoteprocN/state`, and read dmesg. A reboot returns to a boot without
+  the firmware, so a bad image cannot loop the boot. TODO (after it works): the boot-time staging in `phone-boot-setup.sh` with a guard like the GPU one.

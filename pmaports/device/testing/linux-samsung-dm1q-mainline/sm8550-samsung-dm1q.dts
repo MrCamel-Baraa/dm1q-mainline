@@ -1414,3 +1414,16 @@
 		bias-disable;
 	};
 };
+
+/*
+ * ADSP (audio DSP, docs/13). Without it there is no audio. The phone's own signed firmware (not in the repo) is in the split format on its apnhlos partition:
+ * adsp.mdt + adsp.b00-b50 and adsp_dtb.mdt + adsp_dtb.b00-b02, verified against the ELF program headers (scripts/check-mdt-set.py); the ADSP LOAD segments end exactly
+ * at the end of the adspslpi carveout declared above (0x9ea00000 + 0x59b4000). The mainline PAS driver loads the .mdt/.bNN form when firmware-name ends in .mdt.
+ * The firmware is NOT in the default firmware path on the phone: it is staged in /root/dm1q-dsp-fw and started by hand (firmware_class.path, remoteproc state),
+ * so a bad image cannot loop the boot. With no firmware at boot the remoteproc simply stays offline.
+ */
+&remoteproc_adsp {
+	firmware-name = "qcom/sm8550/adsp.mdt",
+			"qcom/sm8550/adsp_dtb.mdt";
+	status = "okay";
+};
