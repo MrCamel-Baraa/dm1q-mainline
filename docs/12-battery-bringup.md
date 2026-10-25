@@ -174,3 +174,28 @@ Phone log: `max77705 0-0066: error -ENODEV: Rev.0x2 is not tested`, `probe of 0-
 - Steps for the user: `pmbootstrap checksum linux-samsung-dm1q-mainline && pmbootstrap build linux-samsung-dm1q-mainline` (needs his root rights for the chroot),
   then the image set from the r12 apk with `--new-kernel`, flash boot + vendor_boot, then `scripts/refresh-phone-modules.sh --apk <r12 apk> --reboot`.
 - Expected on the phone: no "Rev.0x2 is not tested" line; `max77705`, `max77705-charger`, `max17042` bind; `power_supply` shows a battery and a charger.
+
+## 12. v23 / package r12 on the phone: the battery works (2026-10-25 18:35, CONFIRMED)
+
+Boot of the r12 kernel (`uname -v` = `#13-samsung-dm1q-mainline`) after refreshing the rootfs modules. `power_supply` lists `max170xx_battery` and
+`max77705-charger`. dmesg: `probe of 0-0066 with driver max77705 returned 0`, `probe of 0-0069 with driver max77705-charger returned 0`,
+`probe of max77705-battery.1.auto with driver max17042 returned 0`; the earlier -517 lines were the deferrals before the pmic came up. Harmless lines:
+`max77705-rgb/charger/haptic: Failed to locate of_node` (the MFD cells have no child nodes; the charger is a sibling i2c node) and
+`max77693-haptic: failed to get pwm device` (the vibrator is not described yet).
+
+`uevent` readings (phone on a USB cable, screen on): status Charging, health Good, 3.883 V, capacity 51 %, 31.8 C, current_now 121 mA, cycle count 189,
+charge_now 754 mAh of charge_full 1456 mAh (51.8 %, consistent with capacity 51). Charger: online, type USB, charge type Fast, constant charge voltage 4.42 V
+(our battery node), constant charge current 500 mA, input current limit 500 mA.
+
+What the numbers say:
+- The voltage, temperature, percentage and cycle count are plausible; the gauge's own state survived from Android.
+- `voltage_max` 4.34 V / `voltage_min` 3.04 V are the gauge's recorded min/max (max17042 reads the MinMaxVolt register), not configuration.
+- The charge limits of 500 mA (input and charge) are the charger's register defaults: the mainline charger driver programs only the float voltage from
+  the battery node, not `constant-charge-current-max`, and nothing detects the charger type. On the downstream phone the USB-C controller in the
+  MAX77705 (BC1.2 / PD, Samsung's max77705 usbc/muic drivers) sets the input limit; mainline has no driver for it. `input_current_limit` and
+  `constant_charge_current` are writable in sysfs, and the driver has an AICL work item that adjusts the input limit.
+- OPEN: the gauge's absolute capacity looks about 2.6 times too small: `charge_full_design` 1482 mAh and `charge_full` 1456 mAh against 3900 mAh in Samsung's DT
+  (design capacity register 0x5ca = 1482 in downstream `battery0,capacity`). The percentage is self-consistent, so it is the unit scale
+  (`maxim,rsns-microohm`, 5000 as in starqltechn) or Samsung's own register convention. `current_now` is scaled the same way. Not resolved.
+- UNVERIFIED: that charging terminates (status Full, current falls to the 151 mA termination current the gauge reports) at 4.42 V. Watch one full charge before
+  leaving the phone charging unattended.
