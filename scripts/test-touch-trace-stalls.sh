@@ -59,7 +59,7 @@ python3 "$PY" "$W/empty" > "$W/o2" 2>&1; rc=$?
 python3 "$PY" > "$W/o3" 2>&1; rc=$?
 [ "$rc" = 2 ] && ok "no argument: exit 2" || bad "no argument: exit $rc"
 
-python3 -m py_compile "$PY" && ok "py_compile" || bad "py_compile"
+python3 -c "import ast,sys; ast.parse(open(sys.argv[1]).read())" "$PY" && ok "the script parses" || bad "the script does not parse"
 
 echo
 [ "$fail" = 0 ] && echo "all tests passed" || { echo "SOME TESTS FAILED"; exit 1; }
