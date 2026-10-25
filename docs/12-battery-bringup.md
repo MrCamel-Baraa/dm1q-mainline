@@ -199,3 +199,9 @@ What the numbers say:
   (`maxim,rsns-microohm`, 5000 as in starqltechn) or Samsung's own register convention. `current_now` is scaled the same way. Not resolved.
 - UNVERIFIED: that charging terminates (status Full, current falls to the 151 mA termination current the gauge reports) at 4.42 V. Watch one full charge before
   leaving the phone charging unattended.
+
+## 13. Charge-limit test on the PC's USB port (2026-10-25 18:42, CONFIRMED by the user: the phone was connected to the PC, so the source is capped)
+
+Written at runtime: `constant_charge_current` = 1000000 and `input_current_limit` = 1000000. Read back after 5 s: input limit 650000 (not 1 A), charge current 1000000,
+gauge `current_now` 229 mA (121 mA before), voltage 3.912 V, capacity 51 -> 52 %. The charger's AICL backed the input limit off to 650 mA, which fits a PC USB port as the source.
+So: the limits are plain settings (writable in sysfs, reset at reboot), AICL works, and the real charge speed needs a test with a wall charger (TODO).
