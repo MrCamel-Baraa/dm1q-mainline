@@ -140,3 +140,11 @@ and `dmesg | grep -iE 'max77705|max17042|i2c'`.
 - Checked: `cpp` + the kernel's own dtc (`~/.cache/dm1q-kernel-src/out-real/scripts/dtc/dtc`) compile it with no new warnings; pmic@66, charger@69,
   fuel-gauge@36, the battery node, `i2c_hub_8` and `i2c_master_hub_0` are in the DTB.
 - TODO after flashing: `ls /sys/class/power_supply/`, `dmesg | grep -iE 'max77705|max17042|i2c'`, and the PMIC revision line (Pass3 risk, section 7).
+
+## 9. Image set v22 (built 2026-10-25, NOT flashed)
+
+- `../_scratch/pmos-v22-battery` = `scripts/make-dtb-image-set.sh --dts dts/dm1q/dm1q.dts --ref-set ../_scratch/pmos-v21-r11-pm-stall --apk <linux-samsung-dm1q-mainline-7.3_rc3-r11.apk>`
+  (same kernel r11 and ramdisk as v21; only the DTB differs; no `--new-kernel`, no module refresh needed).
+- Checked in the new DTB: gpu `okay` and the `a740_zap.mbn` firmware-name still present (the v20 pitfall of docs/11 9.14), `i2c_hub_8` `okay`,
+  pmic@66 (interrupt = gpio133 level-low), charger@69, fuel-gauge@36 and the simple-battery node present; the rest of the diff against v21 is phandle renumbering.
+- Rollback: `../_scratch/pmos-v21-r11-pm-stall`.
