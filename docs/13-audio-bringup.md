@@ -52,3 +52,18 @@ whether the ADSP runs at all.
 - Script change (same day): the search is now case-insensitive (`*adsp*`), skips files under `bin/` and `lib*/`, also mounts `dsp` and `bluetooth` read-only, and prints an
   `ls -lR` tree (first 300 lines) of every firmware location (`/vendor/firmware_mnt`, `modem`, `dsp`, `bluetooth`, `/vendor/firmware`, `/vendor/dsp`). Re-tested on the PC fake tree
   (uppercase `ADSP.MBN` found, `bin/adsprpcd` skipped). NOT yet run again on the phone.
+
+## 6. Second scan, 2026-10-25 23:27 (CONFIRMED; `../_scratch/dm1q-dsp-fw-vendor/scan.txt`)
+
+- Samsung's open-source release (`_scratch/samsung-opensource-s911b`) contains no firmware blobs: no `.mbn`, `.mdt`, `.elf`, `.jsn` or `adsp.bNN` files anywhere (only kernel
+  and HAL source, e.g. the `adsprpcd` init rc). The signed ADSP image can only come from the phone itself.
+- `modem` (vfat): `image/` holds `modem.mdt` + `modem.b00-b31`, `modem_dtb.*`, `ipa_fws.*` + `fw_ipa_gsi_5.5_w.elf`, `modemr.jsn`, `kailua/qdsp6m.qdb` and `modem_pr/mcfg/...`
+  (modem configs). NO ADSP image. Verinfo directory present.
+- `dsp` (ext4): `adsp/` (`map_SHARED_LIBS_kailua.adsp.prodQ.txt`, `map_SSC_SHARED_LIBS_kailua.adsp.prodQ_SHARED_LIBS.txt`), `cdsp/` (`libevadsp_3_0*.so`, ...): the Hexagon USERSPACE
+  libraries (FastRPC), not the DSP firmware. The map file names show the ADSP build: `kailua.adsp.prodQ`.
+- `bluetooth`: not mountable read-only as vfat, ext4 or erofs (probably a raw signed image; look at it in the Bluetooth step).
+- `/vendor/firmware_mnt` listed EMPTY (`total 0`): TWRP had `apnhlos` (vfat) mounted there when the scan started, but the script's own `twrp mount /vendor` then mounted the vendor
+  partition on `/vendor`, which hides `/vendor/firmware_mnt`. INFERRED: Samsung splits Qualcomm's NON-HLOS image into `apnhlos` (AP side: ADSP, CDSP, WLAN, ...) and `modem`; the ADSP
+  firmware is therefore most likely in `apnhlos`, which the scans never read.
+- Script fix (same day, NOT yet run on the phone): step 0 binds the existing `apnhlos` mount (or mounts the partition itself, read-only) at `/mnt/dm1q-apnhlos` BEFORE vendor is mounted,
+  and adds it to the search and to the tree listing.

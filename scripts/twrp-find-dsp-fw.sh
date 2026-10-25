@@ -5,14 +5,15 @@
 # (names containing "adsp", any case, and battmgr*; files under bin/ and lib*/ are skipped). It never writes to a partition and never mounts read-write.
 #   scan    print the layout, the mounts, the trees, the directories that hold ADSP files (ls -l), and  FOUND <real path> <bytes> <sha256> <name>  lines
 #           (or NONE); it LEAVES what it had to mount mounted so the files can be pulled
-#   umount  unmount what scan mounted ($MNT, $MNTM, $MNTD, $MNTB), if mounted
-# Env (the PC-side test uses them): BLOCKDIR (/dev/block) MNT (/mnt/dm1q-vendor) MNTM (/mnt/dm1q-modem) MNTD (/mnt/dm1q-dsp) MNTB (/mnt/dm1q-bt)
+#   umount  unmount what scan mounted ($MNT, $MNTM, $MNTD, $MNTB, $MNTA), if mounted
+# Env (the PC-side test uses them): BLOCKDIR (/dev/block) MNT (/mnt/dm1q-vendor) MNTM (/mnt/dm1q-modem) MNTD (/mnt/dm1q-dsp) MNTB (/mnt/dm1q-bt) MNTA (/mnt/dm1q-apnhlos)
 #   ROOTS ("/vendor /system/vendor /firmware /firmware_mnt /vendor/firmware_mnt") MAXDEPTH (6) SHA PROC_MOUNTS (/proc/mounts)
 BLOCKDIR="${BLOCKDIR:-/dev/block}"
 MNT="${MNT:-/mnt/dm1q-vendor}"
 MNTM="${MNTM:-/mnt/dm1q-modem}"
 MNTD="${MNTD:-/mnt/dm1q-dsp}"
 MNTB="${MNTB:-/mnt/dm1q-bt}"
+MNTA="${MNTA:-/mnt/dm1q-apnhlos}"
 ROOTS="${ROOTS:-/vendor /system/vendor /firmware /firmware_mnt /vendor/firmware_mnt}"
 MAXDEPTH="${MAXDEPTH:-6}"
 SHA="${SHA:-sha256sum}"
@@ -22,7 +23,7 @@ is_mounted() { grep -q " $1 " "$PROC_MOUNTS" 2>/dev/null; }
 
 case "${1:-}" in
 umount)
-	for m in "$MNTB" "$MNTD" "$MNTM" "$MNT"; do
+	for m in "$MNTA" "$MNTB" "$MNTD" "$MNTM" "$MNT"; do
 		if is_mounted "$m"; then
 			umount "$m" && echo "unmounted $m" || echo "umount of $m failed"
 		else
@@ -64,6 +65,25 @@ has_vendor_fw() {
 	return 1
 }
 
+# 0. apnhlos: Samsung splits Qualcomm's NON-HLOS image into apnhlos (AP side: adsp, cdsp, wlan, ...) and modem. TWRP mounts it at /vendor/firmware_mnt, and
+#    mounting vendor on /vendor afterwards hides that directory, so bind (read-only) or mount it at our own directory FIRST.
+APN_MP=$(awk '$1 ~ /by-name\/apnhlos/ { print $2; exit }' "$PROC_MOUNTS" 2>/dev/null)
+APN_OK=0
+if [ -n "$APN_MP" ] && [ -d "$APN_MP" ]; then
+	mkdir -p "$MNTA"
+	if mount -o bind "$APN_MP" "$MNTA" 2>/dev/null; then
+		mount -o remount,ro,bind "$MNTA" 2>/dev/null
+		echo "apnhlos was mounted at $APN_MP: bound at $MNTA (read-only remount tried)"
+		APN_OK=1
+	fi
+fi
+if [ "$APN_OK" = 0 ]; then
+	for dev in "$BLOCKDIR/by-name/apnhlos" "$BLOCKDIR/by-name/apnhlos_a"; do
+		if mount_ro "$dev" "$MNTA" vfat ext4 erofs; then APN_OK=1; break; fi
+	done
+fi
+[ "$APN_OK" = 1 ] && ROOTS="$ROOTS $MNTA"
+
 # 1. the vendor partition (logical partition inside super)
 if ! has_vendor_fw; then
 	echo "== no mounted vendor firmware directory"
@@ -80,6 +100,7 @@ fi
 
 # 2. the modem, dsp and bluetooth partitions (Qualcomm keeps the DSP images and their companions in these)
 TREES=""
+[ "$APN_OK" = 1 ] && TREES="$MNTA"
 for r in /vendor/firmware_mnt /firmware /firmware_mnt /vendor/dsp /vendor/firmware; do
 	[ -d "$r" ] && TREES="$TREES $r"
 done
