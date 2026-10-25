@@ -41,7 +41,7 @@ while read -r _ rpath size sum name; do
 	fi
 	echo "ok  $name  $size bytes  sha256 $sum"
 	npulled=$((npulled + 1))
-	case "$name" in
+	case "${name,,}" in
 	adsp.mbn|adsp.mdt) main=1 ;;
 	adsp_dtb.mbn|adsp_dtb.mdt) dtb=1 ;;
 	esac

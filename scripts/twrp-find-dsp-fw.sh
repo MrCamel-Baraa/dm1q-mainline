@@ -1,16 +1,18 @@
 #!/bin/sh
 # Device side (TWRP recovery shell, busybox sh) of scripts/pull-dsp-vendor-firmware.sh; docs/13. READ-ONLY on the phone's storage:
-# it lists the partition layout, mounts the phone's own vendor partition and its modem (firmware) partition READ-ONLY in RAM-disk directories
-# when nothing mounts them already, and prints one line per ADSP firmware file it finds (adsp*, battmgr*). It never writes to a partition and
-# never mounts read-write.
-#   scan    print the layout, the mounts, the directories that hold ADSP files (ls -l), and  FOUND <real path> <bytes> <sha256> <name>  lines
+# it lists the partition layout, mounts the phone's own vendor partition and its modem / dsp / bluetooth (firmware) partitions READ-ONLY in RAM-disk
+# directories when nothing mounts them already, prints a directory listing of every firmware location, and prints one line per ADSP firmware file it finds
+# (names containing "adsp", any case, and battmgr*; files under bin/ and lib*/ are skipped). It never writes to a partition and never mounts read-write.
+#   scan    print the layout, the mounts, the trees, the directories that hold ADSP files (ls -l), and  FOUND <real path> <bytes> <sha256> <name>  lines
 #           (or NONE); it LEAVES what it had to mount mounted so the files can be pulled
-#   umount  unmount what scan mounted ($MNT, $MNTM), if mounted
-# Env (the PC-side test uses them): BLOCKDIR (/dev/block) MNT (/mnt/dm1q-vendor) MNTM (/mnt/dm1q-modem)
+#   umount  unmount what scan mounted ($MNT, $MNTM, $MNTD, $MNTB), if mounted
+# Env (the PC-side test uses them): BLOCKDIR (/dev/block) MNT (/mnt/dm1q-vendor) MNTM (/mnt/dm1q-modem) MNTD (/mnt/dm1q-dsp) MNTB (/mnt/dm1q-bt)
 #   ROOTS ("/vendor /system/vendor /firmware /firmware_mnt /vendor/firmware_mnt") MAXDEPTH (6) SHA PROC_MOUNTS (/proc/mounts)
 BLOCKDIR="${BLOCKDIR:-/dev/block}"
 MNT="${MNT:-/mnt/dm1q-vendor}"
 MNTM="${MNTM:-/mnt/dm1q-modem}"
+MNTD="${MNTD:-/mnt/dm1q-dsp}"
+MNTB="${MNTB:-/mnt/dm1q-bt}"
 ROOTS="${ROOTS:-/vendor /system/vendor /firmware /firmware_mnt /vendor/firmware_mnt}"
 MAXDEPTH="${MAXDEPTH:-6}"
 SHA="${SHA:-sha256sum}"
@@ -20,7 +22,7 @@ is_mounted() { grep -q " $1 " "$PROC_MOUNTS" 2>/dev/null; }
 
 case "${1:-}" in
 umount)
-	for m in "$MNTM" "$MNT"; do
+	for m in "$MNTB" "$MNTD" "$MNTM" "$MNT"; do
 		if is_mounted "$m"; then
 			umount "$m" && echo "unmounted $m" || echo "umount of $m failed"
 		else
@@ -30,13 +32,13 @@ umount)
 	exit 0
 	;;
 scan) ;;
-*) sed -n '2,12p' "$0"; exit 2 ;;
+*) sed -n '2,13p' "$0"; exit 2 ;;
 esac
 
 echo "== layout"
 echo "slot suffix: $(getprop ro.boot.slot_suffix 2>/dev/null)"
 echo "mapper:"; ls -l "$BLOCKDIR/mapper" 2>&1 | sed 's/^/  /'
-echo "by-name (super / vendor / system / modem / firmware / dsp / radio):"
+echo "by-name (super / vendor / system / modem / firmware / dsp / radio / bluetooth):"
 for n in "$BLOCKDIR"/by-name/*; do
 	case "$(basename "$n")" in super*|vendor*|system*|modem*|firmware*|dsp*|radio*|apnhlos*|bluetooth*) echo "  $(basename "$n")" ;; esac
 done
@@ -76,22 +78,32 @@ if ! has_vendor_fw; then
 	done
 fi
 
-# 2. the modem / firmware partition (Qualcomm keeps adsp.mbn, adsp_dtb.mbn ... in its image/ directory)
-have_modem=0
-for r in /firmware /firmware_mnt /vendor/firmware_mnt; do
-	[ -d "$r/image" ] && have_modem=1
+# 2. the modem, dsp and bluetooth partitions (Qualcomm keeps the DSP images and their companions in these)
+TREES=""
+for r in /vendor/firmware_mnt /firmware /firmware_mnt /vendor/dsp /vendor/firmware; do
+	[ -d "$r" ] && TREES="$TREES $r"
 done
-if [ "$have_modem" = 0 ]; then
-	for dev in "$BLOCKDIR/by-name/modem" "$BLOCKDIR/by-name/modem_a" "$BLOCKDIR/by-name/modem_b" "$BLOCKDIR/by-name/firmware" "$BLOCKDIR/by-name/apnhlos" "$BLOCKDIR/by-name/apnhlos_a"; do
-		if mount_ro "$dev" "$MNTM" vfat ext4 erofs; then ROOTS="$ROOTS $MNTM"; break; fi
-	done
-fi
+for dev in "$BLOCKDIR/by-name/modem" "$BLOCKDIR/by-name/modem_a"; do
+	if mount_ro "$dev" "$MNTM" vfat ext4 erofs; then ROOTS="$ROOTS $MNTM"; TREES="$TREES $MNTM"; break; fi
+done
+for dev in "$BLOCKDIR/by-name/dsp" "$BLOCKDIR/by-name/dsp_a"; do
+	if mount_ro "$dev" "$MNTD" ext4 erofs vfat f2fs; then ROOTS="$ROOTS $MNTD"; TREES="$TREES $MNTD"; break; fi
+done
+for dev in "$BLOCKDIR/by-name/bluetooth" "$BLOCKDIR/by-name/bluetooth_a"; do
+	if mount_ro "$dev" "$MNTB" vfat ext4 erofs; then ROOTS="$ROOTS $MNTB"; TREES="$TREES $MNTB"; break; fi
+done
 
-echo "== search (adsp*, battmgr*) under: $ROOTS"
+echo "== trees (ls -lR, first 300 lines each)"
+for r in $TREES; do
+	echo "-- $r"
+	ls -lR "$r" 2>&1 | head -300 | sed 's/^/    /'
+done
+
+echo "== search (names containing adsp, any case, and battmgr*) under: $ROOTS"
 found=0
 for r in $ROOTS; do
 	[ -d "$r" ] || continue
-	list=$(find "$r" -maxdepth "$MAXDEPTH" \( -type f -o -type l \) \( -name 'adsp*' -o -name 'battmgr*' \) 2>/dev/null | sort)
+	list=$(find "$r" -maxdepth "$MAXDEPTH" \( -type f -o -type l \) \( -iname '*adsp*' -o -iname 'battmgr*' \) ! -path '*/bin/*' ! -path '*/lib/*' ! -path '*/lib64/*' 2>/dev/null | sort)
 	[ -n "$list" ] || continue
 	echo "-- $r"
 	echo "$list" | while read -r f; do dirname "$f"; done | sort -u | while read -r d; do

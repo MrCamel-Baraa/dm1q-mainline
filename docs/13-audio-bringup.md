@@ -33,10 +33,22 @@ whether the ADSP runs at all.
   `scripts/pull-gpu-vendor-firmware.sh`): they mount the vendor and modem partitions READ-ONLY in RAM-disk directories, list every directory that holds `adsp*` or `battmgr*`
   files, pull the files with size + sha256 verification, and unmount. Nothing is written to a partition. Output goes to `../_scratch/dm1q-dsp-fw-vendor/` (blobs stay out of the repo);
   the scan output is in `scan.txt` there.
-- Tested on the PC against a fake firmware tree (scan, FOUND lines, umount, usage); NOT yet run on the phone.
+- Tested on the PC against a fake firmware tree (scan, FOUND lines, umount, usage). First run on the phone: section 5.
 
 ## 4. Later steps (not started)
 
 - Q6 / APR / GPR drivers, `lpass` pin controllers, the ASoC sound card node (QRD's `sound` node as the reference), WCD9385/WCD938x codec with its soundwire
   and the speaker amplifiers; `alsa-ucm-conf` / topology in userspace.
 - TODO: which codec and amplifiers the S23 uses (Samsung's DT has the answer); downstream audio is not a Qualcomm reference design.
+
+## 5. First scan on the phone, 2026-10-25 23:25 (CONFIRMED; `../_scratch/dm1q-dsp-fw-vendor/scan.txt`)
+
+- Layout: no slot suffix (A-only). `by-name`: `apnhlos`, `bluetooth`, `dsp`, `modem`, `modemst1`, `modemst2`, `super`, `vendor_boot`. Mapper: odm, product, system, system_dlkm,
+  system_ext, vendor, vendor_dlkm. TWRP already had `apnhlos` mounted (vfat) at `/vendor/firmware_mnt`; the script mounted `modem` (vfat) read-only at its own directory.
+- The search (name `adsp*` or `battmgr*`, case-sensitive) found ONE file, `/vendor/bin/adsprpcd` (a FastRPC userspace daemon, 15320 bytes, pulled to the scratch directory,
+  not needed). No ADSP firmware under `/vendor`, `/vendor/firmware_mnt` (apnhlos) or `modem`. The vendor `bin/` also has `audioadsprpcd`, `cdsprpcd`, `dspservice`.
+- So either the firmware has a name without "adsp" / different case, or it lives in a place the first scan did not look (the `dsp` and `bluetooth` partitions were not mounted).
+  Neither is known yet.
+- Script change (same day): the search is now case-insensitive (`*adsp*`), skips files under `bin/` and `lib*/`, also mounts `dsp` and `bluetooth` read-only, and prints an
+  `ls -lR` tree (first 300 lines) of every firmware location (`/vendor/firmware_mnt`, `modem`, `dsp`, `bluetooth`, `/vendor/firmware`, `/vendor/dsp`). Re-tested on the PC fake tree
+  (uppercase `ADSP.MBN` found, `bin/adsprpcd` skipped). NOT yet run again on the phone.
