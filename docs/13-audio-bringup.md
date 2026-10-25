@@ -67,3 +67,15 @@ whether the ADSP runs at all.
   firmware is therefore most likely in `apnhlos`, which the scans never read.
 - Script fix (same day, NOT yet run on the phone): step 0 binds the existing `apnhlos` mount (or mounts the partition itself, read-only) at `/mnt/dm1q-apnhlos` BEFORE vendor is mounted,
   and adds it to the search and to the tree listing.
+
+## 7. Third scan, 2026-10-25 23:29 (CONFIRMED; tree pasted by the user)
+
+- The `apnhlos` bind worked (`apnhlos was mounted at /vendor/firmware_mnt: bound at /mnt/dm1q-apnhlos`) and it lists EMPTY (`total 0`), like `/vendor/firmware_mnt` and `/vendor/dsp`.
+  So the inferred "ADSP firmware is in apnhlos" is not confirmed: either the partition really holds no files, or TWRP's mount shows none. TODO: read the partition raw (size, first sector).
+- `/vendor/firmware` (top level, complete): no `adsp*` / `cdsp*` / `slpi*` files. Subsystem blobs present there: `CAMERA_ICP.*`, `evass.*`, `vpu*`, `a740_*` (GPU, docs/11), `wlan/`, `qca6490/`.
+- Found and useful for the NEXT steps (not pulled yet):
+  - Bluetooth: `hpbtfw21.tlv`, `hpnv21.bin` + `hpnv21.b9a/b9b/baa/bb7/bb9`, `hpnv21g.*`, `bt_nvm_loading.xml`, `bt_nvm_loading_2nd.xml`. These are the names mainline btqca asks for under `qca/` for this
+    chip family (`hpbtfw21.tlv`, `hpnv21*.bin`); to check against dmesg in the Bluetooth step.
+  - Audio: `cs35l43-bot-dsp1-spk-prot.{wmfw,bin}` and `cs35l43-rcv-dsp1-spk-prot.{wmfw,bin}` (INFERRED: two Cirrus Logic CS35L43 speaker amplifiers, bottom speaker and receiver; the downstream DT must
+    confirm), `SoundBoosterParam.bin`, `dax_param.bin` (Dolby). Haptics: `cs40l26*` (Cirrus). Not yet checked: mainline support for CS35L43.
+- Still no ADSP image anywhere that the scans looked: not in `modem`, `dsp`, `/vendor/firmware`, or `apnhlos` (empty). `bluetooth` could not be mounted.
