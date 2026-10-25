@@ -165,3 +165,12 @@ Phone log: `max77705 0-0066: error -ENODEV: Rev.0x2 is not tested`, `probe of 0-
 - Fix: accept Pass2 next to Pass3 in the MFD probe. Draft: `notes/2026-10-25-0006-mfd-max77705-accept-pass2.patch` (applies to 7.3-rc3, not
   yet in kernel/patches or the APKBUILD). It is a kernel code change, so it needs a package build (r12 with the patch), a flash of
   boot + vendor_boot and a refresh of the rootfs modules (the max77705 module changes).
+
+## 11. Patch 0006 applied (2026-10-25, package r12; not built, not flashed)
+
+- `kernel/patches/0006-mfd-max77705-accept-PMIC-revision-Pass2.patch` = `pmaports/.../add-max77705-accept-pass2.patch` (identical), listed in `source`
+  after `add-fts2ba61y-suspend-and-stall.patch`, checksum added; `pkgrel=12` (set earlier for the DTS) now carries kernel code, so the r12 comment says so.
+  The patch applies to a pristine 7.3-rc3 (`patch --dry-run`); it touches only `drivers/mfd/max77705.c`.
+- Steps for the user: `pmbootstrap checksum linux-samsung-dm1q-mainline && pmbootstrap build linux-samsung-dm1q-mainline` (needs his root rights for the chroot),
+  then the image set from the r12 apk with `--new-kernel`, flash boot + vendor_boot, then `scripts/refresh-phone-modules.sh --apk <r12 apk> --reboot`.
+- Expected on the phone: no "Rev.0x2 is not tested" line; `max77705`, `max77705-charger`, `max17042` bind; `power_supply` shows a battery and a charger.
