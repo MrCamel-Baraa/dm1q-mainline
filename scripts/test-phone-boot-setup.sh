@@ -269,18 +269,92 @@ for sh in dash bash; do
 	printf 'foreign\n' > "$D/etc/systemd/system/plasma-mobile.service.d/10-dm1q-boot.conf"
 	run "$sh" "$D" undo-plasma
 	[ "$(cat "$D/etc/systemd/system/plasma-mobile.service.d/10-dm1q-boot.conf")" = foreign ] && ok "a drop-in without the marker is kept" || bad "foreign drop-in removed"
+
+	echo "== $sh: trust-gpu-fw"
+	D="$W/t0-$sh"; mk "$D"
+	run "$sh" "$D" trust-gpu-fw; rc=$?
+	[ "$rc" = 3 ] && ok "trust without the firmware installed: refused (3)" || bad "trust before install: rc $rc"
+	expect "$D/out" "the refusal names the missing install" "REFUSING: the GPU firmware is not installed"
+	D="$W/t1-$sh"; mk "$D"; run "$sh" "$D" gpu-fw >/dev/null 2>&1
+	run "$sh" "$D" trust-gpu-fw; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "trust: exit 0" || { bad "trust: exit $rc"; cat "$O"; }
+	[ -f "$D/var/lib/dm1q/gpu-fw-trusted" ] && ok "trusted marker written" || bad "no trusted marker"
+	expect "$O" "result line" "^RESULT: GPU firmware trusted"
+	G="$D/usr/local/sbin/dm1q-gpu-fw-guard"
+	runguard() { DM1Q_ROOT="$D" DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$G"; }
+	grep -q 'gpu-fw-trusted' "$G" && ok "the guard on the phone is rewritten with the trusted check" || bad "the guard has no trusted check"
+	: > "$D/var/lib/dm1q/gpu-fw-boot-pending"
+	runguard; runguard; runguard
+	{ [ ! -e "$D/var/lib/dm1q/gpu-fw-boot-pending" ] && [ -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && [ ! -d "$D/var/lib/dm1q/gpu-fw-disabled" ]; } && ok "trusted: a stale marker and three more unclean boots, firmware stays, no marker" || bad "the trusted guard still acted"
+	run "$sh" "$D" gpu-fw >/dev/null 2>&1
+	[ -f "$D/var/lib/dm1q/gpu-fw-trusted" ] && ok "a later gpu-fw keeps the trust" || bad "gpu-fw dropped the trust"
+	run "$sh" "$D" check; expect "$D/out" "check reports trusted" "^gpu_fw_guard=trusted"
+	run "$sh" "$D" undo-trust-gpu-fw; rc=$?
+	{ [ "$rc" = 0 ] && [ ! -e "$D/var/lib/dm1q/gpu-fw-trusted" ]; } && ok "undo-trust removes the marker" || bad "undo-trust rc $rc"
+	run "$sh" "$D" check; expect "$D/out" "check reports armed" "^gpu_fw_guard=armed"
+	runguard; runguard
+	[ ! -f "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw" ] && ok "re-armed: an unclean boot moves the firmware again" || bad "the re-armed guard did not act"
+	[ -z "$(forbidden "$D")" ] && ok "trust modes never start or stop anything" || bad "forbidden: $(forbidden "$D")"
+	D="$W/t2-$sh"; mk "$D"; run "$sh" "$D" gpu-fw >/dev/null 2>&1; run "$sh" "$D" trust-gpu-fw >/dev/null 2>&1
+	run "$sh" "$D" undo-gpu-fw
+	[ ! -e "$D/var/lib/dm1q/gpu-fw-trusted" ] && ok "undo-gpu-fw removes the trust too" || bad "undo-gpu-fw left the trust"
+	D="$W/t3-$sh"; mk "$D"; run "$sh" "$D" gpu-fw >/dev/null 2>&1; printf 'tampered\n' >> "$D/lib/firmware/postmarketos/qcom/a740_sqe.fw"
+	run "$sh" "$D" trust-gpu-fw; rc=$?
+	{ [ "$rc" = 3 ] && [ ! -e "$D/var/lib/dm1q/gpu-fw-trusted" ]; } && ok "a firmware file that is not the pinned one is not trusted" || bad "trusted a modified file (rc $rc)"
+
+	echo "== $sh: touch-poll"
+	D="$W/q1-$sh"; mk "$D"; mkdir -p "$D/sys/kernel/debug"
+	run "$sh" "$D" touch-poll; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "touch-poll without the knob: exit 0" || { bad "touch-poll: exit $rc"; cat "$O"; }
+	[ -x "$D/usr/local/sbin/dm1q-touch-poll" ] && ok "poll script executable" || bad "poll script missing"
+	U="$D/etc/systemd/system/dm1q-touch-poll.service"
+	head -n 1 "$U" | grep -q '^# dm1q-boot-setup' && ok "unit written with the marker" || bad "unit missing or no marker"
+	expect "$U" "default 150 ms" "^Environment=DM1Q_POLL_MS=150"
+	expect "$U" "does not block the boot (simple, stays active)" "^Type=simple"
+	expect "$U" "WantedBy multi-user" "^WantedBy=multi-user.target"
+	grep -qx 'systemctl enable dm1q-touch-poll.service' "$D/systemctl.log" && ok "unit enabled" || bad "unit not enabled"
+	expect "$O" "without the knob it says so" "is not there now"
+	expect "$O" "result line" "^RESULT: the touch poll is set to 150 ms at every boot"
+	[ -z "$(forbidden "$D")" ] && ok "touch-poll never starts or stops anything" || bad "forbidden: $(forbidden "$D")"
+	[ ! -e "$D/etc/systemd/system/dm1q-gpu-fw-guard.service" ] && ok "touch-poll does not touch the GPU units" || bad "touch-poll wrote GPU units"
+	G2="$D/usr/local/sbin/dm1q-touch-poll"
+	DM1Q_DEBUGFS="$D/sys/kernel/debug" DM1Q_POLL_WAIT=1 DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$G2"; rc=$?
+	{ [ "$rc" = 0 ] && grep -q 'did not appear' "$D/kmsg"; } && ok "the boot script with no knob: exit 0 and a kernel log line" || bad "boot script without the knob (rc $rc)"
+	D="$W/q2-$sh"; mk "$D"; mkdir -p "$D/sys/kernel/debug/spi0.0"; echo 0 > "$D/sys/kernel/debug/spi0.0/poll_ms"
+	run "$sh" "$D" touch-poll=250; rc=$?; O="$D/out"
+	[ "$rc" = 0 ] && ok "touch-poll=250: exit 0" || { bad "exit $rc"; cat "$O"; }
+	expect "$D/etc/systemd/system/dm1q-touch-poll.service" "unit carries 250" "^Environment=DM1Q_POLL_MS=250"
+	[ "$(cat "$D/sys/kernel/debug/spi0.0/poll_ms")" = 250 ] && ok "applied now when the knob exists" || bad "not applied now"
+	echo 0 > "$D/sys/kernel/debug/spi0.0/poll_ms"
+	DM1Q_DEBUGFS="$D/sys/kernel/debug" DM1Q_POLL_MS=250 DM1Q_POLL_WAIT=1 DM1Q_KMSG="$D/kmsg" timeout 20 "$sh" "$D/usr/local/sbin/dm1q-touch-poll"
+	[ "$(cat "$D/sys/kernel/debug/spi0.0/poll_ms")" = 250 ] && grep -q 'poll_ms=250' "$D/kmsg" && ok "the boot script writes the knob and logs it" || bad "boot script did not write the knob"
+	run "$sh" "$D" check; expect "$D/out" "check shows the knob" "^touch driver poll_ms now: 250"
+	expect "$D/out" "check shows the unit" "dm1q-touch-poll.service: file present \(ours\)"
+	for bad_arg in touch-poll=abc touch-poll=5 touch-poll=70000; do
+		D="$W/q3-$sh"; mk "$D"
+		run "$sh" "$D" "$bad_arg"; rc=$?
+		{ [ "$rc" = 3 ] && [ ! -e "$D/usr/local/sbin/dm1q-touch-poll" ]; } && ok "$bad_arg: refused, nothing written" || bad "$bad_arg: rc $rc"
+	done
+	D="$W/q2-$sh"
+	run "$sh" "$D" undo-touch-poll; rc=$?
+	{ [ "$rc" = 0 ] && [ ! -e "$D/usr/local/sbin/dm1q-touch-poll" ] && [ ! -e "$D/etc/systemd/system/dm1q-touch-poll.service" ]; } && ok "undo-touch-poll removes the unit and script" || bad "undo-touch-poll left files (rc $rc)"
+	[ "$(cat "$D/sys/kernel/debug/spi0.0/poll_ms")" = 0 ] && ok "undo sets poll_ms back to 0" || bad "poll_ms not reset"
+	grep -qx 'systemctl disable dm1q-touch-poll.service' "$D/systemctl.log" && ok "unit disabled" || bad "unit not disabled"
+	D="$W/q4-$sh"; mk "$D"; mkdir -p "$D/usr/local/sbin"; printf 'foreign\n' > "$D/usr/local/sbin/dm1q-touch-poll"
+	run "$sh" "$D" undo-touch-poll
+	[ "$(cat "$D/usr/local/sbin/dm1q-touch-poll")" = foreign ] && ok "a script without our marker is kept" || bad "foreign script removed"
 done
 
 echo "== static checks"
 bash --posix -n "$SCRIPT" && ok "bash --posix -n" || bad "bash --posix -n"
-D="$W/s"; mk "$D"; run bash "$D" gpu-fw >/dev/null 2>&1; run bash "$D" plasma >/dev/null 2>&1
-for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate; do
+D="$W/s"; mk "$D"; run bash "$D" gpu-fw >/dev/null 2>&1; run bash "$D" plasma >/dev/null 2>&1; run bash "$D" touch-poll >/dev/null 2>&1
+for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate dm1q-touch-poll; do
 	[ -f "$D/usr/local/sbin/$f" ] || { bad "generated $f missing"; continue; }
 	bash --posix -n "$D/usr/local/sbin/$f" && ok "bash --posix -n on generated $f" || bad "syntax of generated $f"
 done
 if command -v shellcheck >/dev/null; then
 	shellcheck -s sh -S warning "$SCRIPT" && ok "shellcheck -s sh -S warning" || bad "shellcheck on the script"
-	for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate; do
+	for f in dm1q-gpu-fw-guard dm1q-gpu-fw-ok dm1q-gpu-fw-clean dm1q-plasma-gate dm1q-touch-poll; do
 		[ -f "$D/usr/local/sbin/$f" ] && { shellcheck -s sh -S warning "$D/usr/local/sbin/$f" && ok "shellcheck on generated $f" || bad "shellcheck on generated $f"; }
 	done
 else

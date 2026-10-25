@@ -856,3 +856,17 @@ New tool: `python3 scripts/touch-trace-stalls.py <touch-trace-raw.txt>` (PC test
 **Next: the experiment arms.** Each arm: `--touch-set=...` plus `--touch-trace=arm`, 5 minutes of rapid tapping (about 1000 touch-downs, about 7 stalls at the baseline rate), then `--touch-trace=dump`, then the tool. Baseline (`read_delay_us=0`), `read_delay_us=300`, `read_delay_us=1000`, `speed_hz=5000000`, `speed_hz=20000000`.
 
 Status: open.
+
+### 2.28 Status, the baseline arm, and the poll at every boot (2026-10-25; FACT unless marked)
+
+**Where the touch work stands.**
+- Defect A (the IRQ killed after a suspend, 2.25): cause known; fixed in r11; the fix is still untested on hardware (a sleep and wake with the screen on is the test).
+- Defect B (the chip stops asserting INT, 2.21 to 2.27): cause in the chip not known. What helps is known: a read of the event queue restarts it (4 of 4 stalls revived by our poke, 4 of 4 caught by the poll in `r11-b3`), and the r11 poll does that within 150 to 300 ms.
+
+**Baseline arm (`arm0`, `arm0-dump`): the A/B plan does not work with arms of this size.** Same settings as `r11-b3` (poll 150 ms, delay 0, 10 MHz): 964 touch-downs in 256 s, and `touch-trace-stalls.py` finds no stall inside the window (one queue of 20 at the very first IRQ read after the recorder was armed, which can only be a stall that began before the recording), against 4 stalls in 587 touch-downs in `r11-b3`. At 6.8 per 1000, 0 in 964 has a chance of about 0.15%. So the stall rate is not constant between runs. What differed (FACT from the dumps): the tapping (`r11-b3`: 25% of the touch-downs came less than 100 ms after the previous release and few two-finger events; `arm0`: 2% under 100 ms, 143 move events of a second or third finger), the time since boot (1250 to 1400 s against 1690 to 1945 s) and the screen area tapped. None of them is shown to matter. Comparing `read_delay_us` or `speed_hz` arms of 1000 touch-downs against such a baseline cannot separate an effect from this variation, so that plan is dropped until a stimulus with a stable stall rate is found.
+
+**Weak lead (INFERENCE, 3 events).** The three stalls of `r11-b3` that began with a touch-down came after fewer touches than usual in the previous 10 s (7, 30 and 39 touch-downs against a mean of 44) and 1 s (3, 3, 3 against a mean of 4.1): after a lull, not in the middle of a burst. Three events prove nothing; the earlier stalls were after touch-downs and moves in other contexts.
+
+**Change: the poll at every boot.** `phone-boot-setup.sh touch-poll[=MS]` (default 150) installs `dm1q-touch-poll.service`, which sets `poll_ms` once the debugfs knob exists, and applies it now when the knob is there; `undo-touch-poll` removes it (`collect-phone-state.sh <label> --boot-setup=touch-poll`). It costs one 18-byte read per poll while the line is silent. It is a recovery, not the explanation; it stays on until the cause is found and removed.
+
+Status: A awaiting the sleep test; B open, recovered by the poll.

@@ -74,7 +74,7 @@
 #                one open of the render node, restores it, and prints the new kernel log lines + a verdict (adds gpu-powerup.txt).
 #                sqe-gmu = SQE + GMU only (GMU boots, stops cleanly at the missing zap shader); full = also the zap shader (secure-world
 #                authentication: the step that could reset the phone; then just let it reboot, the default firmware path never has the files).
-#   --boot-setup=check|gpu-fw|undo-gpu-fw|plasma|undo-plasma  also run scripts/phone-boot-setup.sh (docs/11 section 9.12): makes the GPU fix and the Plasma start
+#   --boot-setup=check|gpu-fw|undo-gpu-fw|trust-gpu-fw|undo-trust-gpu-fw|touch-poll[=MS]|undo-touch-poll|plasma|undo-plasma  also run scripts/phone-boot-setup.sh (docs/11 section 9.12): makes the GPU fix and the Plasma start
 #                permanent WITHOUT apk (plain files + systemd units; initramfs-extra is hashed before and after). gpu-fw installs the phone's own
 #                Adreno firmware (from $DM1Q_GPU_FW, which must hold qcom/sm8550/a740_zap.mbn; the phone script pins the known hashes) under
 #                /lib/firmware/postmarketos plus a boot-loop breaker that moves it away again if a boot with it does not finish; plasma enables
@@ -152,7 +152,7 @@ for a in "$@"; do
 	--pam-fix) PAM_FIX=apply ;;
 	--pam-fix=*) PAM_FIX="${a#--pam-fix=}"; case "$PAM_FIX" in check|undo) ;; *) echo "--pam-fix takes no value, =check or =undo" >&2; exit 2 ;; esac ;;
 	--gpu-powerup=*) GPU_POWERUP="${a#--gpu-powerup=}"; case "$GPU_POWERUP" in sqe-gmu|full) ;; *) echo "--gpu-powerup must be sqe-gmu or full" >&2; exit 2 ;; esac ;;
-	--boot-setup=*) BOOT_SETUP="${a#--boot-setup=}"; case "$BOOT_SETUP" in check|gpu-fw|undo-gpu-fw|plasma|undo-plasma) ;; *) echo "--boot-setup must be check, gpu-fw, undo-gpu-fw, plasma or undo-plasma" >&2; exit 2 ;; esac ;;
+	--boot-setup=*) BOOT_SETUP="${a#--boot-setup=}"; case "$BOOT_SETUP" in check|gpu-fw|undo-gpu-fw|trust-gpu-fw|undo-trust-gpu-fw|touch-poll|undo-touch-poll|plasma|undo-plasma) ;; touch-poll=[0-9]*) [[ "$BOOT_SETUP" =~ ^touch-poll=[0-9]+$ ]] || { echo "--boot-setup=touch-poll=MS needs a number" >&2; exit 2; } ;; *) echo "--boot-setup must be check, gpu-fw, undo-gpu-fw, trust-gpu-fw, undo-trust-gpu-fw, touch-poll[=MS], undo-touch-poll, plasma or undo-plasma" >&2; exit 2 ;; esac ;;
 	--touch-watch) TOUCH_WATCH=45 ;;
 	--touch-watch=*) TOUCH_WATCH="${a#--touch-watch=}"; case "$TOUCH_WATCH" in ''|*[!0-9]*) echo "--touch-watch=SECONDS needs a number (5..600)" >&2; exit 2 ;; esac; { [ "$TOUCH_WATCH" -ge 5 ] && [ "$TOUCH_WATCH" -le 600 ]; } || { echo "--touch-watch=SECONDS must be 5..600" >&2; exit 2; } ;;
 	--touch-sleepwake) TOUCH_SW=20 ;;
