@@ -1349,3 +1349,68 @@
 &gpu_zap_shader {
 	firmware-name = "qcom/sm8550/a740_zap.mbn";
 };
+
+/*
+ * Battery, charger and fuel gauge (docs/12). The S23 does not use pmic_glink: a Maxim MAX77705 (0x66) with its charger (0x69) and
+ * fuel gauge (0x36) sits on the QUP I2C master hub, controller i2c_hub_8 (SDA/SCL gpio206/gpio207, pinctrl already in sm8550.dtsi).
+ * CONFIRMED against Samsung's dm1q DT and MFD source: addresses (I2C_ADDR_CHG 0xD2>>1, I2C_ADDR_FG 0x6C>>1), the interrupt on
+ * TLMM 133 (flags 1 = active low), fg_resistor 5. Layout follows the upstream sdm845-samsung-starqltechn.dts.
+ * The PCA9481 direct charger at 0x57 has no mainline driver and is not described here.
+ * Battery numbers are Samsung's (float 4420 mV, empty 3200 mV, capacity 3900 mAh, INFERRED mapping); the charge current is a
+ * conservative bring-up value, not Samsung's 2800 mA.
+ * RISK: the upstream MFD probe accepts only PMIC revision Pass3 ("Rev.0x.. is not tested"); the chip in this phone may be Pass2.
+ */
+/ {
+	battery: battery {
+		compatible = "simple-battery";
+		voltage-min-design-microvolt = <3200000>;
+		voltage-max-design-microvolt = <4420000>;
+		charge-full-design-microamp-hours = <3900000>;
+		constant-charge-current-max-microamp = <1000000>;
+	};
+};
+
+&i2c_master_hub_0 {
+	status = "okay";
+};
+
+&i2c_hub_8 {
+	status = "okay";
+
+	max77705: pmic@66 {
+		compatible = "maxim,max77705";
+		reg = <0x66>;
+		interrupt-parent = <&tlmm>;
+		interrupts = <133 IRQ_TYPE_LEVEL_LOW>;
+		interrupt-controller;
+		#interrupt-cells = <1>;
+		pinctrl-0 = <&max77705_int_default>;
+		pinctrl-names = "default";
+	};
+
+	max77705_charger: charger@69 {
+		compatible = "maxim,max77705-charger";
+		reg = <0x69>;
+		monitored-battery = <&battery>;
+		interrupt-parent = <&max77705>;
+		interrupts = <0>;
+	};
+
+	fuel-gauge@36 {
+		compatible = "maxim,max77705-battery";
+		reg = <0x36>;
+		power-supplies = <&max77705_charger>;
+		maxim,rsns-microohm = <5000>;
+		interrupt-parent = <&max77705>;
+		interrupts = <2>;
+	};
+};
+
+&tlmm {
+	max77705_int_default: max77705-int-default-state {
+		pins = "gpio133";
+		function = "gpio";
+		input-enable;
+		bias-disable;
+	};
+};
