@@ -79,3 +79,28 @@ whether the ADSP runs at all.
   - Audio: `cs35l43-bot-dsp1-spk-prot.{wmfw,bin}` and `cs35l43-rcv-dsp1-spk-prot.{wmfw,bin}` (INFERRED: two Cirrus Logic CS35L43 speaker amplifiers, bottom speaker and receiver; the downstream DT must
     confirm), `SoundBoosterParam.bin`, `dax_param.bin` (Dolby). Haptics: `cs40l26*` (Cirrus). Not yet checked: mainline support for CS35L43.
 - Still no ADSP image anywhere that the scans looked: not in `modem`, `dsp`, `/vendor/firmware`, or `apnhlos` (empty). `bluetooth` could not be mounted.
+
+## 8. The ADSP firmware is on the phone, in `apnhlos` (2026-10-25 23:35, CONFIRMED)
+
+Correction of sections 5-7: `apnhlos` is NOT empty and not wiped. The phone's own partition (150 MiB, `blockdev --getsize64` = 157286400) holds a FAT16 filesystem with a full `image/` directory;
+TWRP's mount (`/vendor/firmware_mnt`, and the bind of it) just listed nothing. The whole partition was dumped with `adb exec-out dd` to `../_scratch/dm1q-dsp-fw-vendor/apnhlos.img` and read on the PC with
+mtools (read-only, nothing mounted, nothing written to the phone). The FAT header claims 81920 sectors of 4096 bytes (320 MiB) against a 150 MiB partition (`fsck.fat` cannot read sector 81919);
+the files checked below are complete, so that does not matter for them.
+
+- `image/` has (dates 2025-09-03): `adsp.mdt` + `adsp.b00-b50` (b26, b29, b37, b49 absent), `adsp_dtb.mdt` + `adsp_dtb.b00-b02`, `adspr.jsn`, `adsps.jsn`, `adspua.jsn`, the same set for `cdsp`
+  (`cdsp.mdt`, `cdsp.b00-b15`, `cdsp_dtb.*`, `cdspr.jsn`), UUID-named `.mdt/.bNN` sets (dynamic protection domains), `ipa_fws`, and many TZ/secure applications
+  (`widevine`, `hdcp*`, `skm`, ...). 522 entries in all.
+- Extracted to `../_scratch/dm1q-dsp-fw-vendor/apnhlos-image/` (ADSP, ADSP DTB and the three `.jsn` files; 55 files, 33 MB; never committed).
+- `scripts/check-mdt-set.py <dir> adsp adsp_dtb` checks a split set against the ELF program headers of its `.mdt`: `adsp` = ELF32, 51 program headers, 47 segment files present with exactly the header sizes,
+  4 zero-size (no file) = the missing numbers, 0 problems; `adsp_dtb` = 3 of 3, 0 problems. So the files are complete and consistent.
+- The ADSP LOAD segments start at 0x9ea00000 and the last one ends at 0xa43b4000 = the end of Samsung's `adspslpi` carveout (0x9ea00000 + 0x59b4000). Mainline's default size (0x4080000) would not
+  fit; our DTS already carries the live size. The `adsp_dtb` LOAD segment is at 0x9e980000 (8376 bytes) inside `q6_adsp_dtb_mem` (0x80000).
+- Not needed to extract anywhere else, and not Samsung source: the files are the phone's own signed firmware.
+
+### Plan (needs Baraa's go-ahead for the DTS; nothing changed yet)
+
+1. DTS only (kernel and modules unchanged, so the r12 apk and the rootfs modules stay as they are): enable `&remoteproc_adsp` with
+   `firmware-name = "qcom/sm8550/adsp.mdt", "qcom/sm8550/adsp_dtb.mdt"`. New image set v24 from v23 with `make-dtb-image-set.sh` (DTB only).
+2. First start by hand and without a boot-loop risk (the GPU method of docs/11): put the firmware in `/root/dm1q-dsp-fw/qcom/sm8550/` on the phone (not in the default firmware path), point
+   `firmware_class.path` at it at runtime and `echo start > /sys/class/remoteproc/remoteprocN/state`. A reboot leaves the default path without the firmware, so a bad image cannot loop the boot.
+3. Read dmesg (PAS authentication, smp2p, glink, the ADSP's own log), then the audio stack.
